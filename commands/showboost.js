@@ -3,7 +3,8 @@ const {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
-    ComponentType
+    ComponentType,
+    MessageFlags
 } = require("discord.js");
 
 
@@ -169,82 +170,70 @@ function mapInventory(rows){
 
 
 
-function formatInventoryLine(
-    type,
+function formatInventoryTable(
     inventory
 ){
 
-    const typeName =
-        type === "xp"
-            ? "XP Boost"
-            : "Luck Boost";
+    const cell = value =>
+        String(value).padStart(5, " ");
 
 
-    return TIERS.map(
-
-        tier =>
-            `**${typeName} ${TIER_LABELS[tier]}:** ${inventory[type][tier]} available`
-
-    ).join("\n");
+    return [
+        "Tier      I   II  III  MAX",
+        `XP   ${cell(inventory.xp.tier1)}${cell(inventory.xp.tier2)}${cell(inventory.xp.tier3)}${cell(inventory.xp.max)}`,
+        `Luck ${cell(inventory.luck.tier1)}${cell(inventory.luck.tier2)}${cell(inventory.luck.tier3)}${cell(inventory.luck.max)}`
+    ].join("\n");
 
 }
 
 
 function getNextTierData(hourlyXP){
 
-    let tier =
-        null;
-
-    let previousRequirement =
-        0;
-
-    let nextRequirement =
-        1250;
+    const safeXP =
+        Math.max(
+            0,
+            Number(hourlyXP) || 0
+        );
 
 
-    if(hourlyXP < 1250){
+    const tiers = [
 
-        tier =
-            "tier1";
+        {
+            tier: "tier1",
+            startXP: 0,
+            requiredXP: 1250
+        },
 
-    }
-    else if(hourlyXP < 5000){
+        {
+            tier: "tier2",
+            startXP: 1250,
+            requiredXP: 5000
+        },
 
-        tier =
-            "tier2";
+        {
+            tier: "tier3",
+            startXP: 5000,
+            requiredXP: 12500
+        },
 
-        previousRequirement =
-            1250;
+        {
+            tier: "max",
+            startXP: 12500,
+            requiredXP: 25000
+        }
 
-        nextRequirement =
-            5000;
+    ];
 
-    }
-    else if(hourlyXP < 12500){
 
-        tier =
-            "tier3";
+    const next =
+        tiers.find(
+            entry =>
+                safeXP <
+                entry.requiredXP
+        );
 
-        previousRequirement =
-            5000;
 
-        nextRequirement =
-            12500;
-
-    }
-    else if(hourlyXP < 25000){
-
-        tier =
-            "max";
-
-        previousRequirement =
-            12500;
-
-        nextRequirement =
-            25000;
-
-    }
-    else{
+    if(!next){
 
         return {
 
@@ -257,6 +246,12 @@ function getNextTierData(hourlyXP){
             luckTier:
                 "Maximum tier reached",
 
+            currentXP:
+                25000,
+
+            requiredXP:
+                25000,
+
             needed:
                 0,
 
@@ -264,81 +259,82 @@ function getNextTierData(hourlyXP){
                 100,
 
             progressBar:
-                "█".repeat(20)
+                "■".repeat(20)
 
         };
 
     }
 
 
-    const needed =
-        Math.max(
-            0,
-            nextRequirement -
-            hourlyXP
-        );
+    const tierProgress =
+        safeXP -
+        next.startXP;
 
 
-    let percentage =
-        Math.floor(
-
-            (
-                (
-                    hourlyXP -
-                    previousRequirement
-                )
-
-                /
-
-                (
-                    nextRequirement -
-                    previousRequirement
-                )
-            ) * 100
-
-        );
+    const tierRequirement =
+        next.requiredXP -
+        next.startXP;
 
 
-    percentage =
+    const percentage =
         Math.max(
             0,
             Math.min(
-                percentage,
-                100
+                100,
+                Math.floor(
+                    (
+                        tierProgress /
+                        tierRequirement
+                    ) * 100
+                )
             )
         );
 
 
     const filled =
-        Math.floor(
+        Math.round(
             percentage / 5
         );
 
 
     return {
 
-        tier,
+        tier:
+            next.tier,
 
         xpTier:
-            `<@&${boosts.BOOST_PROFILES[tier].roleID}>`,
+            `<@&${boosts.BOOST_PROFILES[next.tier].roleID}>`,
 
         luckTier:
-            `<@&${luck.LUCK_ROLES[tier].roleID}>`,
+            `<@&${luck.LUCK_ROLES[next.tier].roleID}>`,
 
-        needed,
+        currentXP:
+            Math.max(
+                0,
+                tierProgress
+            ),
+
+        requiredXP:
+            tierRequirement,
+
+        needed:
+            Math.max(
+                0,
+                next.requiredXP -
+                safeXP
+            ),
 
         percentage,
 
         progressBar:
-            "█".repeat(filled) +
-            "░".repeat(
+            "■".repeat(filled) +
+            "□".repeat(
                 20 - filled
             )
 
     };
 
 }
-
 
 
 function createBoostButtons(
@@ -374,7 +370,7 @@ function createBoostButtons(
                 )
 
                 .setLabel(
-                    `XP ${TIER_LABELS[tier]} (${xpAmount})`
+                    `XP ${TIER_LABELS[tier]}  |  ${xpAmount}`
                 )
 
                 .setStyle(
@@ -401,13 +397,13 @@ function createBoostButtons(
                 )
 
                 .setLabel(
-                    `Luck ${TIER_LABELS[tier]} (${luckAmount})`
+                    `Luck ${TIER_LABELS[tier]}  |  ${luckAmount}`
                 )
 
                 .setStyle(
                     tier === "max"
                         ? ButtonStyle.Danger
-                        : ButtonStyle.Secondary
+                        : ButtonStyle.Success
                 )
 
                 .setDisabled(
@@ -458,7 +454,7 @@ function getActivationMessage(
     ){
 
         return (
-            `You already have a stronger ${boostTypeName} active. The weaker boost was not used.`
+            `A stronger ${boostTypeName} is already active. The selected boost was not consumed.`
         );
 
     }
@@ -467,7 +463,7 @@ function getActivationMessage(
     if(!result.success){
 
         return (
-            `That ${boostTypeName} could not be activated.`
+            `The ${boostTypeName} could not be activated.`
         );
 
     }
@@ -480,33 +476,23 @@ function getActivationMessage(
         );
 
 
-    let action =
-        "activated";
+    const actionText = {
 
+        activated:
+            "activated",
 
-    if(
-        result.status ===
-        "refreshed"
-    ){
+        refreshed:
+            "refreshed",
 
-        action =
-            "refreshed";
+        upgraded:
+            "upgraded to"
 
-    }
-    else if(
-        result.status ===
-        "upgraded"
-    ){
-
-        action =
-            "upgraded to";
-
-    }
+    }[result.status] || "activated";
 
 
     return (
-        `You ${action} <@&${result.boost.roleID}>.\n` +
-        `Remaining copies: **${result.remaining}**\n` +
+        `Successfully ${actionText} <@&${result.boost.roleID}>.\n` +
+        `Inventory remaining: **${result.remaining}**\n` +
         `Expires: <t:${unixExpiry}:R>`
     );
 
@@ -579,13 +565,13 @@ async function buildDashboard(
     const xpBoostName =
         activeXPBoost.roleID
             ? `<@&${activeXPBoost.roleID}>`
-            : "None active";
+            : "None";
 
 
     const luckBoostName =
         activeLuckBoost.roleID
             ? `<@&${activeLuckBoost.roleID}>`
-            : "None active";
+            : "None";
 
 
     const xpTimeLeft =
@@ -610,101 +596,59 @@ async function buildDashboard(
         new EmbedBuilder()
 
             .setColor(
-                "#5865F2"
+                "#7A5CFF"
             )
 
-            .setTitle(
-                "Boost Dashboard"
+            .setAuthor({
+
+                name:
+                    `${message.author.username}'s Boosts`,
+
+                iconURL:
+                    message.author.displayAvatarURL()
+
+            })
+
+            .setThumbnail(
+                message.author.displayAvatarURL({
+                    size:
+                        1024
+                })
             )
 
             .setDescription(
-                "Use the buttons below to activate one boost from your inventory."
-            )
 
-            .setThumbnail(
-                message.author.displayAvatarURL()
-            )
+`## Active Boosts
 
-            .addFields(
+**XP Boost**
+${xpBoostName}
+\`${xpTimeLeft}\`
 
-                {
-                    name:
-                        "Active XP Boost",
+**Luck Boost**
+${luckBoostName}
+\`${luckTimeLeft}\`
 
-                    value:
-                        `Boost: ${xpBoostName}\n` +
-                        `Time remaining: **${xpTimeLeft}**`,
+## Inventory
 
-                    inline:
-                        true
-                },
+\`\`\`
+${formatInventoryTable(inventory)}
+\`\`\`
 
-                {
-                    name:
-                        "Active Luck Boost",
+*The number on each button is the amount you own.*
 
-                    value:
-                        `Boost: ${luckBoostName}\n` +
-                        `Time remaining: **${luckTimeLeft}**`,
+## Hourly Progress
 
-                    inline:
-                        true
-                },
+\`${nextTier.progressBar}\`
 
-                {
-                    name:
-                        "XP Boost Inventory",
+**${nextTier.currentXP.toLocaleString()} / ${nextTier.requiredXP.toLocaleString()} XP**
 
-                    value:
-                        formatInventoryLine(
-                            "xp",
-                            inventory
-                        ),
+\`${nextTier.percentage}% Complete\`
 
-                    inline:
-                        false
-                },
-
-                {
-                    name:
-                        "Luck Boost Inventory",
-
-                    value:
-                        formatInventoryLine(
-                            "luck",
-                            inventory
-                        ),
-
-                    inline:
-                        false
-                },
-
-                {
-                    name:
-                        "Hourly Boost Progress",
-
-                    value:
-                        `Hourly XP: **${safeHourlyXP.toLocaleString()} XP**\n` +
-                        `Next XP tier: ${nextTier.xpTier}\n` +
-                        `Next Luck tier: ${nextTier.luckTier}\n` +
-                        `XP still needed: **${nextTier.needed.toLocaleString()} XP**\n\n` +
-                        `\`${nextTier.progressBar}\` **${nextTier.percentage}%**`,
-
-                    inline:
-                        false
-                },
-
-                {
-                    name:
-                        "Critical Streaks",
-
-                    value:
-                        `Current streak: **${Number(streakData.current) || 0}**\n` +
-                        `Best streak: **${Number(streakData.best) || 0}**`,
-
-                    inline:
-                        false
-                }
+> **Next XP Boost:** ${nextTier.xpTier}
+> **Next Luck Boost:** ${nextTier.luckTier}
+> **XP Needed:** ${nextTier.needed.toLocaleString()}
+> **Critical Streak:** ${Number(streakData.current) || 0}
+> **Best Streak:** ${Number(streakData.best) || 0}`
 
             )
 
@@ -712,8 +656,8 @@ async function buildDashboard(
 
                 text:
                     disableAll
-                        ? "This panel expired. Run !boost to open a new one."
-                        : "The number on each button shows how many copies you own."
+                        ? "This panel expired. Run !boost again."
+                        : "Choose a boost below to activate it."
 
             })
 
@@ -760,6 +704,10 @@ async function execute(message){
         );
 
 
+    const processingUsers =
+        new Set();
+
+
     const collector =
         reply.createMessageComponentCollector({
 
@@ -767,7 +715,7 @@ async function execute(message){
                 ComponentType.Button,
 
             time:
-                2 * 60 * 1000
+                5 * 60 * 1000
 
         });
 
@@ -784,10 +732,10 @@ async function execute(message){
                 return interaction.reply({
 
                     content:
-                        "This boost inventory belongs to someone else.",
+                        "This boost panel belongs to someone else.",
 
-                    ephemeral:
-                        true
+                    flags:
+                        MessageFlags.Ephemeral
 
                 });
 
@@ -797,23 +745,68 @@ async function execute(message){
             const [
                 action,
                 type,
-                tier
+                tier,
+                ownerID
             ] = interaction.customId.split(
                 ":"
             );
 
 
-            if(action !== "use_boost"){
+            if(
+                action !== "use_boost"
+                ||
+                ownerID !==
+                message.author.id
+            ){
 
                 return;
 
             }
 
 
-            await interaction.deferUpdate();
+            const processingKey =
+                `${interaction.guild.id}:${interaction.user.id}`;
+
+
+            if(
+                processingUsers.has(
+                    processingKey
+                )
+            ){
+
+                return interaction.reply({
+
+                    content:
+                        "A boost is already being activated. Try again in a moment.",
+
+                    flags:
+                        MessageFlags.Ephemeral
+
+                });
+
+            }
+
+
+            processingUsers.add(
+                processingKey
+            );
+
+
+            await interaction.deferReply({
+
+                flags:
+                    MessageFlags.Ephemeral
+
+            });
 
 
             try{
+
+                const member =
+                    await interaction.guild.members.fetch(
+                        interaction.user.id
+                    );
+
 
                 let result;
 
@@ -822,39 +815,53 @@ async function execute(message){
 
                     result =
                         await boosts.activateXPBoostFromInventory(
-                            interaction.member,
+                            member,
+                            tier
+                        );
+
+                }
+                else if(type === "luck"){
+
+                    result =
+                        await luck.activateLuckBoostFromInventory(
+                            member,
                             tier
                         );
 
                 }
                 else{
 
-                    result =
-                        await luck.activateLuckBoostFromInventory(
-                            interaction.member,
-                            tier
-                        );
+                    return interaction.editReply({
+
+                        content:
+                            "Unknown boost type."
+
+                    });
 
                 }
+
+
+                await interaction.editReply({
+
+                    content:
+                        getActivationMessage(
+                            type,
+                            result
+                        )
+
+                });
 
 
                 await reply.edit(
                     await buildDashboard(
                         message
                     )
-                );
+                ).catch(error => {
 
-
-                await interaction.followUp({
-
-                    content:
-                        getActivationMessage(
-                            type,
-                            result
-                        ),
-
-                    ephemeral:
-                        true
+                    console.error(
+                        "Boost activated, but the panel could not refresh:",
+                        error
+                    );
 
                 });
 
@@ -867,15 +874,19 @@ async function execute(message){
                 );
 
 
-                await interaction.followUp({
+                await interaction.editReply({
 
                     content:
-                        "Something went wrong while activating that boost. The item was returned to your inventory.",
+                        "The boost could not be activated. Nothing should have been consumed."
 
-                    ephemeral:
-                        true
+                }).catch(() => {});
 
-                });
+            }
+            finally{
+
+                processingUsers.delete(
+                    processingKey
+                );
 
             }
 
@@ -900,7 +911,6 @@ async function execute(message){
     );
 
 }
-
 
 
 module.exports = {
