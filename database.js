@@ -1,4 +1,4 @@
-console.log("DATABASE_URL:", process.env.DATABASE_URL);
+console.log("DATABASE_URL loaded:", Boolean(process.env.DATABASE_URL));
 
 const { Pool } = require("pg");
 
@@ -110,6 +110,94 @@ const SHOP_CATALOG = {
 // =======================
 
 async function createTables(){
+
+// Base tables must be created before any ALTER TABLE migrations.
+// This allows the bot to start correctly on a completely fresh database.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS users (
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        xp BIGINT NOT NULL DEFAULT 0,
+
+        level INTEGER NOT NULL DEFAULT 1,
+
+        messages INTEGER NOT NULL DEFAULT 0,
+
+        currentCriticalStreak INTEGER NOT NULL DEFAULT 0,
+
+        bestCriticalStreak INTEGER NOT NULL DEFAULT 0,
+
+        PRIMARY KEY(
+            guildID,
+            userID
+        )
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS boost_activity (
+
+        id BIGSERIAL PRIMARY KEY,
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        xp BIGINT NOT NULL,
+
+        timestamp BIGINT NOT NULL
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    boost_activity_user_time_idx
+
+    ON boost_activity(
+        guildID,
+        userID,
+        timestamp
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS boosts (
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        role TEXT NOT NULL,
+
+        expiresAt BIGINT NOT NULL,
+
+        lastRefreshXP BIGINT NOT NULL DEFAULT 0,
+
+        boostXP BIGINT NOT NULL DEFAULT 0,
+
+        PRIMARY KEY(
+            guildID,
+            userID
+        )
+
+    )
+
+`);
 
 await db.query(`
 
