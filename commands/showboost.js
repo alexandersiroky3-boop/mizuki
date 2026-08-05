@@ -174,15 +174,34 @@ function formatInventoryTable(
     inventory
 ){
 
-    const cell = value =>
-        String(value).padStart(5, " ");
+    const formatTier = (label, amount) =>
+        `\`${label} x${amount}\``;
 
 
-    return [
-        "Tier     I    II  III  MAX",
-        `XP   ${cell(inventory.xp.tier1)}${cell(inventory.xp.tier2)}${cell(inventory.xp.tier3)}${cell(inventory.xp.max)}`,
-        `Luck ${cell(inventory.luck.tier1)}${cell(inventory.luck.tier2)}${cell(inventory.luck.tier3)}${cell(inventory.luck.max)}`
-    ].join("\n");
+    const xpInventory = [
+        formatTier("I", inventory.xp.tier1),
+        formatTier("II", inventory.xp.tier2),
+        formatTier("III", inventory.xp.tier3),
+        formatTier("MAX", inventory.xp.max)
+    ].join("  ");
+
+
+    const luckInventory = [
+        formatTier("I", inventory.luck.tier1),
+        formatTier("II", inventory.luck.tier2),
+        formatTier("III", inventory.luck.tier3),
+        formatTier("MAX", inventory.luck.max)
+    ].join("  ");
+
+
+    return (
+        `**XP Boosts**
+${xpInventory}
+
+` +
+        `**Luck Boosts**
+${luckInventory}`
+    );
 
 }
 
@@ -706,17 +725,17 @@ ${luckBoostName}
 
 ## Inventory
 
-\`\`\`
 ${formatInventoryTable(inventory)}
-\`\`\`
 
-*The number on each button is the amount you own.*
+*The number beside each tier is how many copies you own.*
 
 ## Hourly Progress
 
+**Hourly XP:** ${safeHourlyXP.toLocaleString()} XP
+
 \`${nextTier.progressBar}\`
 
-**${nextTier.currentXP.toLocaleString()} / ${nextTier.requiredXP.toLocaleString()} XP**
+**Tier Progress:** ${nextTier.currentXP.toLocaleString()} / ${nextTier.requiredXP.toLocaleString()} XP
 
 \`${nextTier.percentage}% Complete\`
 
