@@ -6,7 +6,284 @@ const luck =
     require("../utils/luck");
 
 
-const ROLL_COOLDOWN = 30 * 1000;
+// =====================================================
+// EASY ROLL CUSTOMIZATION
+// =====================================================
+//
+// All chancePercent values are REAL percentages:
+//
+// 72    = 72%
+// 0.5   = 0.5%
+// 0.05  = 0.05%
+// 0.001 = 0.001%
+//
+// IMPORTANT:
+// These are the BASE chances before an active
+// Luck Boost changes the outcome weights.
+//
+// Each level table must add up to exactly 100%.
+// The bot checks this automatically when it starts.
+
+const ROLL_SETTINGS = {
+
+    cooldownSeconds:
+        30,
+
+    // Chance to find XP Boost MAX from !roll.
+    xpMaxBoostDropPercent: {
+
+        level1To100:
+            0.05,
+
+        level101Plus:
+            0.05
+
+    },
+
+    chanceTables: {
+
+        // ==========================
+        // LEVEL 1-100
+        // ==========================
+
+        level1To100: [
+
+            {
+                chancePercent: 60.09,
+                type: "neutral",
+                min: -100,
+                max: 100
+            },
+
+            {
+                chancePercent: 7,
+                type: "negative",
+                min: -5000,
+                max: -101
+            },
+
+            {
+                chancePercent: 25,
+                type: "positive",
+                min: 100,
+                max: 5000
+            },
+
+            {
+                chancePercent: 2,
+                type: "negative",
+                min: -10000,
+                max: -5000
+            },
+
+            {
+                chancePercent: 5,
+                type: "positive",
+                min: 5000,
+                max: 25000
+            },
+
+            {
+                chancePercent: 0.5,
+                type: "positive",
+                min: 25000,
+                max: 75000
+            },
+
+            {
+                chancePercent: 0.1,
+                type: "positive",
+                min: 75000,
+                max: 200000
+            },
+
+            {
+                chancePercent: 0.05,
+                type: "positive",
+                min: 200000,
+                max: 500000
+            },
+
+            {
+                chancePercent: 0.009,
+                type: "positive",
+                min: 500000,
+                max: 2000000
+            },
+
+            {
+                chancePercent: 0.250,
+                type: "negative",
+                min: -100000,
+                max: -10000
+            },
+
+            {
+                chancePercent: 0.001,
+                type: "positive",
+                min: 2000000,
+                max: 10000000
+            }
+
+        ],
+
+
+        // ==========================
+        // LEVEL 101+
+        // ==========================
+
+        level101Plus: [
+
+            {
+                chancePercent: 38.99,
+                type: "neutral",
+                min: -100,
+                max: 100
+            },
+
+            {
+                chancePercent: 5,
+                type: "negative",
+                min: -5000,
+                max: -101
+            },
+
+            {
+                chancePercent: 35,
+                type: "positive",
+                min: 100,
+                max: 5000
+            },
+
+            {
+                chancePercent: 1,
+                type: "negative",
+                min: -10000,
+                max: -5000
+            },
+
+            {
+                chancePercent: 15,
+                type: "positive",
+                min: 5000,
+                max: 25000
+            },
+
+            {
+                chancePercent: 4.60,
+                type: "positive",
+                min: 25000,
+                max: 75000
+            },
+
+            {
+                chancePercent: 0.3,
+                type: "positive",
+                min: 75000,
+                max: 200000
+            },
+
+            {
+                chancePercent: 0.09,
+                type: "positive",
+                min: 200000,
+                max: 500000
+            },
+
+            {
+                chancePercent: 0.009,
+                type: "positive",
+                min: 500000,
+                max: 2000000
+            },
+
+            {
+                chancePercent: 0.005,
+                type: "positive",
+                min: 2000000,
+                max: 10000000
+            },
+
+            {
+                chancePercent: 0.006,
+                type: "negative",
+                min: -10000000,
+                max: -2000000
+            }
+
+        ]
+
+    }
+
+};
+
+
+function percentChance(chancePercent){
+
+    return (
+        Math.random() * 100 <
+        Number(chancePercent)
+    );
+
+}
+
+
+function validateRollChanceTable(
+    tableName,
+    table
+){
+
+    if(!Array.isArray(table) || table.length === 0){
+
+        throw new Error(
+            `${tableName} must contain at least one roll outcome.`
+        );
+
+    }
+
+
+    const totalPercent =
+        table.reduce(
+            (total, outcome) =>
+                total +
+                Number(outcome.chancePercent || 0),
+            0
+        );
+
+
+    if(
+        Math.abs(totalPercent - 100) >
+        0.000001
+    ){
+
+        throw new Error(
+            `${tableName} chances must total exactly 100%. Current total: ${totalPercent}%`
+        );
+
+    }
+
+}
+
+
+for(
+    const [tableName, table] of
+    Object.entries(
+        ROLL_SETTINGS.chanceTables
+    )
+){
+
+    validateRollChanceTable(
+        tableName,
+        table
+    );
+
+}
+
+
+const ROLL_COOLDOWN =
+    ROLL_SETTINGS.cooldownSeconds *
+    1000;
+
 
 
 
@@ -86,14 +363,22 @@ const currentLevel =
     );
 
 
-const isHighLevel =
-    currentLevel > 100;
+const levelTableName =
+    currentLevel > 100
+        ? "level101Plus"
+        : "level1To100";
+
+
+const rollChanceTable =
+    ROLL_SETTINGS.chanceTables[
+        levelTableName
+    ];
 
 
 const luckResult =
     await luck.rollWithLuck(
         message.member,
-        isHighLevel
+        rollChanceTable
     );
 
 
@@ -139,13 +424,20 @@ await database.addBoostActivity(
 );
 
 // ======================
-// 0.05% XP BOOST MAX DROP
+// XP BOOST MAX DROP
 // ======================
 //
 // The boost is stored in inventory.
 // The user activates it later with !boost.
 
-if(Math.random() < 0.0005){
+if(
+    percentChance(
+        ROLL_SETTINGS
+            .xpMaxBoostDropPercent[
+                levelTableName
+            ]
+    )
+){
 
     wonMaxBoost =
         await boosts.awardXPBoost(
