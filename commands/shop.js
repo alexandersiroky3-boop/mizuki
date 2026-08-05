@@ -160,14 +160,14 @@ function formatShopLine(
 
     const stockText =
         amount > 0
-            ? `**${amount}/${item.maxStock} left**`
-            : "**SOLD OUT**";
+            ? `${amount}/${item.maxStock} available`
+            : "Sold out";
 
 
     return (
-        `<@&${profile.roleID}> — ` +
-        `**${item.price.toLocaleString()} XP** ` +
-        `• ${stockText}`
+        `<@&${profile.roleID}>\n` +
+        `Price: **${item.price.toLocaleString()} XP**\n` +
+        `Stock: **${stockText}**`
     );
 
 }
@@ -211,10 +211,8 @@ function createShopButtons(
                 )
 
                 .setLabel(
-                    `XP ${TIER_LABELS[tier]} • ${xpItem.price.toLocaleString()}`
+                    `Buy XP ${TIER_LABELS[tier]} - ${xpItem.price.toLocaleString()}`
                 )
-
-                .setEmoji("⚡")
 
                 .setStyle(
                     tier === "max"
@@ -240,15 +238,13 @@ function createShopButtons(
                 )
 
                 .setLabel(
-                    `Luck ${TIER_LABELS[tier]} • ${luckItem.price.toLocaleString()}`
+                    `Buy Luck ${TIER_LABELS[tier]} - ${luckItem.price.toLocaleString()}`
                 )
-
-                .setEmoji("🍀")
 
                 .setStyle(
                     tier === "max"
                         ? ButtonStyle.Danger
-                        : ButtonStyle.Success
+                        : ButtonStyle.Secondary
                 )
 
                 .setDisabled(
@@ -298,7 +294,7 @@ async function buildShopPanel(
                     tier,
                     stock
                 )
-        ).join("\n");
+        ).join("\n\n");
 
 
     const luckLines =
@@ -309,32 +305,59 @@ async function buildShopPanel(
                     tier,
                     stock
                 )
-        ).join("\n");
+        ).join("\n\n");
 
 
     const embed =
         new EmbedBuilder()
 
-            .setColor("#D4AF37")
+            .setColor(
+                "#5865F2"
+            )
 
             .setTitle(
-                "🧙 Mizuki's Global Boost Merchant"
+                "Global Boost Shop"
             )
 
             .setDescription(
+                "Stock is shared across the entire server. A purchased boost is added to your `!boost` inventory."
+            )
 
-`*"Welcome, traveler... Spend your XP wisely. My stock is shared by everyone."*
+            .addFields(
 
-## ⚡︎ XP Boosts
-${xpLines}
+                {
+                    name:
+                        "XP Boosts",
 
-## 🍀 Luck Boosts
-${luckLines}
+                    value:
+                        xpLines,
 
-### 🕰️ Merchant Restock
-The entire global stock refreshes <t:${refreshTimestamp}:R> at <t:${refreshTimestamp}:T>.
+                    inline:
+                        true
+                },
 
-*Anyone may use these buttons. The purchase uses the XP of whoever clicks.*`
+                {
+                    name:
+                        "Luck Boosts",
+
+                    value:
+                        luckLines,
+
+                    inline:
+                        true
+                },
+
+                {
+                    name:
+                        "Restock",
+
+                    value:
+                        `Next restock: <t:${refreshTimestamp}:R>\n` +
+                        `Exact time: <t:${refreshTimestamp}:T>`,
+
+                    inline:
+                        false
+                }
 
             )
 
@@ -342,8 +365,8 @@ The entire global stock refreshes <t:${refreshTimestamp}:R> at <t:${refreshTimes
 
                 text:
                     disableAll
-                        ? "This merchant panel closed. Run !shop again."
-                        : "Purchased boosts are stored in your !boost inventory."
+                        ? "This shop panel expired. Run !shop to open a new one."
+                        : "Click a button to purchase that boost with your XP."
 
             })
 
@@ -393,8 +416,8 @@ function getPurchaseMessage(
 
 
         return (
-            `❌ <@&${profile.roleID}> is sold out. ` +
-            `The merchant restocks <t:${refreshTimestamp}:R>.`
+            `<@&${profile.roleID}> is sold out.\n` +
+            `The shop restocks <t:${refreshTimestamp}:R>.`
         );
 
     }
@@ -406,10 +429,9 @@ function getPurchaseMessage(
     ){
 
         return (
-            `❌ You need **${result.price.toLocaleString()} XP** ` +
-            `to buy <@&${profile.roleID}>.\n` +
-            `You currently have **${result.balance.toLocaleString()} XP** ` +
-            `and need **${result.missing.toLocaleString()} more XP**.`
+            `You need **${result.price.toLocaleString()} XP** to buy <@&${profile.roleID}>.\n` +
+            `Current balance: **${result.balance.toLocaleString()} XP**\n` +
+            `Missing: **${result.missing.toLocaleString()} XP**`
         );
 
     }
@@ -418,18 +440,18 @@ function getPurchaseMessage(
     if(!result.success){
 
         return (
-            "❌ The merchant could not complete that purchase."
+            "The purchase could not be completed."
         );
 
     }
 
 
     return (
-        `✅ ${interaction.user} bought <@&${profile.roleID}> ` +
-        `for **${result.price.toLocaleString()} XP**!\n` +
-        `🎒 Inventory: **x${result.inventoryAmount}**\n` +
-        `🏪 Global stock remaining: **${result.remainingStock}**\n` +
-        `💰 Your XP balance: **${result.balance.toLocaleString()} XP**`
+        `${interaction.user} purchased <@&${profile.roleID}>.\n` +
+        `Price paid: **${result.price.toLocaleString()} XP**\n` +
+        `Inventory amount: **${result.inventoryAmount}**\n` +
+        `Global stock remaining: **${result.remainingStock}**\n` +
+        `XP balance: **${result.balance.toLocaleString()} XP**`
     );
 
 }
@@ -527,7 +549,7 @@ async function execute(message){
 
 
                 const errorMessage =
-                    "❌ The merchant ran into an error. Your XP was not intentionally charged.";
+                    "The shop ran into an error. Your XP was not intentionally charged.";
 
 
                 if(
