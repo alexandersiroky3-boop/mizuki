@@ -1,0 +1,527 @@
+require("dotenv").config();
+
+console.log("TOKEN TEST:", process.env.TOKEN);
+
+const {
+    Client,
+    GatewayIntentBits
+} = require("discord.js");
+
+
+const leveling = require("./systems/leveling");
+const boosts = require("./systems/boosts");
+const database = require("./database");
+const luck =
+    require("./utils/luck");
+
+
+const levelCommand = require("./commands/level");
+const rankCommand = require("./commands/rank");
+const giveXPCommand = require("./commands/givexp");
+const commandsCommand = require("./commands/commands");
+const boostCommand = require("./commands/showboost");
+const shopCommand = require("./commands/shop");
+const setLevelCommand =
+require("./commands/setlevel");
+
+const pingCommand =
+require("./commands/ping");
+
+const kissCommand =
+require("./commands/kiss");
+
+const warnCommand =
+require("./commands/warn");
+
+const fixLevelsCommand =
+require("./commands/fixlevels");
+
+const ezwinCommand =
+require("./commands/ezwin");
+
+const rollCommand =
+require("./commands/roll");
+
+const stealCommand =
+require("./commands/steal");
+
+const giveallxp =
+    require("./commands/giveallxp");
+
+const hugCommand =
+require("./commands/hug");
+
+const fixAllUsersInLeaderboardCommand =
+    require("./commands/fixallusersinleaderboard");
+
+const logsCommand =
+    require("./commands/logs");
+
+const http = require("http");
+
+const PORT = process.env.PORT || 3000;
+
+http.createServer((request, response) => {
+    response.writeHead(200, {
+        "Content-Type": "text/plain"
+    });
+
+    response.end("Mizuki is online!");
+}).listen(PORT, () => {
+    console.log(`Health server running on port ${PORT}`);
+});
+
+
+
+
+
+
+const client = new Client({
+
+intents:[
+
+    GatewayIntentBits.Guilds,
+
+    GatewayIntentBits.GuildMembers,
+
+    GatewayIntentBits.GuildMessages,
+
+    GatewayIntentBits.MessageContent
+
+]
+
+});
+
+
+
+
+
+client.once("clientReady", async () => {
+
+
+    await database.initDatabase();
+
+
+    console.log(
+        `Logged in as ${client.user.tag}`
+    );
+
+
+    await boosts.restoreBoosts(client);
+    await luck.restoreLuckBoosts(client);
+
+
+
+setInterval(async()=>{
+
+
+    try{
+
+        await boosts.removeExpiredBoosts(
+            client
+        );
+
+    }
+    catch(error){
+
+        console.error(
+            "XP Boost cleanup failed:",
+            error
+        );
+
+    }
+
+
+    try{
+
+        await luck.removeExpiredLuckBoosts(
+            client
+        );
+
+    }
+    catch(error){
+
+        console.error(
+            "Luck Boost cleanup failed:",
+            error
+        );
+
+    }
+
+
+},15000);
+
+
+});
+
+client.on(
+    "guildMemberUpdate",
+    async (oldMember, newMember) => {
+
+        await boosts.checkBoostRole(
+            newMember
+        );
+
+
+        await luck.checkLuckBoostRole(
+            oldMember,
+            newMember
+        );
+
+    }
+);
+
+
+client.on("guildMemberRemove", async member => {
+
+    await database.removeUser(
+        member.guild.id,
+        member.id
+    );
+
+});
+
+
+
+
+client.on(
+"messageCreate",
+async message => {
+
+
+    if(message.author.bot)
+        return;
+
+
+    try {
+
+
+        if(message.content === "!level"){
+
+            return levelCommand.execute(
+                message
+            );
+
+        }
+
+
+
+        if(message.content === "!rank"){
+
+            return rankCommand.execute(
+                message
+            );
+
+        }
+
+if(message.content === "!commands"){
+
+    return commandsCommand.execute(
+        message
+    );
+
+}
+
+if(message.content === "!boost"){
+
+    return boostCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content
+        .trim()
+        .toLowerCase() === "!shop"
+){
+
+    return shopCommand.execute(
+        message
+    );
+
+}
+
+if(message.content.startsWith("!setlevel")){
+
+    return setLevelCommand.execute(
+        message
+    );
+
+}
+
+if(message.content === "!ping"){
+
+    return pingCommand.execute(
+        message
+    );
+
+}
+
+if(message.content.startsWith("!kiss")){
+
+    return kissCommand.execute(
+        message
+    );
+
+}
+
+if(message.content.startsWith("!warn")){
+
+    return warnCommand.execute(
+        message
+    );
+
+}
+
+if(message.content === "!fixlevels"){
+
+    return fixLevelsCommand.execute(
+        message
+    );
+
+}
+
+if(message.content === "!ezwin"){
+
+    return ezwinCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content
+        .trim()
+        .toLowerCase() === "!roll"
+){
+
+    return rollCommand.execute(
+        message
+    );
+
+}
+
+if(message.content.startsWith("!steal")){
+
+    return stealCommand.execute(
+        message
+    );
+
+}
+
+if(message.content.startsWith("!giveallxp")){
+
+    return giveallxp.execute(
+        message
+    );
+
+}
+
+if(message.content.startsWith("!hug")){
+
+    return hugCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content.toLowerCase() ===
+    "!fixallusersinleaderboard"
+){
+
+    return fixAllUsersInLeaderboardCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content.toLowerCase() ===
+    "!logs"
+){
+
+    return logsCommand.execute(
+        message
+    );
+
+}
+
+
+        if(message.content.startsWith("!givexp")){
+
+            return giveXPCommand.execute(
+                message
+            );
+
+        }
+
+
+
+        const result =
+            await leveling.giveXP(
+                message
+            );
+
+
+
+        if(!result)
+            return;
+
+if(result.critical){
+
+
+    // React to every critical message.
+    message.react(
+        "💥"
+    ).catch(() => {});
+
+
+
+    // Critical streaks 2–5.
+    if(
+        result.criticalStreak >= 2 &&
+        result.criticalStreak <= 5
+    ){
+
+        message.reply(
+
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+
+        ).catch(() => {});
+
+    }
+
+
+
+    // Critical streaks above 5.
+    else if(result.criticalStreak > 5){
+
+        message.reply(
+
+            `🐦‍🔥🔥 **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!** 🔥🐦‍🔥`
+
+        ).catch(() => {});
+
+    }
+
+
+}
+
+
+// The user had a streak but failed the next critical.
+else if(result.lostCriticalStreak >= 2){
+
+
+    message.reply(
+
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+
+    ).catch(() => {});
+
+
+}
+
+// ======================
+// LEVEL-UP ANNOUNCEMENT
+// ======================
+
+if(result.leveledUp){
+
+
+    const LEVEL_CHANNEL_ID =
+        "1324972482951774249";
+
+
+    const levelChannel =
+        await client.channels.fetch(
+            LEVEL_CHANNEL_ID
+        ).catch(() => null);
+
+
+
+    if(levelChannel){
+
+
+        await levelChannel.send(
+
+            `🎉 Congratulations my sweet little pancake aka ${message.author}! You reached **Level ${result.level}**!`
+
+        ).catch(console.error);
+
+
+    }
+
+
+}
+
+
+
+// ======================
+// XP LOG CHANNEL
+// ======================
+
+const XP_LOG_CHANNEL =
+    "1527632057574887474";
+
+
+const logChannel =
+    client.channels.cache.get(
+        XP_LOG_CHANNEL
+    );
+
+
+if(logChannel){
+
+
+let prefix = "";
+
+
+if(result.critical){
+
+    prefix =
+        "💥".repeat(
+            Math.min(
+                result.criticalStreak,
+                5
+            )
+        ) + " ";
+
+}
+
+
+logChannel.send(
+
+    `${prefix}${message.author.tag} gained ${result.earnedXP} XP`
+
+).catch(()=>{});
+
+
+}
+
+
+console.log(
+    `${message.author.tag} gained ${result.earnedXP} XP`
+);
+
+
+    }
+catch(error){
+
+    console.error(error);
+
+}
+
+
+});
+
+
+
+
+
+
+
+client.login(
+    process.env.TOKEN
+);
