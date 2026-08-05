@@ -25,6 +25,9 @@ Here are all available commands:
 \`!boost\`
 > Shows your current XP Boost Tier, timer, progress and next tier.
 
+\`!shop\`
+> Buy boosts & more from the shop.
+
 
 🥵 **Fun Commands**
 
