@@ -179,7 +179,7 @@ function formatInventoryTable(
 
 
     return [
-        "Tier      I   II  III  MAX",
+        "Tier     I    II  III  MAX",
         `XP   ${cell(inventory.xp.tier1)}${cell(inventory.xp.tier2)}${cell(inventory.xp.tier3)}${cell(inventory.xp.max)}`,
         `Luck ${cell(inventory.luck.tier1)}${cell(inventory.luck.tier2)}${cell(inventory.luck.tier3)}${cell(inventory.luck.max)}`
     ].join("\n");
@@ -646,9 +646,9 @@ ${formatInventoryTable(inventory)}
 
 > **Next XP Boost:** ${nextTier.xpTier}
 > **Next Luck Boost:** ${nextTier.luckTier}
-> **XP Needed:** ${nextTier.needed.toLocaleString()}
-> **Critical Streak:** ${Number(streakData.current) || 0}
-> **Best Streak:** ${Number(streakData.best) || 0}`
+> **✦ XP Needed:** ${nextTier.needed.toLocaleString()}
+> **:boom: Critical Streak:** ${Number(streakData.current) || 0}
+> **:heart_on_fire: Best Streak:** ${Number(streakData.best) || 0}`
 
             )
 
