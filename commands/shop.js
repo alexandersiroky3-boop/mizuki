@@ -365,8 +365,8 @@ async function buildShopPanel(
 
                 text:
                     disableAll
-                        ? "This shop panel expired. Run !shop to open a new one."
-                        : "Click a button to purchase that boost with your XP."
+                        ? "This shop panel is unavailable."
+                        : "Click a button to purchase that boost with your XP. This panel stays active until the bot restarts."
 
             })
 
@@ -473,10 +473,7 @@ async function execute(message){
         shopMessage.createMessageComponentCollector({
 
             componentType:
-                ComponentType.Button,
-
-            time:
-                SHOP_OPEN_TIME
+                ComponentType.Button
 
         });
 
@@ -585,19 +582,6 @@ async function execute(message){
         }
     );
 
-
-    collector.on(
-        "end",
-        async () => {
-
-            await shopMessage.edit(
-                await buildShopPanel(
-                    true
-                )
-            ).catch(() => {});
-
-        }
-    );
 
 }
 
