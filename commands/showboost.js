@@ -187,13 +187,115 @@ function formatInventoryTable(
 }
 
 
-function getNextTierData(hourlyXP){
+function getNextTierData(
+    hourlyXP,
+    progressData = null
+){
 
     const safeXP =
         Math.max(
             0,
             Number(hourlyXP) || 0
         );
+
+
+    const maxRoleID =
+        boosts.BOOST_PROFILES.max.roleID;
+
+
+    const savedRole =
+        progressData?.role || null;
+
+
+    const savedLastAwardXP =
+        Number(
+            progressData?.lastawardxp ??
+            progressData?.lastAwardXP ??
+            0
+        ) || 0;
+
+
+    // After MAX is earned, start a new MAX progress cycle.
+    // Repeated MAX rewards require another 50,000 hourly XP.
+    if(safeXP >= 25000){
+
+        const cycleStartXP =
+            savedRole === maxRoleID
+            &&
+            savedLastAwardXP > 0
+
+                ? savedLastAwardXP
+                : 25000;
+
+
+        const requiredXP =
+            50000;
+
+
+        const currentXP =
+            Math.max(
+                0,
+                Math.min(
+                    requiredXP,
+                    safeXP - cycleStartXP
+                )
+            );
+
+
+        const percentage =
+            Math.max(
+                0,
+                Math.min(
+                    100,
+                    Math.floor(
+                        (
+                            currentXP /
+                            requiredXP
+                        ) * 100
+                    )
+                )
+            );
+
+
+        const filled =
+            Math.round(
+                percentage / 5
+            );
+
+
+        return {
+
+            tier:
+                "max",
+
+            xpTier:
+                `<@&${boosts.BOOST_PROFILES.max.roleID}>`,
+
+            luckTier:
+                `<@&${luck.LUCK_ROLES.max.roleID}>`,
+
+            currentXP,
+
+            requiredXP,
+
+            needed:
+                Math.max(
+                    0,
+                    requiredXP -
+                    currentXP
+                ),
+
+            percentage,
+
+            progressBar:
+                "■".repeat(filled) +
+                "□".repeat(
+                    20 - filled
+                )
+
+        };
+
+    }
 
 
     const tiers = [
@@ -231,39 +333,6 @@ function getNextTierData(hourlyXP){
                 safeXP <
                 entry.requiredXP
         );
-
-
-    if(!next){
-
-        return {
-
-            tier:
-                null,
-
-            xpTier:
-                "Maximum tier reached",
-
-            luckTier:
-                "Maximum tier reached",
-
-            currentXP:
-                25000,
-
-            requiredXP:
-                25000,
-
-            needed:
-                0,
-
-            percentage:
-                100,
-
-            progressBar:
-                "■".repeat(20)
-
-        };
-
-    }
 
 
     const tierProgress =
@@ -517,7 +586,8 @@ async function buildDashboard(
         activeLuckBoost,
         inventoryRows,
         hourlyXP,
-        streakData
+        streakData,
+        progressData
     ] = await Promise.all([
 
         boosts.getActiveBoost(
@@ -541,6 +611,11 @@ async function buildDashboard(
         database.getCriticalStreak(
             guildID,
             userID
+        ),
+
+        database.getXPBoostProgress(
+            guildID,
+            userID
         )
 
     ]);
@@ -558,7 +633,8 @@ async function buildDashboard(
 
     const nextTier =
         getNextTierData(
-            safeHourlyXP
+            safeHourlyXP,
+            progressData
         );
 
 
@@ -656,8 +732,8 @@ ${formatInventoryTable(inventory)}
 
                 text:
                     disableAll
-                        ? "This panel expired. Run !boost again."
-                        : "Choose a boost below to activate it."
+                        ? "This panel is unavailable."
+                        : "Choose a boost below to activate it. This panel stays active until the bot restarts."
 
             })
 
@@ -712,10 +788,7 @@ async function execute(message){
         reply.createMessageComponentCollector({
 
             componentType:
-                ComponentType.Button,
-
-            time:
-                5 * 60 * 1000
+                ComponentType.Button
 
         });
 
@@ -894,21 +967,6 @@ async function execute(message){
 
     );
 
-
-    collector.on(
-        "end",
-        async () => {
-
-            await reply.edit(
-                await buildDashboard(
-                    message,
-                    true
-                )
-            ).catch(() => {});
-
-        }
-
-    );
 
 }
 
