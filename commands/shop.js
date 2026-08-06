@@ -12,6 +12,14 @@ const database =
     require("../database");
 
 
+// Luck Boost MAX shop price.
+// SHOP_CATALOG is shared with database.purchaseGlobalShopItem(),
+// so this changes both the displayed price and the XP charged.
+if(database.SHOP_CATALOG?.["luck:max"]){
+    database.SHOP_CATALOG["luck:max"].price = 999999;
+}
+
+
 const boosts =
     require("../systems/boosts");
 
@@ -22,6 +30,9 @@ const luck =
 
 const leveling =
     require("../systems/leveling");
+
+const quests =
+    require("../systems/quests");
 
 
 const SHOP_OPEN_TIME =
@@ -510,11 +521,40 @@ async function execute(message){
 
                 if(result.success){
 
-                    await leveling.syncLevelAndAnnounce(
-                        interaction.client,
-                        interaction.guild.id,
+                    const levelResult =
+                        await leveling.syncLevelAndAnnounce(
+                            interaction.client,
+                            interaction.guild.id,
+                            interaction.user.id
+                        );
+
+
+                    await quests.recordLevelChange(
+                        interaction,
+                        levelResult,
                         interaction.user.id
                     );
+
+
+                    await quests.recordEvent(
+                        interaction,
+                        "shop_purchase",
+                        1
+                    );
+
+
+                    if(
+                        boostType === "luck" &&
+                        tier === "max"
+                    ){
+
+                        await quests.recordEvent(
+                            interaction,
+                            "buy_luck_max",
+                            1
+                        );
+
+                    }
 
                 }
 
