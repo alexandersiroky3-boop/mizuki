@@ -2,6 +2,7 @@ const database = require("../database");
 const leveling = require("../systems/leveling");
 const luck = require("../utils/luck");
 const boosts = require("../systems/boosts");
+const quests = require("../systems/quests");
 
 
 const COOLDOWN =
@@ -59,6 +60,31 @@ async function giveMaxBoost(
 // ======================
 // EXECUTE
 // ======================
+
+async function syncAndTrackLevel(
+    message,
+    userID
+){
+
+    const levelResult =
+        await leveling.syncLevelAndAnnounce(
+            message.client,
+            message.guild.id,
+            userID
+        );
+
+
+    await quests.recordLevelChange(
+        message,
+        levelResult,
+        userID
+    );
+
+
+    return levelResult;
+
+}
+
 
 async function execute(message){
 
@@ -145,6 +171,12 @@ if(remaining > 0){
     }
 
 
+    await quests.recordEvent(
+        message,
+        "hug_given",
+        1
+    );
+
 
     // ======================
     // HUG BOT
@@ -196,9 +228,15 @@ const luckExtra =
             );
 
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    guildID,
+            await quests.recordEvent(
+                message,
+                "earn_xp",
+                reward
+            );
+
+
+await syncAndTrackLevel(
+    message,
     userID
 );
 
@@ -255,9 +293,8 @@ await leveling.syncLevelAndAnnounce(
         );
 
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    guildID,
+await syncAndTrackLevel(
+    message,
     userID
 );
 
@@ -536,21 +573,38 @@ await leveling.syncLevelAndAnnounce(
     );
 
 
+    await quests.recordEvent(
+        message,
+        "earn_xp",
+        reward,
+        {
+            userID
+        }
+    );
+
+
+    await quests.recordEvent(
+        message,
+        "earn_xp",
+        reward,
+        {
+            userID: target.id
+        }
+    );
+
 
     // ======================
     // UPDATE LEVELS
     // ======================
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    guildID,
+await syncAndTrackLevel(
+    message,
     userID
 );
 
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    guildID,
+await syncAndTrackLevel(
+    message,
     target.id
 );
 
