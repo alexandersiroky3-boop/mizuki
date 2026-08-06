@@ -737,9 +737,10 @@ const LUCK_WEIGHT_MODIFIERS = {
     //
     // Designed to strongly suppress:
     // - -100 to +100
-    // - +100 to +5,000
+    // - negative outcomes
     //
-    // The most common positive range becomes
+    // +100 to +5,000 remains possible more often,
+    // while the most common positive range stays
     // +5,000 to +25,000, while 25,000+ rolls
     // are also much more likely.
     3: {
@@ -751,7 +752,7 @@ const LUCK_WEIGHT_MODIFIERS = {
             0.08,
 
         commonPositive:
-            0.25,
+            0.50,
 
         valuablePositive:
             12,
