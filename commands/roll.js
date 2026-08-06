@@ -288,6 +288,53 @@ const ROLL_COOLDOWN =
     1000;
 
 
+function buildRollCooldownExtra(
+    rollAccess
+){
+
+    const usesLeft =
+        Math.max(
+            0,
+            Number(
+                rollAccess?.usesLeft
+            ) || 0
+        );
+
+
+    // The weekly quest reward allows up to three
+    // immediate rolls inside the same cooldown window.
+    if(
+        rollAccess?.tripleRoll
+        &&
+        usesLeft > 0
+    ){
+
+        return (
+            `\n\n⏱️ **Next roll:** Ready now — ` +
+            `**${usesLeft}** immediate ` +
+            `${usesLeft === 1 ? "roll" : "rolls"} left.`
+        );
+
+    }
+
+
+    const readyAt =
+        Math.floor(
+            (
+                Date.now() +
+                ROLL_COOLDOWN
+            ) / 1000
+        );
+
+
+    return (
+        `\n\n⏱️ **Next roll:** ` +
+        `<t:${readyAt}:R> • <t:${readyAt}:T>`
+    );
+
+}
+
+
 async function syncRollLevel(
     message,
     userID
@@ -347,10 +394,19 @@ if(!rollAccess.allowed){
         );
 
 
+    const readyAt =
+        Math.floor(
+            (
+                Date.now() +
+                rollAccess.remaining
+            ) / 1000
+        );
+
+
     const messageText =
         rollAccess.tripleRoll
-            ? `🎲 You already used all 3 quest-reward rolls. Try again in **${seconds} seconds**!`
-            : `🎲 You must wait **${seconds} seconds** before rolling again!`;
+            ? `🎲 You already used all 3 quest-reward rolls. Try again <t:${readyAt}:R> • <t:${readyAt}:T>.`
+            : `🎲 You can roll again <t:${readyAt}:R> • <t:${readyAt}:T>.`;
 
 
     return message.reply(
@@ -559,7 +615,11 @@ const rollExtras =
         wonMaxBoost,
         usedLuckBoost,
         wonLuckBoost
-    ) + guaranteedRollExtra;
+    )
+    + guaranteedRollExtra
+    + buildRollCooldownExtra(
+        rollAccess
+    );
 
 
 
