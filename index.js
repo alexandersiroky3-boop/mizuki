@@ -1,7 +1,5 @@
 require("dotenv").config();
 
-console.log("TOKEN TEST:", process.env.TOKEN);
-
 const {
     Client,
     GatewayIntentBits
@@ -14,6 +12,9 @@ const database = require("./database");
 const luck =
     require("./utils/luck");
 
+const quests =
+    require("./systems/quests");
+
 
 const levelCommand = require("./commands/level");
 const rankCommand = require("./commands/rank");
@@ -21,6 +22,7 @@ const giveXPCommand = require("./commands/givexp");
 const commandsCommand = require("./commands/commands");
 const boostCommand = require("./commands/showboost");
 const shopCommand = require("./commands/shop");
+const questsCommand = require("./commands/quests");
 const setLevelCommand =
 require("./commands/setlevel");
 
@@ -196,6 +198,17 @@ async message => {
     try {
 
 
+        if(!message.guild)
+            return;
+
+
+        await quests.recordEvent(
+            message,
+            "messages",
+            1
+        );
+
+
         if(message.content === "!level"){
 
             return levelCommand.execute(
@@ -225,6 +238,18 @@ if(message.content === "!commands"){
 if(message.content === "!boost"){
 
     return boostCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content
+        .trim()
+        .toLowerCase() === "!quests"
+){
+
+    return questsCommand.execute(
         message
     );
 
@@ -369,7 +394,24 @@ if(
         if(!result)
             return;
 
+
+await quests.recordEvent(
+    message,
+    "earn_xp",
+    Math.max(
+        0,
+        Number(result.earnedXP) || 0
+    )
+);
+
+
 if(result.critical){
+
+    await quests.recordEvent(
+        message,
+        "critical_streak",
+        Number(result.criticalStreak) || 0
+    );
 
 
     // React to every critical message.
@@ -428,6 +470,13 @@ else if(result.lostCriticalStreak >= 2){
 // ======================
 
 if(result.leveledUp){
+
+
+    await quests.recordEvent(
+        message,
+        "level_change",
+        1
+    );
 
 
     const LEVEL_CHANNEL_ID =
