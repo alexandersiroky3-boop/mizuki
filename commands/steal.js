@@ -4,6 +4,8 @@ const leveling =
     require("../systems/leveling");
 const luck =
     require("../utils/luck");
+const quests =
+    require("../systems/quests");
 
 
 // ==========================
@@ -70,6 +72,35 @@ function formatCooldown(milliseconds){
 
 }
 
+
+
+// ==========================
+// LEVEL SYNC
+// ==========================
+
+async function syncAndTrackLevel(
+    message,
+    userID
+){
+
+    const levelResult =
+        await leveling.syncLevelAndAnnounce(
+            message.client,
+            message.guild.id,
+            userID
+        );
+
+
+    await quests.recordLevelChange(
+        message,
+        levelResult,
+        userID
+    );
+
+
+    return levelResult;
+
+}
 
 
 // ==========================
@@ -192,9 +223,22 @@ const luckExtra =
                 reward
             );
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    guildID,
+
+            await quests.recordEvent(
+                message,
+                "steal_xp",
+                reward
+            );
+
+
+            await quests.recordEvent(
+                message,
+                "earn_xp",
+                reward
+            );
+
+await syncAndTrackLevel(
+    message,
     userID
 );
 
@@ -560,6 +604,30 @@ const luckExtra =
         stolenXP
     );
 
+
+    await quests.recordEvent(
+        message,
+        "steal_xp",
+        stolenXP
+    );
+
+
+    await quests.recordEvent(
+        message,
+        "earn_xp",
+        stolenXP
+    );
+
+
+    await quests.recordEvent(
+        message,
+        "get_stolen",
+        1,
+        {
+            userID: target.id
+        }
+    );
+
 // ==========================
 // UPDATE LEVELS
 // ==========================
@@ -567,17 +635,15 @@ const luckExtra =
 // Victim may lose a level.
 // Their stored level will be corrected,
 // but no level-up message will be sent.
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    guildID,
+await syncAndTrackLevel(
+    message,
     target.id
 );
 
 
 // Thief may level up from the stolen XP.
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    guildID,
+await syncAndTrackLevel(
+    message,
     userID
 );
 
