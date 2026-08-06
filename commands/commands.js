@@ -28,6 +28,9 @@ Here are all available commands:
 \`!shop\`
 > Buy boosts & more from the shop.
 
+\`!quests\`
+> Shows you your Daily & Weekly quests and big rewards.
+
 
 🥵 **Fun Commands**
 
