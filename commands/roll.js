@@ -5,6 +5,9 @@ const leveling = require("../systems/leveling");
 const luck =
     require("../utils/luck");
 
+const quests =
+    require("../systems/quests");
+
 
 // =====================================================
 // EASY ROLL CUSTOMIZATION
@@ -285,6 +288,29 @@ const ROLL_COOLDOWN =
     1000;
 
 
+async function syncRollLevel(
+    message,
+    userID
+){
+
+    const levelResult =
+        await leveling.syncLevelAndAnnounce(
+            message.client,
+            message.guild.id,
+            userID
+        );
+
+
+    await quests.recordLevelChange(
+        message,
+        levelResult,
+        userID
+    );
+
+
+    return levelResult;
+
+}
 
 
 async function execute(message){
@@ -304,39 +330,35 @@ async function execute(message){
     // Cooldown
     // ======================
 
-const remaining =
-    await database.getCommandCooldownRemaining(
+const rollAccess =
+    await quests.useRollCooldown(
         message.guild.id,
         message.author.id,
-        "roll"
+        ROLL_COOLDOWN
     );
 
 
-if(remaining > 0){
+if(!rollAccess.allowed){
 
 
     const seconds =
         Math.ceil(
-            remaining / 1000
+            rollAccess.remaining / 1000
         );
 
 
+    const messageText =
+        rollAccess.tripleRoll
+            ? `🎲 You already used all 3 quest-reward rolls. Try again in **${seconds} seconds**!`
+            : `🎲 You must wait **${seconds} seconds** before rolling again!`;
+
+
     return message.reply(
-
-        `🎲 You must wait **${seconds} seconds** before rolling again!`
-
+        messageText
     );
 
 
 }
-
-
-await database.setCommandCooldown(
-    message.guild.id,
-    message.author.id,
-    "roll",
-    Date.now() + ROLL_COOLDOWN
-);
 
 
 
@@ -382,8 +404,33 @@ const luckResult =
     );
 
 
-const rolledXP =
+let rolledXP =
     luckResult.rolledXP;
+
+
+const guaranteedRoll =
+    await quests.consumeGuaranteedRoll(
+        message.guild.id,
+        userID
+    );
+
+
+if(guaranteedRoll === "daily_25k_75k"){
+
+    rolledXP =
+        Math.floor(
+            Math.random() * 50001
+        ) + 25000;
+
+}
+else if(guaranteedRoll === "impossible"){
+
+    rolledXP =
+        Math.floor(
+            Math.random() * 1500001
+        ) + 500000;
+
+}
 
 
 // This is the Luck Boost used
@@ -409,6 +456,33 @@ await database.addXP(
 
     rolledXP
 
+);
+
+
+await quests.recordEvent(
+    message,
+    "roll_count",
+    1
+);
+
+
+await quests.recordEvent(
+    message,
+    "roll_xp",
+    Math.max(
+        0,
+        rolledXP
+    )
+);
+
+
+await quests.recordEvent(
+    message,
+    "earn_xp",
+    Math.max(
+        0,
+        rolledXP
+    )
 );
 
 
@@ -471,13 +545,21 @@ const wonLuckBoost =
     );
 
 
+const guaranteedRollExtra =
+    guaranteedRoll === "daily_25k_75k"
+        ? "\nQuest reward used: guaranteed 25,000–75,000 XP roll."
+        : guaranteedRoll === "impossible"
+            ? "\nQuest reward used: guaranteed Impossible Roll."
+            : "";
+
+
 const rollExtras =
     luck.buildRollExtras(
         message,
         wonMaxBoost,
         usedLuckBoost,
         wonLuckBoost
-    );
+    ) + guaranteedRollExtra;
 
 
 
@@ -518,13 +600,19 @@ await database.addBoostActivity(
 );
 
 
+await quests.recordEvent(
+    message,
+    "earn_xp",
+    bonus
+);
+
+
 await boosts.updateBoost(
     message.member
 );
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    message.guild.id,
+await syncRollLevel(
+    message,
     userID
 );
 
@@ -595,13 +683,19 @@ await database.addBoostActivity(
 );
 
 
+await quests.recordEvent(
+    message,
+    "earn_xp",
+    bonus
+);
+
+
 await boosts.updateBoost(
     message.member
 );
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    message.guild.id,
+await syncRollLevel(
+    message,
     userID
 );
 
@@ -649,13 +743,18 @@ if(rolledXP >= 75000){
         bonus
     );
 
+    await quests.recordEvent(
+        message,
+        "earn_xp",
+        bonus
+    );
+
     await boosts.updateBoost(
         message.member
     );
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    message.guild.id,
+await syncRollLevel(
+    message,
     userID
 );
 
@@ -705,13 +804,18 @@ if(rolledXP >= 25000){
         bonus
     );
 
+    await quests.recordEvent(
+        message,
+        "earn_xp",
+        bonus
+    );
+
     await boosts.updateBoost(
         message.member
     );
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    message.guild.id,
+await syncRollLevel(
+    message,
     userID
 );
 
@@ -768,13 +872,19 @@ await database.addBoostActivity(
 );
 
 
+await quests.recordEvent(
+    message,
+    "earn_xp",
+    bonus
+);
+
+
 await boosts.updateBoost(
     message.member
 );
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    message.guild.id,
+await syncRollLevel(
+    message,
     userID
 );
 
@@ -828,13 +938,18 @@ await database.addBoostActivity(
 
 );
 
+await quests.recordEvent(
+    message,
+    "earn_xp",
+    bonus
+);
+
 await boosts.updateBoost(
     message.member
 );
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    message.guild.id,
+await syncRollLevel(
+    message,
     userID
 );
 
@@ -861,9 +976,8 @@ return message.channel.send(
 // UPDATE LEVEL
 // ======================
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    message.guild.id,
+await syncRollLevel(
+    message,
     userID
 );
 
