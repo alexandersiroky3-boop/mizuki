@@ -734,49 +734,64 @@ const LUCK_WEIGHT_MODIFIERS = {
 
 
     // Luck Boost III — x20 rating
+    //
+    // Designed to strongly suppress:
+    // - -100 to +100
+    // - +100 to +5,000
+    //
+    // The most common positive range becomes
+    // +5,000 to +25,000, while 25,000+ rolls
+    // are also much more likely.
     3: {
 
         neutral:
-            0.65,
+            0.12,
 
         negative:
-            0.35,
+            0.08,
 
         commonPositive:
-            3,
+            0.25,
 
         valuablePositive:
-            4.50,
+            12,
 
         rarePositive:
-            6.50,
+            30,
 
         jackpotPositive:
-            10
+            50
 
     },
 
 
     // Luck Boost MAX — x50 rating
+    //
+    // This boost only lasts 10 minutes, so
+    // +25,000 to +75,000 and higher outcomes
+    // are intentionally the common result.
+    //
+    // Small, neutral, and negative rolls are
+    // heavily suppressed.
     4: {
 
         neutral:
-            0.50,
+            0.03,
 
         negative:
-            0.20,
+            0.02,
 
         commonPositive:
-            4.50,
+            0.08,
 
         valuablePositive:
-            7,
+            1.50,
 
         rarePositive:
-            11,
+            80,
 
         jackpotPositive:
-            20
+            120
 
     }
 
