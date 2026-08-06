@@ -3,6 +3,8 @@ const leveling =
     require("../systems/leveling");
 const luck =
     require("../utils/luck");
+const quests =
+    require("../systems/quests");
 
 
 // 1 hour cooldown
@@ -24,6 +26,30 @@ function random(min, max){
 
 }
 
+
+async function syncAndTrackLevel(
+    message,
+    userID
+){
+
+    const levelResult =
+        await leveling.syncLevelAndAnnounce(
+            message.client,
+            message.guild.id,
+            userID
+        );
+
+
+    await quests.recordLevelChange(
+        message,
+        levelResult,
+        userID
+    );
+
+
+    return levelResult;
+
+}
 
 
 async function execute(message){
@@ -118,6 +144,12 @@ await database.setCommandCooldown(
     Date.now() + COOLDOWN
 );
 
+await quests.recordEvent(
+    message,
+    "kiss_given",
+    1
+);
+
 const wonLuckBoost =
     await luck.tryCommandLuckBoostDrop(
         message.member,
@@ -152,9 +184,14 @@ await database.giveXP(
     reward
 );
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    message.guild.id,
+await quests.recordEvent(
+    message,
+    "earn_xp",
+    reward
+);
+
+await syncAndTrackLevel(
+    message,
     userID
 );
 
@@ -200,9 +237,8 @@ await database.setXP(
 
 );
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    message.guild.id,
+await syncAndTrackLevel(
+    message,
     userID
 );
 
@@ -305,6 +341,21 @@ await database.setCommandCooldown(
     Date.now() + COOLDOWN
 );
 
+await quests.recordEvent(
+    message,
+    "kiss_given",
+    1
+);
+
+await quests.recordEvent(
+    message,
+    "kiss_received",
+    1,
+    {
+        userID: target.id
+    }
+);
+
 const wonLuckBoost =
     await luck.tryCommandLuckBoostDrop(
         message.member,
@@ -366,9 +417,17 @@ await database.giveXP(
 
 );
 
-await leveling.syncLevelAndAnnounce(
-    message.client,
-    message.guild.id,
+await quests.recordEvent(
+    message,
+    "earn_xp",
+    reward,
+    {
+        userID: target.id
+    }
+);
+
+await syncAndTrackLevel(
+    message,
     target.id
 );
 
