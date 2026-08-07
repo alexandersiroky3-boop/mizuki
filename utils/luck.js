@@ -86,10 +86,10 @@ const LUCK_ROLES = {
             20,
 
         duration:
-            30 * 60 * 1000,
+            20 * 60 * 1000,
 
         durationText:
-            "30 minutes",
+            "20 minutes",
 
         order:
             3
@@ -175,7 +175,7 @@ const LUCK_BOOST_DROP_TABLE = [
 
     {
         tier: "tier3",
-        chancePercent: 2
+        chancePercent: 0.75
     },
 
     {
@@ -210,7 +210,7 @@ const COMMAND_LUCK_DROP_PERCENT = {
             20,
 
         tier3:
-            10,
+            4,
 
         max:
             5
@@ -227,7 +227,7 @@ const COMMAND_LUCK_DROP_PERCENT = {
             7.5,
 
         tier3:
-            3,
+            1,
 
         max:
             0.8
@@ -244,7 +244,7 @@ const COMMAND_LUCK_DROP_PERCENT = {
             12,
 
         tier3:
-            6,
+            2.5,
 
         max:
             2
