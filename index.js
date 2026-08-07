@@ -500,7 +500,7 @@ if(result.critical){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
 
         ).catch(() => {});
 
