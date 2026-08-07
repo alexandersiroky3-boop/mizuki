@@ -110,7 +110,22 @@ function isParticipant(
 }
 
 
-function getBoostLabel(key){
+const TRADE_BOOST_ROLE_IDS = {
+
+    "xp:tier1": "1526994577955750020",
+    "xp:tier2": "1526994944965869648",
+    "xp:tier3": "1526995123420922047",
+    "xp:max": "1526995218098815016",
+
+    "luck:tier1": "1533959325335293982",
+    "luck:tier2": "1533960540240478432",
+    "luck:tier3": "1533960965949886534",
+    "luck:max": "1533961286310953042"
+
+};
+
+
+function getBoostPlainLabel(key){
 
     const [
         boostType,
@@ -129,12 +144,12 @@ function getBoostLabel(key){
     if(profile?.name){
 
         if(boostType === "luck")
-            return `@☘️ ${profile.name}`;
+            return `☘️ ${profile.name}`;
 
         if(boostType === "xp")
-            return `@⚡ ${profile.name}`;
+            return `⚡ ${profile.name}`;
 
-        return `@${profile.name}`;
+        return profile.name;
 
     }
 
@@ -142,6 +157,26 @@ function getBoostLabel(key){
     return (
         `${boostType.toUpperCase()} ` +
         `${String(tier).toUpperCase()}`
+    );
+
+}
+
+
+function getBoostMention(key){
+
+    const normalizedKey =
+        String(key).toLowerCase();
+
+    const roleID =
+        TRADE_BOOST_ROLE_IDS[normalizedKey];
+
+
+    if(roleID)
+        return `<@&${roleID}>`;
+
+
+    return getBoostPlainLabel(
+        normalizedKey
     );
 
 }
@@ -175,7 +210,7 @@ function formatOffer(offer){
     ){
 
         lines.push(
-            `🎒 **${getBoostLabel(key)}** ×${amount}`
+            `🎒 **${getBoostMention(key)}** ×${amount}`
         );
 
     }
@@ -1428,7 +1463,7 @@ async function handleAddBoost(
                     return {
 
                         label:
-                            getBoostLabel(
+                            getBoostPlainLabel(
                                 key
                             ),
 
@@ -1572,7 +1607,7 @@ async function handleBoostSelect(
             )
 
             .setTitle(
-                `Offer ${getBoostLabel(key)}`
+                `Offer ${getBoostPlainLabel(key)}`
             );
 
 
@@ -1733,7 +1768,7 @@ async function handleBoostModal(
             interaction,
             {
                 content:
-                    `You only own **${available.toLocaleString()}** ${getBoostLabel(key)}.`
+                    `You only own **${available.toLocaleString()}** ${getBoostMention(key)}.`
             }
         );
 
@@ -1820,7 +1855,7 @@ async function handleBoostModal(
         interaction,
         {
             content:
-                `You are now offering **${getBoostLabel(key)} ×${amount}**. Both confirmations were reset.`
+                `You are now offering **${getBoostMention(key)} ×${amount}**. Both confirmations were reset.`
         }
     );
 
@@ -1882,7 +1917,7 @@ async function handleRemove(
         options.push({
 
             label:
-                `Remove ${getBoostLabel(key)}`,
+                `Remove ${getBoostPlainLabel(key)}`,
 
             description:
                 `Currently offering ×${amount}`,
@@ -2016,7 +2051,7 @@ async function handleRemoveSelect(
 
 
         removedText =
-            `${getBoostLabel(key)} ×${offer.boosts[key] || 0}`;
+            `${getBoostMention(key)} ×${offer.boosts[key] || 0}`;
 
         delete offer.boosts[key];
 
@@ -2194,7 +2229,7 @@ async function handleConfirm(
         ){
 
             message +=
-                `\n<@${completion.userID}> no longer owns enough **${getBoostLabel(completion.key)}** ` +
+                `\n<@${completion.userID}> no longer owns enough **${getBoostMention(completion.key)}** ` +
                 `(${completion.available}/${completion.required}).`;
 
         }
