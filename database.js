@@ -149,6 +149,224 @@ function getRandomShopPrice(item){
 
 
 
+
+
+// =======================
+// TRADING SYSTEM
+// =======================
+
+const TRADE_BASE_FEE = 1000;
+const TRADE_XP_FEE_RATE = 0.05;
+
+const TRADE_BOOST_FEES = {
+
+    "xp:tier1": 100,
+    "xp:tier2": 500,
+    "xp:tier3": 1500,
+    "xp:max": 10000,
+
+    "luck:tier1": 500,
+    "luck:tier2": 4000,
+    "luck:tier3": 50000,
+    "luck:max": 125000
+
+};
+
+const TRADE_ALLOWED_BOOST_KEYS =
+    new Set(
+        Object.keys(
+            TRADE_BOOST_FEES
+        )
+    );
+
+
+function normalizeTradeOffer(offer){
+
+    const raw =
+        offer &&
+        typeof offer === "object"
+            ? offer
+            : {};
+
+
+    const xp =
+        Math.max(
+            0,
+            Math.floor(
+                Number(raw.xp) || 0
+            )
+        );
+
+
+    const boosts = {};
+
+    const rawBoosts =
+        raw.boosts &&
+        typeof raw.boosts === "object"
+            ? raw.boosts
+            : {};
+
+
+    for(
+        const [key, amount] of
+        Object.entries(rawBoosts)
+    ){
+
+        const normalizedKey =
+            String(key).toLowerCase();
+
+        if(
+            !TRADE_ALLOWED_BOOST_KEYS.has(
+                normalizedKey
+            )
+        ){
+
+            continue;
+
+        }
+
+
+        const safeAmount =
+            Math.max(
+                0,
+                Math.floor(
+                    Number(amount) || 0
+                )
+            );
+
+
+        if(safeAmount > 0){
+
+            boosts[normalizedKey] =
+                safeAmount;
+
+        }
+
+    }
+
+
+    return {
+        xp,
+        boosts
+    };
+
+}
+
+
+function isTradeOfferEmpty(offer){
+
+    const normalized =
+        normalizeTradeOffer(
+            offer
+        );
+
+
+    return (
+        normalized.xp <= 0
+        &&
+        Object.keys(
+            normalized.boosts
+        ).length === 0
+    );
+
+}
+
+
+function calculateTradeFee(offer){
+
+    const normalized =
+        normalizeTradeOffer(
+            offer
+        );
+
+
+    const xpFee =
+        Math.ceil(
+            normalized.xp *
+            TRADE_XP_FEE_RATE
+        );
+
+
+    let boostFee = 0;
+
+    for(
+        const [key, amount] of
+        Object.entries(
+            normalized.boosts
+        )
+    ){
+
+        boostFee +=
+            (
+                TRADE_BOOST_FEES[key] || 0
+            ) *
+            amount;
+
+    }
+
+
+    return {
+
+        baseFee:
+            TRADE_BASE_FEE,
+
+        xpFee,
+
+        boostFee,
+
+        total:
+            TRADE_BASE_FEE +
+            xpFee +
+            boostFee
+
+    };
+
+}
+
+
+function parseTradeRow(row){
+
+    if(!row)
+        return null;
+
+
+    return {
+
+        ...row,
+
+        id:
+            Number(row.id),
+
+        user1offer:
+            normalizeTradeOffer(
+                row.user1offer
+            ),
+
+        user2offer:
+            normalizeTradeOffer(
+                row.user2offer
+            ),
+
+        user1confirmed:
+            Boolean(
+                row.user1confirmed
+            ),
+
+        user2confirmed:
+            Boolean(
+                row.user2confirmed
+            ),
+
+        cleaned:
+            Boolean(
+                row.cleaned
+            )
+
+    };
+
+}
+
+
 // =======================
 // CREATE TABLES
 // =======================
@@ -416,6 +634,92 @@ await db.query(`
             userID
         )
 
+    )
+
+`);
+
+
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS trades (
+
+        id BIGSERIAL PRIMARY KEY,
+
+        guildID TEXT NOT NULL,
+
+        user1ID TEXT NOT NULL,
+
+        user2ID TEXT NOT NULL,
+
+        status TEXT NOT NULL DEFAULT 'pending',
+
+        channelID TEXT,
+
+        roleID TEXT,
+
+        panelMessageID TEXT,
+
+        user1Offer JSONB NOT NULL
+            DEFAULT '{"xp":0,"boosts":{}}'::jsonb,
+
+        user2Offer JSONB NOT NULL
+            DEFAULT '{"xp":0,"boosts":{}}'::jsonb,
+
+        user1Confirmed BOOLEAN NOT NULL
+            DEFAULT FALSE,
+
+        user2Confirmed BOOLEAN NOT NULL
+            DEFAULT FALSE,
+
+        fee1 BIGINT NOT NULL DEFAULT 0,
+
+        fee2 BIGINT NOT NULL DEFAULT 0,
+
+        createdAt BIGINT NOT NULL,
+
+        updatedAt BIGINT NOT NULL,
+
+        expiresAt BIGINT NOT NULL,
+
+        completedAt BIGINT,
+
+        cancelledBy TEXT,
+
+        failureReason TEXT,
+
+        cleaned BOOLEAN NOT NULL
+            DEFAULT FALSE
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    trades_open_user1_idx
+
+    ON trades(
+        guildID,
+        user1ID,
+        status
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    trades_open_user2_idx
+
+    ON trades(
+        guildID,
+        user2ID,
+        status
     )
 
 `);
@@ -3660,6 +3964,1881 @@ async function useQuestRollCooldown(
 }
 
 
+
+// =====================================================
+// TRADING SYSTEM
+// =====================================================
+
+async function createTradeRequest(
+    guildID,
+    user1ID,
+    user2ID,
+    expiresAt
+){
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        // Advisory locks prevent two simultaneous !trade requests
+        // from putting the same person in multiple open trades.
+        const lockKeys =
+            [
+                `${guildID}:${user1ID}`,
+                `${guildID}:${user2ID}`
+            ].sort();
+
+
+        for(const lockKey of lockKeys){
+
+            await client.query(
+                `SELECT pg_advisory_xact_lock(hashtext($1))`,
+                [lockKey]
+            );
+
+        }
+
+
+        const now =
+            Date.now();
+
+
+        await client.query(`
+
+            UPDATE trades
+
+            SET
+                status='expired',
+                updatedAt=$1,
+                failureReason='Trade expired.'
+
+            WHERE guildID=$2
+            AND expiresAt <= $1
+            AND status IN (
+                'pending',
+                'setup',
+                'active'
+            )
+            AND (
+                user1ID=$3
+                OR user2ID=$3
+                OR user1ID=$4
+                OR user2ID=$4
+            )
+
+        `, [
+            now,
+            guildID,
+            user1ID,
+            user2ID
+        ]);
+
+
+        const existing =
+            await client.query(`
+
+                SELECT *
+
+                FROM trades
+
+                WHERE guildID=$1
+
+                AND status IN (
+                    'pending',
+                    'setup',
+                    'active',
+                    'processing'
+                )
+
+                AND (
+                    user1ID=$2
+                    OR user2ID=$2
+                    OR user1ID=$3
+                    OR user2ID=$3
+                )
+
+                ORDER BY id DESC
+
+                LIMIT 1
+
+                FOR UPDATE
+
+            `, [
+                guildID,
+                user1ID,
+                user2ID
+            ]);
+
+
+        if(existing.rowCount > 0){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "busy",
+                trade:
+                    parseTradeRow(
+                        existing.rows[0]
+                    )
+            };
+
+        }
+
+
+        const result =
+            await client.query(`
+
+                INSERT INTO trades
+                (
+                    guildID,
+                    user1ID,
+                    user2ID,
+                    status,
+                    createdAt,
+                    updatedAt,
+                    expiresAt
+                )
+
+                VALUES
+                (
+                    $1,$2,$3,
+                    'pending',
+                    $4,$4,$5
+                )
+
+                RETURNING *
+
+            `, [
+                guildID,
+                user1ID,
+                user2ID,
+                now,
+                Number(expiresAt)
+            ]);
+
+
+        await client.query("COMMIT");
+
+
+        return {
+            success: true,
+            status: "created",
+            trade:
+                parseTradeRow(
+                    result.rows[0]
+                )
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+
+async function getTrade(tradeID){
+
+    const result =
+        await db.query(`
+
+            SELECT *
+
+            FROM trades
+
+            WHERE id=$1
+
+        `, [
+            Number(tradeID)
+        ]);
+
+
+    return parseTradeRow(
+        result.rows[0]
+    );
+
+}
+
+
+
+async function getOpenTradeForUser(
+    guildID,
+    userID
+){
+
+    const result =
+        await db.query(`
+
+            SELECT *
+
+            FROM trades
+
+            WHERE guildID=$1
+
+            AND (
+                user1ID=$2
+                OR user2ID=$2
+            )
+
+            AND status IN (
+                'pending',
+                'setup',
+                'active',
+                'processing'
+            )
+
+            ORDER BY id DESC
+
+            LIMIT 1
+
+        `, [
+            guildID,
+            userID
+        ]);
+
+
+    return parseTradeRow(
+        result.rows[0]
+    );
+
+}
+
+
+
+async function beginTradeSetup(
+    tradeID,
+    userID,
+    expiresAt
+){
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        const result =
+            await client.query(`
+
+                SELECT *
+
+                FROM trades
+
+                WHERE id=$1
+
+                FOR UPDATE
+
+            `, [
+                Number(tradeID)
+            ]);
+
+
+        const row =
+            result.rows[0];
+
+
+        if(!row){
+
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                status: "missing"
+            };
+
+        }
+
+
+        if(
+            String(row.user2id) !==
+            String(userID)
+        ){
+
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                status: "not-target"
+            };
+
+        }
+
+
+        if(
+            row.status !== "pending"
+        ){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: row.status,
+                trade:
+                    parseTradeRow(row)
+            };
+
+        }
+
+
+        if(
+            Number(row.expiresat) <=
+            Date.now()
+        ){
+
+            await client.query(`
+
+                UPDATE trades
+
+                SET
+                    status='expired',
+                    updatedAt=$2,
+                    failureReason='Trade invite expired.'
+
+                WHERE id=$1
+
+            `, [
+                Number(tradeID),
+                Date.now()
+            ]);
+
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status: "expired"
+            };
+
+        }
+
+
+        const updated =
+            await client.query(`
+
+                UPDATE trades
+
+                SET
+                    status='setup',
+                    updatedAt=$2,
+                    expiresAt=$3,
+                    failureReason=NULL
+
+                WHERE id=$1
+
+                RETURNING *
+
+            `, [
+                Number(tradeID),
+                Date.now(),
+                Number(expiresAt)
+            ]);
+
+
+        await client.query("COMMIT");
+
+
+        return {
+            success: true,
+            status: "setup",
+            trade:
+                parseTradeRow(
+                    updated.rows[0]
+                )
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+
+async function activateTrade(
+    tradeID,
+    roleID,
+    channelID,
+    panelMessageID,
+    expiresAt
+){
+
+    const result =
+        await db.query(`
+
+            UPDATE trades
+
+            SET
+                status='active',
+                roleID=$2,
+                channelID=$3,
+                panelMessageID=$4,
+                updatedAt=$5,
+                expiresAt=$6,
+                user1Confirmed=FALSE,
+                user2Confirmed=FALSE,
+                failureReason=NULL,
+                cleaned=FALSE
+
+            WHERE id=$1
+            AND status='setup'
+
+            RETURNING *
+
+        `, [
+            Number(tradeID),
+            String(roleID),
+            String(channelID),
+            String(panelMessageID),
+            Date.now(),
+            Number(expiresAt)
+        ]);
+
+
+    return parseTradeRow(
+        result.rows[0]
+    );
+
+}
+
+
+
+async function updateTradePanelMessage(
+    tradeID,
+    panelMessageID
+){
+
+    await db.query(`
+
+        UPDATE trades
+
+        SET
+            panelMessageID=$2,
+            updatedAt=$3
+
+        WHERE id=$1
+
+    `, [
+        Number(tradeID),
+        String(panelMessageID),
+        Date.now()
+    ]);
+
+}
+
+
+
+async function updateTradeOffer(
+    tradeID,
+    userID,
+    offer,
+    expiresAt
+){
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        const result =
+            await client.query(`
+
+                SELECT *
+
+                FROM trades
+
+                WHERE id=$1
+
+                FOR UPDATE
+
+            `, [
+                Number(tradeID)
+            ]);
+
+
+        const row =
+            result.rows[0];
+
+
+        if(!row){
+
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                status: "missing"
+            };
+
+        }
+
+
+        if(
+            row.status !== "active"
+        ){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: row.status,
+                trade:
+                    parseTradeRow(row)
+            };
+
+        }
+
+
+        if(
+            Number(row.expiresat) <=
+            Date.now()
+        ){
+
+            await client.query(`
+
+                UPDATE trades
+
+                SET
+                    status='expired',
+                    updatedAt=$2,
+                    failureReason='Trade expired.'
+
+                WHERE id=$1
+
+            `, [
+                Number(tradeID),
+                Date.now()
+            ]);
+
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status: "expired"
+            };
+
+        }
+
+
+        const normalized =
+            normalizeTradeOffer(
+                offer
+            );
+
+
+        let column;
+
+
+        if(
+            String(row.user1id) ===
+            String(userID)
+        ){
+
+            column =
+                "user1Offer";
+
+        }
+        else if(
+            String(row.user2id) ===
+            String(userID)
+        ){
+
+            column =
+                "user2Offer";
+
+        }
+        else{
+
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                status: "not-participant"
+            };
+
+        }
+
+
+        const updated =
+            await client.query(`
+
+                UPDATE trades
+
+                SET
+                    ${column}=$2::jsonb,
+                    user1Confirmed=FALSE,
+                    user2Confirmed=FALSE,
+                    updatedAt=$3,
+                    expiresAt=$4,
+                    failureReason=NULL
+
+                WHERE id=$1
+
+                RETURNING *
+
+            `, [
+                Number(tradeID),
+                JSON.stringify(
+                    normalized
+                ),
+                Date.now(),
+                Number(expiresAt)
+            ]);
+
+
+        await client.query("COMMIT");
+
+
+        return {
+            success: true,
+            status: "updated",
+            trade:
+                parseTradeRow(
+                    updated.rows[0]
+                )
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+
+async function confirmTrade(
+    tradeID,
+    userID,
+    expiresAt
+){
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        const result =
+            await client.query(`
+
+                SELECT *
+
+                FROM trades
+
+                WHERE id=$1
+
+                FOR UPDATE
+
+            `, [
+                Number(tradeID)
+            ]);
+
+
+        const row =
+            result.rows[0];
+
+
+        if(!row){
+
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                status: "missing"
+            };
+
+        }
+
+
+        if(
+            row.status !== "active"
+        ){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: row.status,
+                trade:
+                    parseTradeRow(row)
+            };
+
+        }
+
+
+        if(
+            Number(row.expiresat) <=
+            Date.now()
+        ){
+
+            await client.query(`
+
+                UPDATE trades
+
+                SET
+                    status='expired',
+                    updatedAt=$2,
+                    failureReason='Trade expired.'
+
+                WHERE id=$1
+
+            `, [
+                Number(tradeID),
+                Date.now()
+            ]);
+
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status: "expired"
+            };
+
+        }
+
+
+        let confirmColumn;
+
+
+        if(
+            String(row.user1id) ===
+            String(userID)
+        ){
+
+            confirmColumn =
+                "user1Confirmed";
+
+        }
+        else if(
+            String(row.user2id) ===
+            String(userID)
+        ){
+
+            confirmColumn =
+                "user2Confirmed";
+
+        }
+        else{
+
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                status: "not-participant"
+            };
+
+        }
+
+
+        const updated =
+            await client.query(`
+
+                UPDATE trades
+
+                SET
+                    ${confirmColumn}=TRUE,
+                    updatedAt=$2,
+                    expiresAt=$3
+
+                WHERE id=$1
+
+                RETURNING *
+
+            `, [
+                Number(tradeID),
+                Date.now(),
+                Number(expiresAt)
+            ]);
+
+
+        let trade =
+            parseTradeRow(
+                updated.rows[0]
+            );
+
+
+        const readyToProcess =
+            trade.user1confirmed &&
+            trade.user2confirmed;
+
+
+        if(readyToProcess){
+
+            const processing =
+                await client.query(`
+
+                    UPDATE trades
+
+                    SET
+                        status='processing',
+                        updatedAt=$2
+
+                    WHERE id=$1
+
+                    RETURNING *
+
+                `, [
+                    Number(tradeID),
+                    Date.now()
+                ]);
+
+
+            trade =
+                parseTradeRow(
+                    processing.rows[0]
+                );
+
+        }
+
+
+        await client.query("COMMIT");
+
+
+        return {
+            success: true,
+            status:
+                readyToProcess
+                    ? "processing"
+                    : "confirmed",
+            readyToProcess,
+            trade
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+
+async function cancelTrade(
+    tradeID,
+    cancelledBy,
+    reason = "Trade cancelled.",
+    terminalStatus = "cancelled"
+){
+
+    const allowedStatuses =
+        new Set([
+            "cancelled",
+            "declined",
+            "expired"
+        ]);
+
+
+    const status =
+        allowedStatuses.has(
+            terminalStatus
+        )
+            ? terminalStatus
+            : "cancelled";
+
+
+    const result =
+        await db.query(`
+
+            UPDATE trades
+
+            SET
+                status=$2,
+                cancelledBy=$3,
+                failureReason=$4,
+                updatedAt=$5,
+                user1Confirmed=FALSE,
+                user2Confirmed=FALSE
+
+            WHERE id=$1
+
+            AND status NOT IN (
+                'completed',
+                'cancelled',
+                'declined',
+                'expired'
+            )
+
+            RETURNING *
+
+        `, [
+            Number(tradeID),
+            status,
+            cancelledBy
+                ? String(cancelledBy)
+                : null,
+            String(reason),
+            Date.now()
+        ]);
+
+
+    if(result.rowCount > 0){
+
+        return parseTradeRow(
+            result.rows[0]
+        );
+
+    }
+
+
+    return getTrade(
+        tradeID
+    );
+
+}
+
+
+
+async function cancelOpenTradesForUser(
+    guildID,
+    userID,
+    reason = "A trader left the server."
+){
+
+    const result =
+        await db.query(`
+
+            UPDATE trades
+
+            SET
+                status='cancelled',
+                cancelledBy=$2,
+                failureReason=$3,
+                updatedAt=$4,
+                user1Confirmed=FALSE,
+                user2Confirmed=FALSE
+
+            WHERE guildID=$1
+
+            AND (
+                user1ID=$2
+                OR user2ID=$2
+            )
+
+            AND status IN (
+                'pending',
+                'setup',
+                'active',
+                'processing'
+            )
+
+            RETURNING *
+
+        `, [
+            guildID,
+            userID,
+            String(reason),
+            Date.now()
+        ]);
+
+
+    return result.rows.map(
+        parseTradeRow
+    );
+
+}
+
+
+
+async function executeTradeTransaction(
+    tradeID,
+    retryExpiresAt
+){
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        const tradeResult =
+            await client.query(`
+
+                SELECT *
+
+                FROM trades
+
+                WHERE id=$1
+
+                FOR UPDATE
+
+            `, [
+                Number(tradeID)
+            ]);
+
+
+        const rawTrade =
+            tradeResult.rows[0];
+
+
+        if(!rawTrade){
+
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                status: "missing"
+            };
+
+        }
+
+
+        if(
+            rawTrade.status !==
+            "processing"
+        ){
+
+            await client.query("COMMIT");
+
+            return {
+                success:
+                    rawTrade.status ===
+                    "completed",
+                status:
+                    rawTrade.status,
+                trade:
+                    parseTradeRow(
+                        rawTrade
+                    )
+            };
+
+        }
+
+
+        const trade =
+            parseTradeRow(
+                rawTrade
+            );
+
+
+        const offer1 =
+            normalizeTradeOffer(
+                trade.user1offer
+            );
+
+        const offer2 =
+            normalizeTradeOffer(
+                trade.user2offer
+            );
+
+
+        if(
+            isTradeOfferEmpty(offer1)
+            &&
+            isTradeOfferEmpty(offer2)
+        ){
+
+            const reset =
+                await client.query(`
+
+                    UPDATE trades
+
+                    SET
+                        status='active',
+                        user1Confirmed=FALSE,
+                        user2Confirmed=FALSE,
+                        failureReason='The trade has no items.',
+                        updatedAt=$2,
+                        expiresAt=$3
+
+                    WHERE id=$1
+
+                    RETURNING *
+
+                `, [
+                    Number(tradeID),
+                    Date.now(),
+                    Number(retryExpiresAt)
+                ]);
+
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status: "empty-trade",
+                trade:
+                    parseTradeRow(
+                        reset.rows[0]
+                    )
+            };
+
+        }
+
+
+        const fee1 =
+            calculateTradeFee(
+                offer1
+            );
+
+        const fee2 =
+            calculateTradeFee(
+                offer2
+            );
+
+
+        // Ensure both user rows exist before locking them.
+        await client.query(`
+
+            INSERT INTO users
+            (
+                guildID,
+                userID
+            )
+
+            VALUES
+                ($1,$2),
+                ($1,$3)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            trade.guildid,
+            trade.user1id,
+            trade.user2id
+        ]);
+
+
+        const usersResult =
+            await client.query(`
+
+                SELECT
+                    userID,
+                    xp
+
+                FROM users
+
+                WHERE guildID=$1
+
+                AND userID IN (
+                    $2,
+                    $3
+                )
+
+                FOR UPDATE
+
+            `, [
+                trade.guildid,
+                trade.user1id,
+                trade.user2id
+            ]);
+
+
+        const balances =
+            new Map(
+                usersResult.rows.map(
+                    row => [
+                        String(row.userid),
+                        Number(row.xp) || 0
+                    ]
+                )
+            );
+
+
+        const balance1 =
+            balances.get(
+                String(trade.user1id)
+            ) || 0;
+
+        const balance2 =
+            balances.get(
+                String(trade.user2id)
+            ) || 0;
+
+
+        const required1 =
+            offer1.xp +
+            fee1.total;
+
+        const required2 =
+            offer2.xp +
+            fee2.total;
+
+
+        if(balance1 < required1){
+
+            const reset =
+                await client.query(`
+
+                    UPDATE trades
+
+                    SET
+                        status='active',
+                        user1Confirmed=FALSE,
+                        user2Confirmed=FALSE,
+                        failureReason=$2,
+                        updatedAt=$3,
+                        expiresAt=$4
+
+                    WHERE id=$1
+
+                    RETURNING *
+
+                `, [
+                    Number(tradeID),
+                    `User ${trade.user1id} no longer has enough XP.`,
+                    Date.now(),
+                    Number(retryExpiresAt)
+                ]);
+
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status: "insufficient-xp",
+                userID:
+                    String(trade.user1id),
+                balance: balance1,
+                required: required1,
+                trade:
+                    parseTradeRow(
+                        reset.rows[0]
+                    )
+            };
+
+        }
+
+
+        if(balance2 < required2){
+
+            const reset =
+                await client.query(`
+
+                    UPDATE trades
+
+                    SET
+                        status='active',
+                        user1Confirmed=FALSE,
+                        user2Confirmed=FALSE,
+                        failureReason=$2,
+                        updatedAt=$3,
+                        expiresAt=$4
+
+                    WHERE id=$1
+
+                    RETURNING *
+
+                `, [
+                    Number(tradeID),
+                    `User ${trade.user2id} no longer has enough XP.`,
+                    Date.now(),
+                    Number(retryExpiresAt)
+                ]);
+
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status: "insufficient-xp",
+                userID:
+                    String(trade.user2id),
+                balance: balance2,
+                required: required2,
+                trade:
+                    parseTradeRow(
+                        reset.rows[0]
+                    )
+            };
+
+        }
+
+
+        const inventoryResult =
+            await client.query(`
+
+                SELECT
+                    userID,
+                    boostType,
+                    tier,
+                    amount
+
+                FROM boost_inventory
+
+                WHERE guildID=$1
+
+                AND userID IN (
+                    $2,
+                    $3
+                )
+
+                FOR UPDATE
+
+            `, [
+                trade.guildid,
+                trade.user1id,
+                trade.user2id
+            ]);
+
+
+        const inventory =
+            new Map();
+
+
+        for(const row of inventoryResult.rows){
+
+            inventory.set(
+                `${row.userid}:` +
+                `${String(row.boosttype).toLowerCase()}:` +
+                `${String(row.tier).toLowerCase()}`,
+                Number(row.amount) || 0
+            );
+
+        }
+
+
+        const verifyBoosts =
+            (
+                ownerID,
+                offer
+            ) => {
+
+                for(
+                    const [key, required] of
+                    Object.entries(
+                        offer.boosts
+                    )
+                ){
+
+                    const available =
+                        inventory.get(
+                            `${ownerID}:${key}`
+                        ) || 0;
+
+
+                    if(available < required){
+
+                        return {
+                            key,
+                            required,
+                            available
+                        };
+
+                    }
+
+                }
+
+
+                return null;
+
+            };
+
+
+        const missing1 =
+            verifyBoosts(
+                String(trade.user1id),
+                offer1
+            );
+
+
+        if(missing1){
+
+            const reset =
+                await client.query(`
+
+                    UPDATE trades
+
+                    SET
+                        status='active',
+                        user1Confirmed=FALSE,
+                        user2Confirmed=FALSE,
+                        failureReason=$2,
+                        updatedAt=$3,
+                        expiresAt=$4
+
+                    WHERE id=$1
+
+                    RETURNING *
+
+                `, [
+                    Number(tradeID),
+                    `User ${trade.user1id} no longer owns all offered boosts.`,
+                    Date.now(),
+                    Number(retryExpiresAt)
+                ]);
+
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status: "insufficient-boost",
+                userID:
+                    String(trade.user1id),
+                ...missing1,
+                trade:
+                    parseTradeRow(
+                        reset.rows[0]
+                    )
+            };
+
+        }
+
+
+        const missing2 =
+            verifyBoosts(
+                String(trade.user2id),
+                offer2
+            );
+
+
+        if(missing2){
+
+            const reset =
+                await client.query(`
+
+                    UPDATE trades
+
+                    SET
+                        status='active',
+                        user1Confirmed=FALSE,
+                        user2Confirmed=FALSE,
+                        failureReason=$2,
+                        updatedAt=$3,
+                        expiresAt=$4
+
+                    WHERE id=$1
+
+                    RETURNING *
+
+                `, [
+                    Number(tradeID),
+                    `User ${trade.user2id} no longer owns all offered boosts.`,
+                    Date.now(),
+                    Number(retryExpiresAt)
+                ]);
+
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status: "insufficient-boost",
+                userID:
+                    String(trade.user2id),
+                ...missing2,
+                trade:
+                    parseTradeRow(
+                        reset.rows[0]
+                    )
+            };
+
+        }
+
+
+        const finalBalance1 =
+            balance1 -
+            offer1.xp -
+            fee1.total +
+            offer2.xp;
+
+        const finalBalance2 =
+            balance2 -
+            offer2.xp -
+            fee2.total +
+            offer1.xp;
+
+
+        await client.query(`
+
+            UPDATE users
+
+            SET xp=$3
+
+            WHERE guildID=$1
+            AND userID=$2
+
+        `, [
+            trade.guildid,
+            trade.user1id,
+            finalBalance1
+        ]);
+
+
+        await client.query(`
+
+            UPDATE users
+
+            SET xp=$3
+
+            WHERE guildID=$1
+            AND userID=$2
+
+        `, [
+            trade.guildid,
+            trade.user2id,
+            finalBalance2
+        ]);
+
+
+        const moveBoosts =
+            async (
+                fromUserID,
+                toUserID,
+                offer
+            ) => {
+
+                for(
+                    const [key, amount] of
+                    Object.entries(
+                        offer.boosts
+                    )
+                ){
+
+                    const [
+                        boostType,
+                        tier
+                    ] = key.split(":");
+
+
+                    await client.query(`
+
+                        UPDATE boost_inventory
+
+                        SET amount =
+                            amount - $5
+
+                        WHERE guildID=$1
+                        AND userID=$2
+                        AND boostType=$3
+                        AND tier=$4
+
+                    `, [
+                        trade.guildid,
+                        fromUserID,
+                        boostType,
+                        tier,
+                        amount
+                    ]);
+
+
+                    await client.query(`
+
+                        DELETE FROM boost_inventory
+
+                        WHERE guildID=$1
+                        AND userID=$2
+                        AND boostType=$3
+                        AND tier=$4
+                        AND amount <= 0
+
+                    `, [
+                        trade.guildid,
+                        fromUserID,
+                        boostType,
+                        tier
+                    ]);
+
+
+                    await client.query(`
+
+                        INSERT INTO boost_inventory
+                        (
+                            guildID,
+                            userID,
+                            boostType,
+                            tier,
+                            amount
+                        )
+
+                        VALUES
+                        ($1,$2,$3,$4,$5)
+
+                        ON CONFLICT(
+                            guildID,
+                            userID,
+                            boostType,
+                            tier
+                        )
+
+                        DO UPDATE SET
+
+                            amount =
+                                boost_inventory.amount +
+                                EXCLUDED.amount
+
+                    `, [
+                        trade.guildid,
+                        toUserID,
+                        boostType,
+                        tier,
+                        amount
+                    ]);
+
+                }
+
+            };
+
+
+        await moveBoosts(
+            trade.user1id,
+            trade.user2id,
+            offer1
+        );
+
+
+        await moveBoosts(
+            trade.user2id,
+            trade.user1id,
+            offer2
+        );
+
+
+        const completed =
+            await client.query(`
+
+                UPDATE trades
+
+                SET
+                    status='completed',
+                    fee1=$2,
+                    fee2=$3,
+                    completedAt=$4,
+                    updatedAt=$4,
+                    failureReason=NULL,
+                    user1Confirmed=TRUE,
+                    user2Confirmed=TRUE
+
+                WHERE id=$1
+
+                RETURNING *
+
+            `, [
+                Number(tradeID),
+                fee1.total,
+                fee2.total,
+                Date.now()
+            ]);
+
+
+        await client.query("COMMIT");
+
+
+        userCache.delete(
+            `${trade.guildid}:${trade.user1id}`
+        );
+
+        userCache.delete(
+            `${trade.guildid}:${trade.user2id}`
+        );
+
+
+        return {
+            success: true,
+            status: "completed",
+            trade:
+                parseTradeRow(
+                    completed.rows[0]
+                ),
+            fee1,
+            fee2,
+            balance1:
+                finalBalance1,
+            balance2:
+                finalBalance2
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+
+async function getExpiredTrades(
+    now = Date.now()
+){
+
+    const result =
+        await db.query(`
+
+            SELECT *
+
+            FROM trades
+
+            WHERE status IN (
+                'pending',
+                'setup',
+                'active'
+            )
+
+            AND expiresAt <= $1
+
+            ORDER BY id ASC
+
+        `, [
+            Number(now)
+        ]);
+
+
+    return result.rows.map(
+        parseTradeRow
+    );
+
+}
+
+
+
+async function getProcessingTrades(){
+
+    const result =
+        await db.query(`
+
+            SELECT *
+
+            FROM trades
+
+            WHERE status='processing'
+
+            ORDER BY id ASC
+
+        `);
+
+
+    return result.rows.map(
+        parseTradeRow
+    );
+
+}
+
+
+
+async function getTradesNeedingCleanup(){
+
+    const result =
+        await db.query(`
+
+            SELECT *
+
+            FROM trades
+
+            WHERE cleaned=FALSE
+
+            AND status IN (
+                'completed',
+                'cancelled',
+                'declined',
+                'expired'
+            )
+
+            AND (
+                channelID IS NOT NULL
+                OR roleID IS NOT NULL
+            )
+
+            ORDER BY id ASC
+
+        `);
+
+
+    return result.rows.map(
+        parseTradeRow
+    );
+
+}
+
+
+
+async function markTradeCleaned(
+    tradeID
+){
+
+    await db.query(`
+
+        UPDATE trades
+
+        SET
+            cleaned=TRUE,
+            updatedAt=$2
+
+        WHERE id=$1
+
+    `, [
+        Number(tradeID),
+        Date.now()
+    ]);
+
+}
+
+
+
 module.exports = {
 
 
@@ -3758,5 +5937,47 @@ module.exports = {
     consumeGuaranteedQuestRoll,
 
     useQuestRollCooldown,
+
+
+    TRADE_BASE_FEE,
+
+    TRADE_XP_FEE_RATE,
+
+    TRADE_BOOST_FEES,
+
+    normalizeTradeOffer,
+
+    calculateTradeFee,
+
+    createTradeRequest,
+
+    getTrade,
+
+    getOpenTradeForUser,
+
+    beginTradeSetup,
+
+    activateTrade,
+
+    updateTradePanelMessage,
+
+    updateTradeOffer,
+
+    confirmTrade,
+
+    cancelTrade,
+
+    cancelOpenTradesForUser,
+
+    executeTradeTransaction,
+
+    getExpiredTrades,
+
+    getProcessingTrades,
+
+    getTradesNeedingCleanup,
+
+    markTradeCleaned,
+
 
 };
