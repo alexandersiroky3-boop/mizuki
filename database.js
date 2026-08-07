@@ -38,7 +38,7 @@ const SHOP_CATALOG = {
         key: "xp:tier1",
         boostType: "xp",
         tier: "tier1",
-        price: 1999,
+        price: 4999,
         maxStock: 15
     },
 
@@ -46,7 +46,7 @@ const SHOP_CATALOG = {
         key: "xp:tier2",
         boostType: "xp",
         tier: "tier2",
-        price: 9999,
+        price: 14999,
         maxStock: 15
     },
 
@@ -54,7 +54,7 @@ const SHOP_CATALOG = {
         key: "xp:tier3",
         boostType: "xp",
         tier: "tier3",
-        price: 29999,
+        price: 45999,
         maxStock: 10
     },
 
@@ -62,7 +62,7 @@ const SHOP_CATALOG = {
         key: "xp:max",
         boostType: "xp",
         tier: "max",
-        price: 199999,
+        price: 149999,
         maxStock: 5
     },
 
@@ -70,7 +70,7 @@ const SHOP_CATALOG = {
         key: "luck:tier1",
         boostType: "luck",
         tier: "tier1",
-        price: 9999,
+        price: 19999,
         maxStock: 15
     },
 
@@ -78,7 +78,7 @@ const SHOP_CATALOG = {
         key: "luck:tier2",
         boostType: "luck",
         tier: "tier2",
-        price: 79999,
+        price: 99999,
         maxStock: 15
     },
 
@@ -104,6 +104,42 @@ const SHOP_CATALOG = {
 // Random prices are chosen ONCE per shop refresh and then stored
 // in PostgreSQL for the whole shop cycle.
 const SHOP_PRICE_OPTIONS = {
+
+    "xp:tier1": [
+        4999,
+        12999,
+        24999
+    ],
+
+    "xp:tier2": [
+        14999,
+        29999,
+        49999
+    ],
+
+    "xp:tier3": [
+        45999,
+        99999,
+        129999
+    ],
+
+    "xp:max": [
+        149999,
+        249999,
+        499999
+    ],
+
+    "luck:tier1": [
+        19999,
+        34999,
+        69999
+    ],
+
+    "luck:tier2": [
+        99999,
+        124999,
+        249999
+    ],
 
     "luck:tier3": [
         999999,
