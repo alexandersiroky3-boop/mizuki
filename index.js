@@ -110,6 +110,11 @@ client.once("clientReady", async () => {
     await database.initDatabase();
 
 
+    await quests.migrateActiveQuestCycles(
+        client
+    );
+
+
     console.log(
         `Logged in as ${client.user.tag}`
     );
@@ -495,7 +500,7 @@ if(result.critical){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
 
         ).catch(() => {});
 
@@ -524,7 +529,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
 
     ).catch(() => {});
 
