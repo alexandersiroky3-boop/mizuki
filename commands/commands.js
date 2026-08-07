@@ -46,6 +46,9 @@ Here are all available commands:
 \`!hug @user/userid/bot\`
 > You can hug other users and even the bot
 
+\`!trade @user\`
+> Trade Boosts and XP with a user!
+
 \`!ezwin\`
 > Takes everyone's XP (except you) and you gain XP...
 
