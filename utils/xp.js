@@ -519,12 +519,10 @@ function getXPAmount(
         criticalStreak++;
 
 
-        // Critical XP multiplier still caps at x10.
+        // Unlimited critical XP multiplier.
+        // The multiplier always matches the full consecutive streak.
         criticalMultiplier =
-            Math.min(
-                criticalStreak,
-                10
-            );
+            criticalStreak;
 
 
         earnedXP +=
