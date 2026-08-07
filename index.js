@@ -15,6 +15,9 @@ const luck =
 const quests =
     require("./systems/quests");
 
+const trades =
+    require("./systems/trades");
+
 
 const levelCommand = require("./commands/level");
 const rankCommand = require("./commands/rank");
@@ -58,6 +61,9 @@ const fixAllUsersInLeaderboardCommand =
 
 const logsCommand =
     require("./commands/logs");
+
+const tradeCommand =
+    require("./commands/trade");
 
 const http = require("http");
 
@@ -111,6 +117,7 @@ client.once("clientReady", async () => {
 
     await boosts.restoreBoosts(client);
     await luck.restoreLuckBoosts(client);
+    await trades.restoreTrades(client);
 
 
 
@@ -154,6 +161,27 @@ setInterval(async()=>{
 },15000);
 
 
+setInterval(async()=>{
+
+    try{
+
+        await trades.cleanupExpiredTrades(
+            client
+        );
+
+    }
+    catch(error){
+
+        console.error(
+            "Trade cleanup failed:",
+            error
+        );
+
+    }
+
+},60000);
+
+
 });
 
 client.on(
@@ -176,6 +204,18 @@ client.on(
 
 client.on("guildMemberRemove", async member => {
 
+    await trades.handleMemberRemove(
+        member
+    ).catch(error => {
+
+        console.error(
+            "Trade member-leave cleanup failed:",
+            error
+        );
+
+    });
+
+
     await database.removeUser(
         member.guild.id,
         member.id
@@ -183,6 +223,19 @@ client.on("guildMemberRemove", async member => {
 
 });
 
+
+
+
+client.on(
+    "interactionCreate",
+    async interaction => {
+
+        await trades.handleInteraction(
+            interaction
+        );
+
+    }
+);
 
 
 
@@ -262,6 +315,19 @@ if(
 ){
 
     return shopCommand.execute(
+        message
+    );
+
+}
+
+
+if(
+    /^!trade(?:\s|$)/i.test(
+        message.content.trim()
+    )
+){
+
+    return tradeCommand.execute(
         message
     );
 
