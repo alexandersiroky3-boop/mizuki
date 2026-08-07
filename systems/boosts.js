@@ -931,7 +931,7 @@ async function updateBoost(member){
         wantedRole ===
         BOOST_ROLES.max
 
-            ? 50000
+            ? 1000000
 
             : getRequirement(
                 wantedRole
