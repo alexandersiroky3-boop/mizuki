@@ -12,12 +12,6 @@ const database =
     require("../database");
 
 
-// Luck Boost MAX shop price.
-// SHOP_CATALOG is shared with database.purchaseGlobalShopItem(),
-// so this changes both the displayed price and the XP charged.
-if(database.SHOP_CATALOG?.["luck:max"]){
-    database.SHOP_CATALOG["luck:max"].price = 999999;
-}
 
 
 const boosts =
@@ -55,6 +49,41 @@ const TIER_LABELS = {
     max: "MAX"
 
 };
+
+
+function applyStoredShopPrices(rows){
+
+    for(const row of rows){
+
+        const key =
+            `${String(row.boosttype).toLowerCase()}:` +
+            `${String(row.tier).toLowerCase()}`;
+
+
+        const item =
+            database.SHOP_CATALOG[key];
+
+
+        const storedPrice =
+            Number(row.price);
+
+
+        if(
+            item
+            &&
+            Number.isFinite(storedPrice)
+            &&
+            storedPrice > 0
+        ){
+
+            item.price =
+                storedPrice;
+
+        }
+
+    }
+
+}
 
 
 function getProfile(
@@ -283,6 +312,13 @@ async function buildShopPanel(
 
     const shop =
         await database.getGlobalShop();
+
+
+    // The database stores the price selected for this exact
+    // two-hour shop cycle. Apply it before building the embed/buttons.
+    applyStoredShopPrices(
+        shop.stock
+    );
 
 
     const stock =
