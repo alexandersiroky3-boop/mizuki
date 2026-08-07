@@ -235,7 +235,7 @@ function getNextTierData(
 
 
     // After MAX is earned, start a new MAX progress cycle.
-    // Repeated MAX rewards require another 50,000 hourly XP.
+    // Repeated MAX rewards require another 1,000,000 hourly XP.
     if(safeXP >= 25000){
 
         const cycleStartXP =
@@ -248,7 +248,7 @@ function getNextTierData(
 
 
         const requiredXP =
-            50000;
+            1000000;
 
 
         const currentXP =
