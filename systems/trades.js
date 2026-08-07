@@ -126,8 +126,17 @@ function getBoostLabel(key){
             : luck.LUCK_ROLES[tier];
 
 
-    if(profile?.name)
-        return profile.name;
+    if(profile?.name){
+
+        if(boostType === "luck")
+            return `@☘️ ${profile.name}`;
+
+        if(boostType === "xp")
+            return `@⚡ ${profile.name}`;
+
+        return `@${profile.name}`;
+
+    }
 
 
     return (
