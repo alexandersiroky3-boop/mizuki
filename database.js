@@ -1,3 +1,5 @@
+console.log("DATABASE_URL:", process.env.DATABASE_URL);
+
 const { Pool } = require("pg");
 
 
@@ -86,19 +88,65 @@ const SHOP_CATALOG = {
         key: "luck:tier3",
         boostType: "luck",
         tier: "tier3",
-        price: 124999,
-        maxStock: 10
+        price: 999999,
+        maxStock: 5
     },
 
     "luck:max": {
         key: "luck:max",
         boostType: "luck",
         tier: "max",
-        price: 1999999,
-        maxStock: 5
+        price: 2499999,
+        maxStock: 2
     }
 
 };
+
+
+// Random prices are chosen ONCE per shop refresh and then stored
+// in PostgreSQL for the whole shop cycle.
+const SHOP_PRICE_OPTIONS = {
+
+    "luck:tier3": [
+        999999,
+        1999999,
+        4999999
+    ],
+
+    "luck:max": [
+        2499999,
+        7499999,
+        12499999
+    ]
+
+};
+
+
+function getRandomShopPrice(item){
+
+    const options =
+        SHOP_PRICE_OPTIONS[item.key];
+
+
+    if(
+        !Array.isArray(options)
+        ||
+        options.length === 0
+    ){
+
+        return item.price;
+
+    }
+
+
+    return options[
+        Math.floor(
+            Math.random() *
+            options.length
+        )
+    ];
+
+}
 
 
 
@@ -272,12 +320,24 @@ await db.query(`
 
         maxAmount INTEGER NOT NULL DEFAULT 0,
 
+        price BIGINT,
+
         PRIMARY KEY(
             boostType,
             tier
         )
 
     )
+
+`);
+
+
+await db.query(`
+
+    ALTER TABLE shop_stock
+
+    ADD COLUMN IF NOT EXISTS
+    price BIGINT
 
 `);
 
@@ -301,81 +361,11 @@ await db.query(`
 ]);
 
 
-await db.query(`
-
-    CREATE TABLE IF NOT EXISTS quest_cycles (
-
-        guildID TEXT NOT NULL,
-
-        userID TEXT NOT NULL,
-
-        cycleType TEXT NOT NULL,
-
-        cycleKey TEXT NOT NULL,
-
-        expiresAt BIGINT NOT NULL,
-
-        quests JSONB NOT NULL,
-
-        rewards JSONB NOT NULL,
-
-        rewarded BOOLEAN NOT NULL DEFAULT FALSE,
-
-        rewardedAt BIGINT,
-
-        PRIMARY KEY(
-            guildID,
-            userID,
-            cycleType,
-            cycleKey
-        )
-
-    )
-
-`);
-
-
-await db.query(`
-
-    CREATE TABLE IF NOT EXISTS quest_effects (
-
-        guildID TEXT NOT NULL,
-
-        userID TEXT NOT NULL,
-
-        guaranteed25k75k INTEGER NOT NULL DEFAULT 0,
-
-        guaranteedImpossible INTEGER NOT NULL DEFAULT 0,
-
-        tripleRollUntil BIGINT NOT NULL DEFAULT 0,
-
-        rollWindowEndsAt BIGINT NOT NULL DEFAULT 0,
-
-        rollWindowUses INTEGER NOT NULL DEFAULT 0,
-
-        PRIMARY KEY(
-            guildID,
-            userID
-        )
-
-    )
-
-`);
-
-
-await db.query(`
-
-    DELETE FROM quest_cycles
-
-    WHERE expiresAt < $1
-
-`, [
-    Date.now() -
-    14 * 24 * 60 * 60 * 1000
-]);
-
-
 for(const item of Object.values(SHOP_CATALOG)){
+
+    const initialPrice =
+        getRandomShopPrice(item);
+
 
     await db.query(`
 
@@ -384,11 +374,12 @@ for(const item of Object.values(SHOP_CATALOG)){
             boostType,
             tier,
             amount,
-            maxAmount
+            maxAmount,
+            price
         )
 
         VALUES
-        ($1,$2,$3,$3)
+        ($1,$2,$3,$3,$4)
 
         ON CONFLICT(
             boostType,
@@ -402,12 +393,21 @@ for(const item of Object.values(SHOP_CATALOG)){
             amount = LEAST(
                 shop_stock.amount,
                 EXCLUDED.maxAmount
-            )
+            ),
+
+            price =
+                CASE
+                    WHEN shop_stock.price IS NULL
+                    OR shop_stock.price <= 0
+                    THEN EXCLUDED.price
+                    ELSE shop_stock.price
+                END
 
     `, [
         item.boostType,
         item.tier,
-        item.maxStock
+        item.maxStock,
+        initialPrice
     ]);
 
 }
@@ -1144,31 +1144,6 @@ await client.query(`
 await client.query(`
 
     DELETE FROM xp_logs
-
-    WHERE guildID=$1
-    AND userID=$2
-
-`, [
-    guildID,
-    userID
-]);
-
-
-await client.query(`
-
-    DELETE FROM quest_cycles
-
-    WHERE guildID=$1
-    AND userID=$2
-
-`, [
-    guildID,
-    userID
-]);
-
-await client.query(`
-
-    DELETE FROM quest_effects
 
     WHERE guildID=$1
     AND userID=$2
@@ -2127,6 +2102,33 @@ async function lockAndRefreshShop(client){
         `);
 
 
+        // Pick and store the next cycle's prices.
+        // Because shop_state is locked above, this only happens
+        // once even if multiple users open !shop at the same time.
+        for(const item of Object.values(SHOP_CATALOG)){
+
+            const nextPrice =
+                getRandomShopPrice(item);
+
+
+            await client.query(`
+
+                UPDATE shop_stock
+
+                SET price=$3
+
+                WHERE boostType=$1
+                AND tier=$2
+
+            `, [
+                item.boostType,
+                item.tier,
+                nextPrice
+            ]);
+
+        }
+
+
         await client.query(`
 
             UPDATE shop_state
@@ -2178,7 +2180,8 @@ async function getGlobalShop(){
                     boostType,
                     tier,
                     amount,
-                    maxAmount
+                    maxAmount,
+                    price
 
                 FROM shop_stock
 
@@ -2262,7 +2265,9 @@ async function purchaseGlobalShopItem(
         const stockResult =
             await client.query(`
 
-                SELECT amount
+                SELECT
+                    amount,
+                    price
 
                 FROM shop_stock
 
@@ -2281,6 +2286,12 @@ async function purchaseGlobalShopItem(
             Number(
                 stockResult.rows[0]?.amount || 0
             );
+
+
+        const currentPrice =
+            Number(
+                stockResult.rows[0]?.price
+            ) || item.price;
 
 
         if(currentStock <= 0){
@@ -2339,17 +2350,17 @@ async function purchaseGlobalShopItem(
             );
 
 
-        if(currentXP < item.price){
+        if(currentXP < currentPrice){
 
             await client.query("COMMIT");
 
             return {
                 success: false,
                 status: "not-enough-xp",
-                price: item.price,
+                price: currentPrice,
                 balance: currentXP,
                 missing:
-                    item.price - currentXP,
+                    currentPrice - currentXP,
                 nextRefreshAt:
                     state.nextRefreshAt
             };
@@ -2405,7 +2416,7 @@ async function purchaseGlobalShopItem(
             `, [
                 guildID,
                 userID,
-                item.price
+                currentPrice
             ]);
 
 
@@ -2458,7 +2469,7 @@ async function purchaseGlobalShopItem(
             success: true,
             status: "purchased",
             item,
-            price: item.price,
+            price: currentPrice,
             balance:
                 Number(
                     updatedUser.rows[0]?.xp || 0
@@ -2491,1065 +2502,6 @@ async function purchaseGlobalShopItem(
 
 }
 
-
-
-// =====================================================
-// QUEST SYSTEM
-// =====================================================
-
-async function getQuestCycle(
-    guildID,
-    userID,
-    cycleType,
-    cycleKey
-){
-
-    const result =
-        await db.query(`
-
-            SELECT *
-
-            FROM quest_cycles
-
-            WHERE guildID=$1
-            AND userID=$2
-            AND cycleType=$3
-            AND cycleKey=$4
-
-        `, [
-            guildID,
-            userID,
-            String(cycleType).toLowerCase(),
-            cycleKey
-        ]);
-
-
-    return result.rows[0] || null;
-
-}
-
-
-async function createQuestCycle(
-    guildID,
-    userID,
-    cycleType,
-    cycleKey,
-    expiresAt,
-    quests,
-    rewards
-){
-
-    await db.query(`
-
-        INSERT INTO quest_cycles
-        (
-            guildID,
-            userID,
-            cycleType,
-            cycleKey,
-            expiresAt,
-            quests,
-            rewards,
-            rewarded
-        )
-
-        VALUES
-        ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,FALSE)
-
-        ON CONFLICT(
-            guildID,
-            userID,
-            cycleType,
-            cycleKey
-        )
-
-        DO NOTHING
-
-    `, [
-        guildID,
-        userID,
-        String(cycleType).toLowerCase(),
-        cycleKey,
-        Number(expiresAt),
-        JSON.stringify(quests),
-        JSON.stringify(rewards)
-    ]);
-
-
-    return getQuestCycle(
-        guildID,
-        userID,
-        cycleType,
-        cycleKey
-    );
-
-}
-
-
-async function updateQuestCycleProgress(
-    guildID,
-    userID,
-    cycleType,
-    cycleKey,
-    eventType,
-    amount
-){
-
-    const client =
-        await db.connect();
-
-
-    try{
-
-        await client.query("BEGIN");
-
-
-        const result =
-            await client.query(`
-
-                SELECT *
-
-                FROM quest_cycles
-
-                WHERE guildID=$1
-                AND userID=$2
-                AND cycleType=$3
-                AND cycleKey=$4
-
-                FOR UPDATE
-
-            `, [
-                guildID,
-                userID,
-                String(cycleType).toLowerCase(),
-                cycleKey
-            ]);
-
-
-        const row =
-            result.rows[0];
-
-
-        if(!row){
-
-            await client.query("ROLLBACK");
-
-            return null;
-
-        }
-
-
-        const quests =
-            typeof row.quests === "string"
-                ? JSON.parse(row.quests)
-                : row.quests;
-
-
-        const numericAmount =
-            Math.max(
-                0,
-                Number(amount) || 0
-            );
-
-
-        const newlyCompleted = [];
-
-
-        for(const quest of quests){
-
-            if(
-                quest.type !== eventType ||
-                quest.completed
-            ){
-
-                continue;
-
-            }
-
-
-            const previousProgress =
-                Math.max(
-                    0,
-                    Number(quest.progress) || 0
-                );
-
-
-            const target =
-                Math.max(
-                    1,
-                    Number(quest.target) || 1
-                );
-
-
-            const nextProgress =
-                quest.mode === "max"
-                    ? Math.max(
-                        previousProgress,
-                        numericAmount
-                    )
-                    : previousProgress +
-                        numericAmount;
-
-
-            quest.progress =
-                Math.min(
-                    target,
-                    nextProgress
-                );
-
-
-            if(quest.progress >= target){
-
-                quest.completed =
-                    true;
-
-                quest.completedAt =
-                    Date.now();
-
-                newlyCompleted.push(
-                    quest
-                );
-
-            }
-
-        }
-
-
-        const allCompleted =
-            quests.length > 0 &&
-            quests.every(
-                quest =>
-                    Boolean(quest.completed)
-            );
-
-
-        await client.query(`
-
-            UPDATE quest_cycles
-
-            SET quests=$5::jsonb
-
-            WHERE guildID=$1
-            AND userID=$2
-            AND cycleType=$3
-            AND cycleKey=$4
-
-        `, [
-            guildID,
-            userID,
-            String(cycleType).toLowerCase(),
-            cycleKey,
-            JSON.stringify(quests)
-        ]);
-
-
-        await client.query("COMMIT");
-
-
-        return {
-            cycleType:
-                String(cycleType).toLowerCase(),
-            cycleKey,
-            quests,
-            rewards:
-                typeof row.rewards === "string"
-                    ? JSON.parse(row.rewards)
-                    : row.rewards,
-            newlyCompleted,
-            allCompleted,
-            rewarded:
-                Boolean(row.rewarded)
-        };
-
-    }
-    catch(error){
-
-        await client.query("ROLLBACK");
-
-        throw error;
-
-    }
-    finally{
-
-        client.release();
-
-    }
-
-}
-
-
-async function claimQuestCycleRewards(
-    guildID,
-    userID,
-    cycleType,
-    cycleKey
-){
-
-    const client =
-        await db.connect();
-
-
-    try{
-
-        await client.query("BEGIN");
-
-
-        const result =
-            await client.query(`
-
-                SELECT *
-
-                FROM quest_cycles
-
-                WHERE guildID=$1
-                AND userID=$2
-                AND cycleType=$3
-                AND cycleKey=$4
-
-                FOR UPDATE
-
-            `, [
-                guildID,
-                userID,
-                String(cycleType).toLowerCase(),
-                cycleKey
-            ]);
-
-
-        const row =
-            result.rows[0];
-
-
-        if(!row){
-
-            await client.query("ROLLBACK");
-
-            return {
-                claimed: false,
-                status: "missing"
-            };
-
-        }
-
-
-        if(row.rewarded){
-
-            await client.query("COMMIT");
-
-            return {
-                claimed: false,
-                status: "already-claimed"
-            };
-
-        }
-
-
-        const quests =
-            typeof row.quests === "string"
-                ? JSON.parse(row.quests)
-                : row.quests;
-
-
-        const allCompleted =
-            quests.length > 0 &&
-            quests.every(
-                quest =>
-                    Boolean(quest.completed)
-            );
-
-
-        if(!allCompleted){
-
-            await client.query("COMMIT");
-
-            return {
-                claimed: false,
-                status: "incomplete"
-            };
-
-        }
-
-
-        const rewards =
-            typeof row.rewards === "string"
-                ? JSON.parse(row.rewards)
-                : row.rewards;
-
-
-        await client.query(`
-
-            INSERT INTO users
-            (
-                guildID,
-                userID
-            )
-
-            VALUES($1,$2)
-
-            ON CONFLICT DO NOTHING
-
-        `, [
-            guildID,
-            userID
-        ]);
-
-
-        await client.query(`
-
-            INSERT INTO quest_effects
-            (
-                guildID,
-                userID
-            )
-
-            VALUES($1,$2)
-
-            ON CONFLICT DO NOTHING
-
-        `, [
-            guildID,
-            userID
-        ]);
-
-
-        const now =
-            Date.now();
-
-
-        for(const reward of rewards){
-
-            if(reward.type === "xp"){
-
-                await client.query(`
-
-                    UPDATE users
-
-                    SET xp = GREATEST(
-                        0,
-                        xp + $3
-                    )
-
-                    WHERE guildID=$1
-                    AND userID=$2
-
-                `, [
-                    guildID,
-                    userID,
-                    Math.max(
-                        0,
-                        Number(reward.amount) || 0
-                    )
-                ]);
-
-            }
-            else if(reward.type === "boost"){
-
-                await client.query(`
-
-                    INSERT INTO boost_inventory
-                    (
-                        guildID,
-                        userID,
-                        boostType,
-                        tier,
-                        amount
-                    )
-
-                    VALUES($1,$2,$3,$4,$5)
-
-                    ON CONFLICT(
-                        guildID,
-                        userID,
-                        boostType,
-                        tier
-                    )
-
-                    DO UPDATE SET
-
-                        amount =
-                            boost_inventory.amount +
-                            EXCLUDED.amount
-
-                `, [
-                    guildID,
-                    userID,
-                    String(reward.boostType).toLowerCase(),
-                    String(reward.tier).toLowerCase(),
-                    Math.max(
-                        1,
-                        Number(reward.amount) || 1
-                    )
-                ]);
-
-            }
-            else if(
-                reward.type === "guaranteed_roll" &&
-                reward.rollType === "daily_25k_75k"
-            ){
-
-                await client.query(`
-
-                    UPDATE quest_effects
-
-                    SET guaranteed25k75k =
-                        guaranteed25k75k + $3
-
-                    WHERE guildID=$1
-                    AND userID=$2
-
-                `, [
-                    guildID,
-                    userID,
-                    Math.max(
-                        1,
-                        Number(reward.amount) || 1
-                    )
-                ]);
-
-            }
-            else if(
-                reward.type === "guaranteed_roll" &&
-                reward.rollType === "impossible"
-            ){
-
-                await client.query(`
-
-                    UPDATE quest_effects
-
-                    SET guaranteedImpossible =
-                        guaranteedImpossible + $3
-
-                    WHERE guildID=$1
-                    AND userID=$2
-
-                `, [
-                    guildID,
-                    userID,
-                    Math.max(
-                        1,
-                        Number(reward.amount) || 1
-                    )
-                ]);
-
-            }
-            else if(reward.type === "triple_roll"){
-
-                await client.query(`
-
-                    UPDATE quest_effects
-
-                    SET
-                        tripleRollUntil =
-                            GREATEST(
-                                tripleRollUntil,
-                                $3
-                            ) + $4,
-
-                        rollWindowEndsAt = 0,
-
-                        rollWindowUses = 0
-
-                    WHERE guildID=$1
-                    AND userID=$2
-
-                `, [
-                    guildID,
-                    userID,
-                    now,
-                    Math.max(
-                        1,
-                        Number(reward.durationMs) ||
-                        24 * 60 * 60 * 1000
-                    )
-                ]);
-
-            }
-
-        }
-
-
-        await client.query(`
-
-            UPDATE quest_cycles
-
-            SET
-                rewarded=TRUE,
-                rewardedAt=$5
-
-            WHERE guildID=$1
-            AND userID=$2
-            AND cycleType=$3
-            AND cycleKey=$4
-
-        `, [
-            guildID,
-            userID,
-            String(cycleType).toLowerCase(),
-            cycleKey,
-            now
-        ]);
-
-
-        await client.query("COMMIT");
-
-
-        userCache.delete(
-            `${guildID}:${userID}`
-        );
-
-
-        return {
-            claimed: true,
-            status: "claimed",
-            rewards
-        };
-
-    }
-    catch(error){
-
-        await client.query("ROLLBACK");
-
-        throw error;
-
-    }
-    finally{
-
-        client.release();
-
-    }
-
-}
-
-
-async function getQuestEffects(
-    guildID,
-    userID
-){
-
-    await db.query(`
-
-        INSERT INTO quest_effects
-        (
-            guildID,
-            userID
-        )
-
-        VALUES($1,$2)
-
-        ON CONFLICT DO NOTHING
-
-    `, [
-        guildID,
-        userID
-    ]);
-
-
-    const result =
-        await db.query(`
-
-            SELECT *
-
-            FROM quest_effects
-
-            WHERE guildID=$1
-            AND userID=$2
-
-        `, [
-            guildID,
-            userID
-        ]);
-
-
-    return result.rows[0] || null;
-
-}
-
-
-async function consumeGuaranteedQuestRoll(
-    guildID,
-    userID
-){
-
-    const client =
-        await db.connect();
-
-
-    try{
-
-        await client.query("BEGIN");
-
-
-        await client.query(`
-
-            INSERT INTO quest_effects
-            (
-                guildID,
-                userID
-            )
-
-            VALUES($1,$2)
-
-            ON CONFLICT DO NOTHING
-
-        `, [
-            guildID,
-            userID
-        ]);
-
-
-        const result =
-            await client.query(`
-
-                SELECT *
-
-                FROM quest_effects
-
-                WHERE guildID=$1
-                AND userID=$2
-
-                FOR UPDATE
-
-            `, [
-                guildID,
-                userID
-            ]);
-
-
-        const row =
-            result.rows[0];
-
-
-        let rollType =
-            null;
-
-
-        if(
-            Number(
-                row.guaranteedimpossible || 0
-            ) > 0
-        ){
-
-            rollType =
-                "impossible";
-
-
-            await client.query(`
-
-                UPDATE quest_effects
-
-                SET guaranteedImpossible =
-                    guaranteedImpossible - 1
-
-                WHERE guildID=$1
-                AND userID=$2
-
-            `, [
-                guildID,
-                userID
-            ]);
-
-        }
-        else if(
-            Number(
-                row.guaranteed25k75k || 0
-            ) > 0
-        ){
-
-            rollType =
-                "daily_25k_75k";
-
-
-            await client.query(`
-
-                UPDATE quest_effects
-
-                SET guaranteed25k75k =
-                    guaranteed25k75k - 1
-
-                WHERE guildID=$1
-                AND userID=$2
-
-            `, [
-                guildID,
-                userID
-            ]);
-
-        }
-
-
-        await client.query("COMMIT");
-
-
-        return rollType;
-
-    }
-    catch(error){
-
-        await client.query("ROLLBACK");
-
-        throw error;
-
-    }
-    finally{
-
-        client.release();
-
-    }
-
-}
-
-
-async function useQuestRollCooldown(
-    guildID,
-    userID,
-    cooldownMs
-){
-
-    const client =
-        await db.connect();
-
-
-    try{
-
-        await client.query("BEGIN");
-
-
-        const now =
-            Date.now();
-
-
-        const safeCooldown =
-            Math.max(
-                1000,
-                Number(cooldownMs) || 30000
-            );
-
-
-        await client.query(`
-
-            INSERT INTO quest_effects
-            (
-                guildID,
-                userID
-            )
-
-            VALUES($1,$2)
-
-            ON CONFLICT DO NOTHING
-
-        `, [
-            guildID,
-            userID
-        ]);
-
-
-        const effectResult =
-            await client.query(`
-
-                SELECT *
-
-                FROM quest_effects
-
-                WHERE guildID=$1
-                AND userID=$2
-
-                FOR UPDATE
-
-            `, [
-                guildID,
-                userID
-            ]);
-
-
-        const effect =
-            effectResult.rows[0];
-
-
-        if(
-            Number(
-                effect.triplerolluntil || 0
-            ) > now
-        ){
-
-            let windowEndsAt =
-                Number(
-                    effect.rollwindowendsat || 0
-                );
-
-
-            let windowUses =
-                Number(
-                    effect.rollwindowuses || 0
-                );
-
-
-            if(windowEndsAt <= now){
-
-                windowEndsAt =
-                    now + safeCooldown;
-
-                windowUses =
-                    0;
-
-            }
-
-
-            if(windowUses >= 3){
-
-                await client.query("COMMIT");
-
-
-                return {
-                    allowed: false,
-                    remaining:
-                        Math.max(
-                            0,
-                            windowEndsAt - now
-                        ),
-                    tripleRoll: true,
-                    usesLeft: 0
-                };
-
-            }
-
-
-            windowUses++;
-
-
-            await client.query(`
-
-                UPDATE quest_effects
-
-                SET
-                    rollWindowEndsAt=$3,
-                    rollWindowUses=$4
-
-                WHERE guildID=$1
-                AND userID=$2
-
-            `, [
-                guildID,
-                userID,
-                windowEndsAt,
-                windowUses
-            ]);
-
-
-            await client.query("COMMIT");
-
-
-            return {
-                allowed: true,
-                remaining: 0,
-                tripleRoll: true,
-                usesLeft:
-                    3 - windowUses,
-                activeUntil:
-                    Number(
-                        effect.triplerolluntil
-                    )
-            };
-
-        }
-
-
-        const cooldownResult =
-            await client.query(`
-
-                SELECT expiresAt
-
-                FROM command_cooldowns
-
-                WHERE guildID=$1
-                AND userID=$2
-                AND commandName='roll'
-
-                FOR UPDATE
-
-            `, [
-                guildID,
-                userID
-            ]);
-
-
-        const existing =
-            cooldownResult.rows[0];
-
-
-        const remaining =
-            existing
-                ? Number(existing.expiresat) - now
-                : 0;
-
-
-        if(remaining > 0){
-
-            await client.query("COMMIT");
-
-
-            return {
-                allowed: false,
-                remaining,
-                tripleRoll: false,
-                usesLeft: 0
-            };
-
-        }
-
-
-        await client.query(`
-
-            INSERT INTO command_cooldowns
-            (
-                guildID,
-                userID,
-                commandName,
-                expiresAt
-            )
-
-            VALUES($1,$2,'roll',$3)
-
-            ON CONFLICT(
-                guildID,
-                userID,
-                commandName
-            )
-
-            DO UPDATE SET
-                expiresAt=$3
-
-        `, [
-            guildID,
-            userID,
-            now + safeCooldown
-        ]);
-
-
-        await client.query("COMMIT");
-
-
-        return {
-            allowed: true,
-            remaining: 0,
-            tripleRoll: false,
-            usesLeft: 0
-        };
-
-    }
-    catch(error){
-
-        await client.query("ROLLBACK");
-
-        throw error;
-
-    }
-    finally{
-
-        client.release();
-
-    }
-
-}
 
 
 module.exports = {
@@ -3636,19 +2588,5 @@ module.exports = {
     updateXPBoostProgress,
 
     clearXPBoostProgress,
-
-    getQuestCycle,
-
-    createQuestCycle,
-
-    updateQuestCycleProgress,
-
-    claimQuestCycleRewards,
-
-    getQuestEffects,
-
-    consumeGuaranteedQuestRoll,
-
-    useQuestRollCooldown,
 
 };
