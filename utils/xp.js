@@ -1,3 +1,5 @@
+const luck = require("./luck");
+
 const BOOST_ROLES = {
 
     tier1:
@@ -14,6 +16,75 @@ const BOOST_ROLES = {
 
 };
 
+// ======================
+// CRITICAL SYSTEM
+// ======================
+//
+// XP Boosts provide the BASE critical chance.
+// Luck Boosts add their critical chance bonus.
+// Each consecutive critical adds +4% momentum
+// to the NEXT critical roll, up to +28%.
+// Final critical chance is capped at 85%.
+
+const CRITICAL_MOMENTUM_PER_STREAK = 4;
+const CRITICAL_MOMENTUM_CAP = 28;
+const CRITICAL_CHANCE_CAP = 85;
+
+
+function getCriticalMomentum(currentStreak){
+
+    const safeStreak =
+        Math.max(
+            0,
+            Number(currentStreak) || 0
+        );
+
+
+    return Math.min(
+        safeStreak *
+            CRITICAL_MOMENTUM_PER_STREAK,
+        CRITICAL_MOMENTUM_CAP
+    );
+
+}
+
+
+function buildCriticalChance(
+    baseCriticalChance,
+    luckCriticalBonus,
+    currentStreak
+){
+
+    const momentumBonus =
+        getCriticalMomentum(
+            currentStreak
+        );
+
+
+    const finalChance =
+        Math.min(
+            CRITICAL_CHANCE_CAP,
+            Number(baseCriticalChance) +
+            Number(luckCriticalBonus) +
+            momentumBonus
+        );
+
+
+    return {
+
+        baseCriticalChance:
+            Number(baseCriticalChance),
+
+        luckCriticalBonus:
+            Number(luckCriticalBonus),
+
+        momentumBonus,
+
+        finalChance
+
+    };
+
+}
 
 
 // ======================
@@ -205,7 +276,7 @@ function getXPAmount(
     let min;
     let max;
 
-    let criticalChance;
+    let baseCriticalChance;
     let criticalBonus;
 
 
@@ -217,7 +288,7 @@ function getXPAmount(
     if(isAboveLevel100){
 
 
-        // MAX BOOST
+        // MAX XP BOOST
         if(
             member.roles.cache.has(
                 BOOST_ROLES.max
@@ -227,13 +298,13 @@ function getXPAmount(
             min = 1500;
             max = 5000;
 
-            criticalChance = 40;
+            baseCriticalChance = 40;
             criticalBonus = 7500;
 
         }
 
 
-        // TIER 3
+        // XP BOOST III
         else if(
             member.roles.cache.has(
                 BOOST_ROLES.tier3
@@ -243,13 +314,13 @@ function getXPAmount(
             min = 750;
             max = 1500;
 
-            criticalChance = 25;
+            baseCriticalChance = 25;
             criticalBonus = 2000;
 
         }
 
 
-        // TIER 2
+        // XP BOOST II
         else if(
             member.roles.cache.has(
                 BOOST_ROLES.tier2
@@ -259,13 +330,13 @@ function getXPAmount(
             min = 300;
             max = 750;
 
-            criticalChance = 15;
+            baseCriticalChance = 15;
             criticalBonus = 900;
 
         }
 
 
-        // TIER 1
+        // XP BOOST I
         else if(
             member.roles.cache.has(
                 BOOST_ROLES.tier1
@@ -275,19 +346,19 @@ function getXPAmount(
             min = 125;
             max = 300;
 
-            criticalChance = 12;
+            baseCriticalChance = 12;
             criticalBonus = 500;
 
         }
 
 
-        // NO BOOST
+        // NO XP BOOST
         else{
 
             min = 50;
             max = 125;
 
-            criticalChance = 7.5;
+            baseCriticalChance = 7.5;
             criticalBonus = 200;
 
         }
@@ -304,7 +375,7 @@ function getXPAmount(
     else{
 
 
-        // MAX BOOST
+        // MAX XP BOOST
         if(
             member.roles.cache.has(
                 BOOST_ROLES.max
@@ -314,13 +385,13 @@ function getXPAmount(
             min = 900;
             max = 2750;
 
-            criticalChance = 20;
+            baseCriticalChance = 20;
             criticalBonus = 3250;
 
         }
 
 
-        // TIER 3
+        // XP BOOST III
         else if(
             member.roles.cache.has(
                 BOOST_ROLES.tier3
@@ -330,13 +401,13 @@ function getXPAmount(
             min = 500;
             max = 900;
 
-            criticalChance = 10;
+            baseCriticalChance = 10;
             criticalBonus = 1000;
 
         }
 
 
-        // TIER 2
+        // XP BOOST II
         else if(
             member.roles.cache.has(
                 BOOST_ROLES.tier2
@@ -346,13 +417,13 @@ function getXPAmount(
             min = 200;
             max = 500;
 
-            criticalChance = 7.5;
+            baseCriticalChance = 7.5;
             criticalBonus = 600;
 
         }
 
 
-        // TIER 1
+        // XP BOOST I
         else if(
             member.roles.cache.has(
                 BOOST_ROLES.tier1
@@ -362,19 +433,19 @@ function getXPAmount(
             min = 60;
             max = 200;
 
-            criticalChance = 6;
+            baseCriticalChance = 6;
             criticalBonus = 300;
 
         }
 
 
-        // NO BOOST
+        // NO XP BOOST
         else{
 
             min = 20;
             max = 60;
 
-            criticalChance = 3;
+            baseCriticalChance = 3;
             criticalBonus = 100;
 
         }
@@ -397,6 +468,36 @@ function getXPAmount(
 
 
     // ======================
+    // CRITICAL CHANCE
+    // ======================
+
+    const startingStreak =
+        Math.max(
+            0,
+            Number(currentStreak) || 0
+        );
+
+
+    const luckCriticalBonus =
+        luck.getCriticalChanceBonus(
+            member
+        );
+
+
+    const chanceData =
+        buildCriticalChance(
+            baseCriticalChance,
+            luckCriticalBonus,
+            startingStreak
+        );
+
+
+    const criticalChance =
+        chanceData.finalChance;
+
+
+
+    // ======================
     // CRITICAL ROLL
     // ======================
 
@@ -405,15 +506,11 @@ function getXPAmount(
         criticalChance;
 
 
-
     let criticalMultiplier = 1;
 
 
     let criticalStreak =
-        Number(
-            currentStreak
-        ) || 0;
-
+        startingStreak;
 
 
     if(critical){
@@ -422,7 +519,7 @@ function getXPAmount(
         criticalStreak++;
 
 
-        // Maximum multiplier is x10.
+        // Critical XP multiplier still caps at x10.
         criticalMultiplier =
             Math.min(
                 criticalStreak,
@@ -439,10 +536,23 @@ function getXPAmount(
     else{
 
 
+        // Consecutive still means consecutive:
+        // one failed critical fully resets the streak.
         criticalStreak = 0;
 
 
     }
+
+
+
+    // The chance the user would have on their NEXT
+    // XP-eligible message after this result.
+    const nextChanceData =
+        buildCriticalChance(
+            baseCriticalChance,
+            luckCriticalBonus,
+            criticalStreak
+        );
 
 
 
@@ -459,7 +569,23 @@ function getXPAmount(
         criticalBonus,
 
 
+        baseCriticalChance:
+            chanceData.baseCriticalChance,
+
+
+        luckCriticalBonus:
+            chanceData.luckCriticalBonus,
+
+
+        momentumBonus:
+            chanceData.momentumBonus,
+
+
         criticalChance,
+
+
+        nextCriticalChance:
+            nextChanceData.finalChance,
 
 
         criticalMultiplier,
@@ -470,8 +596,8 @@ function getXPAmount(
 
         levelGroup:
             isAboveLevel100
-                ? "99+"
-                : "1-98"
+                ? "100+"
+                : "1-100"
 
 
     };
