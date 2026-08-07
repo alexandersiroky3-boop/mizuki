@@ -21,6 +21,9 @@ const boosts =
 const luck =
     require("../utils/luck");
 
+const quests =
+    require("./quests");
+
 
 const TRADE_CATEGORY_ID =
     "1535247237821505556";
@@ -2108,6 +2111,42 @@ async function handleRemoveSelect(
 }
 
 
+async function recordSuccessfulTradeQuests(
+    source,
+    trade
+){
+
+    if(!trade)
+        return;
+
+
+    await Promise.all([
+
+        quests.recordEvent(
+            source,
+            "successful_trade",
+            1,
+            {
+                userID:
+                    trade.user1id
+            }
+        ),
+
+        quests.recordEvent(
+            source,
+            "successful_trade",
+            1,
+            {
+                userID:
+                    trade.user2id
+            }
+        )
+
+    ]);
+
+}
+
+
 // =====================================================
 // CONFIRM / COMPLETE
 // =====================================================
@@ -2254,6 +2293,12 @@ async function handleConfirm(
 
     const completedTrade =
         completion.trade;
+
+
+    await recordSuccessfulTradeQuests(
+        interaction,
+        completedTrade
+    );
 
 
     const channel =
@@ -2839,6 +2884,42 @@ async function restoreTrades(
 
 
             if(result.success){
+
+                const restoredTrade =
+                    result.trade;
+
+                const guild =
+                    restoredTrade
+                        ? await client.guilds.fetch(
+                            restoredTrade.guildid
+                        ).catch(
+                            () => null
+                        )
+                        : null;
+
+                const channel =
+                    restoredTrade?.channelid
+                        ? await client.channels.fetch(
+                            restoredTrade.channelid
+                        ).catch(
+                            () => null
+                        )
+                        : null;
+
+
+                if(guild){
+
+                    await recordSuccessfulTradeQuests(
+                        {
+                            guild,
+                            client,
+                            channel
+                        },
+                        restoredTrade
+                    );
+
+                }
+
 
                 scheduleTradeCleanup(
                     client,
