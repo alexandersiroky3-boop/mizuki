@@ -310,6 +310,26 @@ return {
         reward.criticalBonus,
 
 
+    baseCriticalChance:
+        reward.baseCriticalChance,
+
+
+    luckCriticalBonus:
+        reward.luckCriticalBonus,
+
+
+    momentumBonus:
+        reward.momentumBonus,
+
+
+    criticalChance:
+        reward.criticalChance,
+
+
+    nextCriticalChance:
+        reward.nextCriticalChance,
+
+
     criticalMultiplier:
         reward.criticalMultiplier,
 
