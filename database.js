@@ -3034,6 +3034,71 @@ async function createQuestCycle(
 }
 
 
+async function getActiveQuestCycles(
+    now = Date.now()
+){
+
+    const result =
+        await db.query(`
+
+            SELECT *
+
+            FROM quest_cycles
+
+            WHERE expiresAt > $1
+
+            ORDER BY expiresAt ASC
+
+        `, [
+            Number(now)
+        ]);
+
+
+    return result.rows;
+
+}
+
+
+async function replaceQuestCycleData(
+    guildID,
+    userID,
+    cycleType,
+    cycleKey,
+    quests,
+    rewards
+){
+
+    const result =
+        await db.query(`
+
+            UPDATE quest_cycles
+
+            SET
+                quests=$5::jsonb,
+                rewards=$6::jsonb
+
+            WHERE guildID=$1
+            AND userID=$2
+            AND cycleType=$3
+            AND cycleKey=$4
+
+            RETURNING *
+
+        `, [
+            guildID,
+            userID,
+            String(cycleType).toLowerCase(),
+            cycleKey,
+            JSON.stringify(quests || []),
+            JSON.stringify(rewards || [])
+        ]);
+
+
+    return result.rows[0] || null;
+
+}
+
+
 async function updateQuestCycleProgress(
     guildID,
     userID,
@@ -5963,6 +6028,10 @@ module.exports = {
     getQuestCycle,
 
     createQuestCycle,
+
+    getActiveQuestCycles,
+
+    replaceQuestCycleData,
 
     updateQuestCycleProgress,
 
