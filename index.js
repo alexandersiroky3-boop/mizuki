@@ -495,7 +495,7 @@ if(result.critical){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
 
         ).catch(() => {});
 
@@ -508,7 +508,7 @@ if(result.critical){
 
         message.reply(
 
-            `🐦‍🔥🔥 **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!** 🔥🐦‍🔥\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
+            `🐦‍🔥🔥 **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!** 🔥🐦‍🔥`
 
         ).catch(() => {});
 
@@ -524,7 +524,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**\n📉 Critical Momentum reset. Next chance: **${result.nextCriticalChance}%**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
 
     ).catch(() => {});
 
