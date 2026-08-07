@@ -33,6 +33,9 @@ const LUCK_ROLES = {
         multiplier:
             2,
 
+        criticalChanceBonus:
+            2.5,
+
         duration:
             2 * 60 * 60 * 1000,
 
@@ -58,6 +61,9 @@ const LUCK_ROLES = {
 
         multiplier:
             10,
+
+        criticalChanceBonus:
+            7.5,
 
         duration:
             60 * 60 * 1000,
@@ -85,6 +91,9 @@ const LUCK_ROLES = {
         multiplier:
             20,
 
+        criticalChanceBonus:
+            15,
+
         duration:
             20 * 60 * 1000,
 
@@ -110,6 +119,9 @@ const LUCK_ROLES = {
 
         multiplier:
             50,
+
+        criticalChanceBonus:
+            25,
 
         duration:
             10 * 60 * 1000,
@@ -422,6 +434,34 @@ function getLuckRoleByID(roleID){
             role.roleID === roleID
 
     ) || null;
+
+}
+
+
+// ==============================
+// CRITICAL CHANCE BONUS
+// ==============================
+//
+// Luck Boosts now also improve message criticals.
+// Strongest role wins if Discord briefly has more
+// than one Luck role cached during a role update.
+
+function getCriticalChanceBonus(member){
+
+    const activeRole =
+        LUCK_ROLE_LIST.find(
+
+            role =>
+                member.roles.cache.has(
+                    role.roleID
+                )
+
+        );
+
+
+    return Number(
+        activeRole?.criticalChanceBonus || 0
+    );
 
 }
 
@@ -2091,6 +2131,8 @@ function buildRollExtras(
 module.exports = {
 
     LUCK_ROLES,
+
+    getCriticalChanceBonus,
 
     getActiveLuckBoost,
 
