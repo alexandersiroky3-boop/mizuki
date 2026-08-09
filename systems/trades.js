@@ -1456,6 +1456,22 @@ async function handleAddBoost(
                     ) > 0
             )
 
+            .filter(
+                row => {
+
+                    const key =
+                        `${String(row.boosttype).toLowerCase()}:` +
+                        `${String(row.tier).toLowerCase()}`;
+
+
+                    return Object.prototype.hasOwnProperty.call(
+                        database.TRADE_BOOST_FEES,
+                        key
+                    );
+
+                }
+            )
+
             .map(
                 row => {
 
