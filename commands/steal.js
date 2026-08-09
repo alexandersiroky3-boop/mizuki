@@ -174,6 +174,18 @@ if(remaining > 0){
 
 
 
+    const activeLuck =
+        await luck.getActiveLuckBoost(
+            message.member
+        );
+
+
+    const usedLuckExtra =
+        luck.buildUsedCommandLuckExtra(
+            activeLuck
+        );
+
+
     // ==========================
     // STEAL FROM BOT
     // ==========================
@@ -206,15 +218,22 @@ const luckExtra =
     );
 
 
-        const chance =
-            Math.random();
+        const success =
+            Math.random() <
+            luck.getCommandSuccessChance(
+                0.75,
+                activeLuck
+            );
 
 
-        // 75% success
-        if(chance < 0.75){
+        if(success){
 
             const reward =
-                random(100, 2000);
+                luck.rollCommandXP(
+                    100,
+                    2000,
+                    activeLuck
+                );
 
 
             await database.giveXP(
@@ -253,7 +272,7 @@ await syncAndTrackLevel(
 
 *Before Mizuki can fully turn around, ${message.author} grabs some XP and runs away.*
 
-💰 **${message.author.username} successfully stole ${reward.toLocaleString()} XP from Mizuki!**${luckExtra}`
+💰 **${message.author.username} successfully stole ${reward.toLocaleString()} XP from Mizuki!**${usedLuckExtra}${luckExtra}`
 
             );
 
@@ -271,7 +290,7 @@ await syncAndTrackLevel(
 
 *She smiles while taking her XP bag back.*
 
-❌ **The robbery failed! No XP was stolen.**${luckExtra}`
+❌ **The robbery failed! No XP was stolen.**${usedLuckExtra}${luckExtra}`
 
         );
 
@@ -430,112 +449,103 @@ const luckExtra =
 
 
     // ==========================
-    // STEAL CHANCES
+    // STEAL CHANCES + ACTIVE LUCK
     // ==========================
 
-    const chance =
-        Math.random();
+    const stealOutcomes =
+        isLevel100Plus
+            ? [
+                {
+                    key: "failure",
+                    chancePercent: 13.35
+                },
+                {
+                    key: "common",
+                    chancePercent: 75,
+                    min: 100,
+                    max: 2000,
+                    rarity: "COMMON"
+                },
+                {
+                    key: "rare",
+                    chancePercent: 10,
+                    min: 2000,
+                    max: 15000,
+                    rarity: "RARE"
+                },
+                {
+                    key: "epic",
+                    chancePercent: 1,
+                    min: 15000,
+                    max: 50000,
+                    rarity: "EPIC"
+                },
+                {
+                    key: "legendary",
+                    chancePercent: 0.5,
+                    min: 50000,
+                    max: 100000,
+                    rarity: "LEGENDARY"
+                },
+                {
+                    key: "mythic",
+                    chancePercent: 0.1,
+                    min: 100000,
+                    max: 500000,
+                    rarity: "MYTHIC"
+                },
+                {
+                    key: "mythic_high",
+                    chancePercent: 0.05,
+                    min: 500000,
+                    max: 3000000,
+                    rarity: "MYTHIC"
+                }
+            ]
+            : [
+                {
+                    key: "failure",
+                    chancePercent: 13.5
+                },
+                {
+                    key: "common",
+                    chancePercent: 75,
+                    min: 100,
+                    max: 2000,
+                    rarity: "COMMON"
+                },
+                {
+                    key: "rare",
+                    chancePercent: 10,
+                    min: 2000,
+                    max: 15000,
+                    rarity: "RARE"
+                },
+                {
+                    key: "epic",
+                    chancePercent: 1,
+                    min: 15000,
+                    max: 50000,
+                    rarity: "EPIC"
+                },
+                {
+                    key: "legendary",
+                    chancePercent: 0.5,
+                    min: 50000,
+                    max: 100000,
+                    rarity: "LEGENDARY"
+                }
+            ];
 
 
-    let attemptedAmount = 0;
-    let rarity = null;
+    const stealOutcome =
+        luck.rollCommandOutcome(
+            stealOutcomes,
+            activeLuck
+        );
 
 
-
-    // 75%
-    // 100 - 2,000 XP
-    if(chance < 0.75){
-
-        attemptedAmount =
-            random(100, 2000);
-
-        rarity =
-            "COMMON";
-
-    }
-
-
-    // 10%
-    // 2,000 - 15,000 XP
-    else if(chance < 0.85){
-
-        attemptedAmount =
-            random(2000, 15000);
-
-        rarity =
-            "RARE";
-
-    }
-
-
-    // 1%
-    // 15,000 - 50,000 XP
-    else if(chance < 0.86){
-
-        attemptedAmount =
-            random(15000, 50000);
-
-        rarity =
-            "EPIC";
-
-    }
-
-
-    // 0.5%
-    // 50,000 - 100,000 XP
-    else if(chance < 0.865){
-
-        attemptedAmount =
-            random(50000, 100000);
-
-        rarity =
-            "LEGENDARY";
-
-    }
-
-
-    // Target must be level 100+
-    // 0.1%
-    // 100,000 - 500,000 XP
-    else if(
-        isLevel100Plus &&
-        chance < 0.866
-    ){
-
-        attemptedAmount =
-            random(100000, 500000);
-
-        rarity =
-            "MYTHIC";
-
-    }
-
-
-    // Target must be level 100+
-    // 0.05%
-    // 500,000 - 3,000,000 XP
-    else if(
-        isLevel100Plus &&
-        chance < 0.8665
-    ){
-
-        attemptedAmount =
-            random(500000, 3000000);
-
-        rarity =
-            "MYTHIC";
-
-    }
-
-
-    // Remaining chance:
-    //
-    // Below level 100:
-    // 13.5% failure
-    //
-    // Level 100+:
-    // 13.35% failure
-    else{
+    if(stealOutcome.key === "failure"){
 
         return message.channel.send(
 
@@ -549,12 +559,23 @@ const luckExtra =
 
 *${message.author} immediately runs away before things get worse.*
 
-❌ **The robbery failed! No XP was stolen.**${luckExtra}`
+❌ **The robbery failed! No XP was stolen.**${usedLuckExtra}${luckExtra}`
 
         );
 
     }
 
+
+    const attemptedAmount =
+        luck.rollCommandXP(
+            stealOutcome.min,
+            stealOutcome.max,
+            activeLuck
+        );
+
+
+    const rarity =
+        stealOutcome.rarity;
 
 
     // ==========================
@@ -572,7 +593,7 @@ const luckExtra =
 
         return message.channel.send(
 
-            `💀 ${target} didn't have enough XP to steal.${luckExtra}`
+            `💀 ${target} didn't have enough XP to steal.${usedLuckExtra}${luckExtra}`
 
         );
 
@@ -660,7 +681,7 @@ await syncAndTrackLevel(
 
 `💰 **${message.author} STOLE FROM ${target}!** 💰
 
-💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${luckExtra}`
+💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${usedLuckExtra}${luckExtra}`
 
         );
 
@@ -684,7 +705,7 @@ await syncAndTrackLevel(
 
 *${message.author} quickly grabbed ${target}'s bag and started running away while ${target} chased after them, screaming with anger.*
 
-💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${luckExtra}`
+💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${usedLuckExtra}${luckExtra}`
 
         );
 
@@ -714,7 +735,7 @@ await syncAndTrackLevel(
 
 *Mizuki quickly flew away like nothing had happened.*
 
-💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${luckExtra}`
+💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${usedLuckExtra}${luckExtra}`
 
         );
 
@@ -750,7 +771,7 @@ await syncAndTrackLevel(
 
 *Kape used his Thanos gauntlet to pull gravity itself, dragging ${target} toward him and holding them in his giant gauntlet hand.*
 
-💸 **Kape and ${message.author.username} successfully stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${luckExtra}`
+💸 **Kape and ${message.author.username} successfully stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${usedLuckExtra}${luckExtra}`
 
         );
 
@@ -818,7 +839,7 @@ await syncAndTrackLevel(
 
 💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**
 
-✨ **The robbery was inevitable.**${luckExtra}`
+✨ **The robbery was inevitable.**${usedLuckExtra}${luckExtra}`
 
     );
 
