@@ -1,24 +1,27 @@
 const database = require("../database");
-const leveling =
-    require("../systems/leveling");
-const luck =
-    require("../utils/luck");
-const xp =
-    require("../utils/xp");
-const quests =
-    require("../systems/quests");
+const leveling = require("../systems/leveling");
+const luck = require("../utils/luck");
+const xp = require("../utils/xp");
+const boosts = require("../systems/boosts");
+const quests = require("../systems/quests");
 
 
-// 1 hour cooldown
 const COOLDOWN =
-    15 * 60 * 1000;
+    5 * 60 * 60 * 1000; // 5 hours
+
+
+const MAX_BOOST_DURATION =
+    60 * 60 * 1000; // 1 hour
+
+
+const MAX_BOOST_ROLE =
+    "1526995218098815016";
 
 
 
-const BOT_NAME =
-    "bot";
-
-
+// ======================
+// RANDOM NUMBER
+// ======================
 
 function random(min, max){
 
@@ -29,163 +32,81 @@ function random(min, max){
 }
 
 
-const KISS_TABLES = {
-
-    level1To100: [
-        {
-            key: "common",
-            chancePercent: 65.009,
-            min: 1000,
-            max: 4000,
-            rarity: "💖 COMMON KISS"
-        },
-        {
-            key: "rare",
-            chancePercent: 20,
-            min: 4000,
-            max: 10000,
-            rarity: "💜 RARE KISS"
-        },
-        {
-            key: "epic",
-            chancePercent: 12.89,
-            min: 10000,
-            max: 50000,
-            rarity: "🌌 EPIC KISS"
-        },
-        {
-            key: "legendary",
-            chancePercent: 2,
-            min: 50000,
-            max: 250000,
-            rarity: "✨ LEGENDARY KISS"
-        },
-        {
-            key: "mythic",
-            chancePercent: 0.1,
-            min: 500000,
-            max: 3000000,
-            rarity: "🔮 MYTHIC KISS"
-        },
-        {
-            key: "divine",
-            chancePercent: 0.001,
-            min: 3000000,
-            max: 7500000,
-            rarity: "🌠 DIVINE KISS"
-        }
-    ],
-
-    level101Plus: [
-        {
-            key: "common",
-            chancePercent: 35.495,
-            min: 5000,
-            max: 15000,
-            rarity: "💖 COMMON KISS"
-        },
-        {
-            key: "rare",
-            chancePercent: 50,
-            min: 15000,
-            max: 50000,
-            rarity: "💜 RARE KISS"
-        },
-        {
-            key: "epic",
-            chancePercent: 10,
-            min: 50000,
-            max: 300000,
-            rarity: "🌌 EPIC KISS"
-        },
-        {
-            key: "legendary",
-            chancePercent: 4.5,
-            min: 300000,
-            max: 1500000,
-            rarity: "✨ LEGENDARY KISS"
-        },
-        {
-            key: "divine",
-            chancePercent: 0.005,
-            min: 2000000,
-            max: 7500000,
-            rarity: "🌠 DIVINE KISS"
-        }
-    ]
-
-};
+const HUG_OUTCOMES = [
+    {
+        key: "common",
+        chancePercent: 65,
+        min: 15000,
+        max: 30000,
+        rarity: "💞 COMMON"
+    },
+    {
+        key: "rare",
+        chancePercent: 20,
+        min: 30000,
+        max: 75000,
+        rarity: "💖 RARE"
+    },
+    {
+        key: "epic",
+        chancePercent: 10,
+        min: 75000,
+        max: 250000,
+        rarity: "🌇 EPIC"
+    },
+    {
+        key: "legendary",
+        chancePercent: 3.9,
+        min: 250000,
+        max: 750000,
+        rarity: "🪄 LEGENDARY"
+    },
+    {
+        key: "mythic",
+        chancePercent: 1,
+        min: 750000,
+        max: 3000000,
+        rarity: "🌌 MYTHIC"
+    },
+    {
+        key: "divine",
+        chancePercent: 0.1,
+        min: 10000000,
+        max: 10000000,
+        rarity: "✨ DIVINE"
+    }
+];
 
 
-function getKissDialogue(
-    key,
-    author,
-    target
+
+// ======================
+// GIVE MAX BOOST
+// ======================
+
+async function giveMaxBoost(
+    message,
+    userID
 ){
 
-    const dialogues = {
-
-        common:
-`*${author} leans toward ${target} and gives them a quick kiss before pulling away with a grin.*
-
-*Mizuki notices and quietly giggles.*
-
-*"Awww... that was actually kinda cute~"*`,
-
-        rare:
-`*${author} gently pulls ${target} closer and gives them a warm kiss.*
-
-*For a moment, soft purple hearts float around them while Mizuki watches with a surprised smile.*
-
-*"Okayyy... that one had some feeling behind it~"*`,
-
-        epic:
-`*The moment ${author} kisses ${target}, the air around them flashes violet.*
-
-*Tiny stars and glowing hearts begin orbiting them as time seems to slow for a few seconds.*
-
-*Mizuki blinks twice.*
-
-*"U-Uh... kisses aren't normally supposed to do that."*`,
-
-        legendary:
-`*${author} steps toward ${target} as the sky suddenly turns deep purple.*
-
-*Their kiss releases a wave of energy that shakes the ground and sends glowing particles across the horizon.*
-
-*Mizuki shields her face from the blast.*
-
-*"WHAT KIND OF KISS WAS THAT?!"*`,
-
-        mythic:
-`*${author} kisses ${target} and reality bends around them.*
-
-*A gigantic purple galaxy forms overhead while constellations begin spinning around the two of them.*
-
-*For several seconds, gravity itself seems to forget what it is supposed to do.*
-
-*Mizuki stares upward in silence.*
-
-*"...That kiss just reached another universe."*`,
-
-        divine:
-`*Everything stops the instant ${author} kisses ${target}.*
-
-*Sound disappears. The stars freeze. A violet light spreads through every visible corner of reality.*
-
-*Entire constellations rearrange themselves into a glowing heart above them before exploding into cosmic dust.*
-
-*Mizuki slowly lowers her hands, completely speechless.*
-
-*"The universe itself just approved that kiss..."*`
-
-    };
+    const member =
+        await message.guild.members.fetch(
+            userID
+        );
 
 
-    return dialogues[key] || dialogues.common;
+    return boosts.awardXPBoost(
+        member,
+        "max",
+        "DIVINE !hug"
+    );
 
 }
 
+
+
+// ======================
+// EXECUTE
+// ======================
 
 async function syncAndTrackLevel(
     message,
@@ -228,30 +149,39 @@ async function execute(message){
 
 
 
-    // ==========================
-    // Cooldown check
-    // ==========================
+    // ======================
+    // COOLDOWN
+    // ======================
 
 const remaining =
     await database.getCommandCooldownRemaining(
         guildID,
         userID,
-        "kiss"
+        "hug"
     );
 
 
 if(remaining > 0){
 
 
+    const hours =
+        Math.floor(
+            remaining / 3600000
+        );
+
+
     const minutes =
         Math.ceil(
-            remaining / 60000
+            (
+                remaining %
+                3600000
+            ) / 60000
         );
 
 
     return message.reply(
 
-        `⏳ You can use !kiss again in ${minutes} minutes.`
+        `💞 You need to wait **${hours}h ${minutes}m** before hugging again!`
 
     );
 
@@ -260,72 +190,71 @@ if(remaining > 0){
 
 
 
-    const args =
-        message.content.trim().split(" ");
+    // ======================
+    // TARGET
+    // ======================
+
+    const target =
+        message.mentions.users.first();
 
 
 
-    const targetInput =
-        args[1];
-
-
-
-    if(!targetInput){
-
+    if(!target){
 
         return message.reply(
-            "💋 Usage: !kiss @user / user ID / Bot"
+            "💞 You need to hug someone!"
         );
-
 
     }
 
 
 
+    if(target.id === userID){
+
+        return message.reply(
+            "💞 You can't hug yourself!"
+        );
+
+    }
 
 
-    let target = null;
+    await quests.recordEvent(
+        message,
+        "hug_given",
+        1
+    );
 
 
+    const activeLuck =
+        await luck.getActiveLuckBoost(
+            message.member
+        );
 
-    // ==========================
-    // Kiss bot
-    // ==========================
 
-    if(
-        targetInput.toLowerCase()
-        === BOT_NAME
-    ){
+    const usedLuckExtra =
+        luck.buildUsedCommandLuckExtra(
+            activeLuck
+        );
+
+
+    // ======================
+    // HUG BOT
+    // ======================
+
+    if(target.bot){
+
 
 await database.setCommandCooldown(
     guildID,
     userID,
-    "kiss",
+    "hug",
     Date.now() + COOLDOWN
 );
-
-await quests.recordEvent(
-    message,
-    "kiss_given",
-    1
-);
-
-const activeLuck =
-    await luck.getActiveLuckBoost(
-        message.member
-    );
-
-
-const usedLuckExtra =
-    luck.buildUsedCommandLuckExtra(
-        activeLuck
-    );
-
 
 const wonLuckBoost =
     await luck.tryCommandLuckBoostDrop(
         message.member,
-        "kiss"
+        "hug"
     );
 
 
@@ -333,11 +262,11 @@ const luckExtra =
     luck.buildCommandLuckExtra(
         message.author,
         wonLuckBoost,
-        "kiss"
+        "hug"
     );
 
 
-        const nice =
+        const success =
             Math.random() <
             luck.getCommandSuccessChance(
                 0.5,
@@ -346,29 +275,48 @@ const luckExtra =
 
 
 
-        if(nice){
+        // 50% chance:
+        // Guaranteed +50,000 XP
+        if(success){
+
+
+            const botRewardRanges = [
+                { chancePercent: 65, min: 50000, max: 100000 },
+                { chancePercent: 20, min: 100000, max: 250000 },
+                { chancePercent: 10, min: 250000, max: 500000 },
+                { chancePercent: 4, min: 500000, max: 1500000 },
+                { chancePercent: 1, min: 1500000, max: 5000000 }
+            ];
+
+
+            const botOutcome =
+                luck.rollCommandOutcome(
+                    botRewardRanges,
+                    activeLuck
+                );
 
 
             const reward =
                 luck.rollCommandXP(
-                    5,
-                    100,
+                    botOutcome.min,
+                    botOutcome.max,
                     activeLuck
                 );
 
 
+            await database.addXP(
+                guildID,
+                userID,
+                reward
+            );
 
-await database.giveXP(
-    message.guild.id,
-    userID,
-    reward
-);
 
-await quests.recordEvent(
-    message,
-    "earn_xp",
-    reward
-);
+            await quests.recordEvent(
+                message,
+                "earn_xp",
+                reward
+            );
+
 
 await syncAndTrackLevel(
     message,
@@ -376,50 +324,57 @@ await syncAndTrackLevel(
 );
 
 
-
             return message.channel.send(
 
-`*Goth mommy bot blushed so hard that her whole face turned as red as a tomato... then she licks her lips and keeps looking at you.*
+`*Mizuki was just hovering above the ground, looking at her cute members, but suddenly ${message.author} ran up to her and wrapped their arms around her, hugging her tightly... Mizuki immediately blushed and smiled.*
 
-"For your kiss, I will give you **${reward} XP**~~ 💋"${luckExtra}`
+**"T-Thank you... ${message.author}."**
+
+💖 ${message.author} earned **${reward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
 
             );
-
 
         }
 
 
-        else{
+
+        // 50% chance:
+        // Guaranteed -25,000 XP
+        const loss =
+            25000;
 
 
-            const loss =
-                luck.rollCommandPenalty(
-                    5,
-                    100,
-                    activeLuck
-                );
+        const user =
+            await database.getUser(
+                guildID,
+                userID
+            );
 
 
+        const currentXP =
+            Math.max(
+                0,
+                Number(user.xp) || 0
+            );
 
-const user =
-    await database.getUser(
-        message.guild.id,
-        userID
-    );
+
+        const newXP =
+            Math.max(
+                0,
+                currentXP - loss
+            );
 
 
-await database.setXP(
+        const actualLoss =
+            currentXP - newXP;
 
-    message.guild.id,
 
-    userID,
+        await database.setXP(
+            guildID,
+            userID,
+            newXP
+        );
 
-    Math.max(
-        0,
-        user.xp - loss
-    )
-
-);
 
 await syncAndTrackLevel(
     message,
@@ -427,217 +382,188 @@ await syncAndTrackLevel(
 );
 
 
+        return message.channel.send(
 
-            return message.channel.send(
+`*${message.author} suddenly ran toward Mizuki and tried to hug her, but Mizuki quickly moved out of the way.*
 
-`*Goth mommy blushes for a second... then suddenly slaps you.*
+*${message.author} fell face-first onto the ground while Mizuki stared down at them.*
 
-"EW! DON'T YOU KISS ME!" *she says with pure shock and anger.*
+**"You could've at least warned me first..."**
 
-"For that, I will take **${loss} XP**!" 😤${usedLuckExtra}${luckExtra}`
+💔 ${message.author} lost **${actualLoss.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
 
-            );
-
-
-        }
+        );
 
     }
 
 
 
+    // ======================
+    // NORMAL USER HUG
+    // ======================
 
-
-
-    // ==========================
-    // Mention
-    // ==========================
-
-    target =
-        message.mentions.users.first();
-
-
-
-
-
-    // ==========================
-    // User ID
-    // ==========================
-
-    if(!target && /^\d+$/.test(targetInput)){
-
-
-        try{
-
-
-            target =
-                await message.client.users.fetch(
-                    targetInput
-                );
-
-
-        }
-        catch{
-
-            return message.reply(
-                "❌ User not found."
-            );
-
-        }
-
-
-    }
-
-
-
-
-    if(!target){
-
-
-        return message.reply(
-            "❌ I couldn't find that user."
+    const authorData =
+        await database.getUser(
+            guildID,
+            userID
         );
 
 
-    }
-
-
-
-
-    // Prevent kissing yourself
-
-    if(target.id === userID){
-
-
-        return message.reply(
-            "💀 You cannot kiss yourself."
+    const authorLevel =
+        xp.getLevel(
+            Number(authorData?.xp) || 0
         );
 
 
+    // Level 100+ gets a softer Luck II / III / MAX curve.
+    // Luck I and Luck Ω remain unchanged.
+    const commandLuck =
+        authorLevel >= 100
+            ? luck.getLevel100PlusCommandLuckProfile(
+                activeLuck
+            )
+            : activeLuck;
+
+
+    const outcome =
+        luck.rollCommandOutcome(
+            HUG_OUTCOMES,
+            commandLuck
+        );
+
+
+    const reward =
+        luck.rollCommandXP(
+            outcome.min,
+            outcome.max,
+            commandLuck
+        );
+
+
+    const rarity =
+        outcome.rarity;
+
+
+    let text;
+
+
+    if(outcome.key === "common"){
+
+        text =
+`🫂 **${message.author} hugged ${target}!** 🫂`;
+
+    }
+    else if(outcome.key === "rare"){
+
+        text =
+`🫂💖 **A HEARTFELT HUG** 💖🫂
+
+*${message.author} ran up to ${target} and pulled them into a tight hug.*
+
+*Beautiful particles slowly began appearing around them, glowing brighter as the hug continued.*`;
+
+    }
+    else if(outcome.key === "epic"){
+
+        text =
+`🌇🫂 **THE SURPRISE HUG** 🫂🌇
+
+*${message.author} quietly walked up behind ${target} without making a sound.*
+
+*Before ${target} could turn around, ${message.author} wrapped both arms around them from behind and lifted them slightly into the air.*
+
+*${target} was completely caught off guard, but eventually relaxed into the hug.*`;
+
+    }
+    else if(outcome.key === "legendary"){
+
+        text =
+`🪄💫 **THE BACK-BREAKING GROUP HUG** 💫🪄
+
+*${message.author} immediately lifted ${target} into the air and hugged them really, really tightly.*
+
+*Mizuki saw what was happening and excitedly flew toward them.*
+
+*"Wait for me! I want to join too~!"*
+
+*Mizuki wrapped her arms around both of them, turning it into a chaotic group hug.*`;
+
+    }
+    else if(outcome.key === "mythic"){
+
+        text =
+`🌌🌠 **A HUG BEYOND THE UNIVERSE** 🌠🌌
+
+*${message.author} slowly approached ${target} as stars appeared in the middle of the day.*
+
+*The moment they hugged, a massive purple galaxy formed around both of them.*
+
+*Mizuki stared upward in disbelief.*
+
+*"That isn't just a hug... their energy is connecting across the entire universe..."*`;
+
+    }
+    else{
+
+        text =
+`✨💞 **THE PERFECT HUG** 💞✨
+
+*The entire universe suddenly stopped.*
+
+*The moment ${message.author} and ${target} hugged, an endless wave of energy erupted across every universe.*
+
+*Mizuki covered her eyes as countless glowing hearts, stars and galaxies filled reality.*
+
+🌠 **The universe has acknowledged their bond.**`;
+
     }
 
 
+    // ======================
+    // GIVE XP TO BOTH USERS
+    // ======================
 
-
-await database.setCommandCooldown(
-    guildID,
-    userID,
-    "kiss",
-    Date.now() + COOLDOWN
-);
-
-await quests.recordEvent(
-    message,
-    "kiss_given",
-    1
-);
-
-await quests.recordEvent(
-    message,
-    "kiss_received",
-    1,
-    {
-        userID: target.id
-    }
-);
-
-// ==========================
-// KISS RARITY + XP
-// ==========================
-
-const activeLuck =
-    await luck.getActiveLuckBoost(
-        message.member
-    );
-
-
-const usedLuckExtra =
-    luck.buildUsedCommandLuckExtra(
-        activeLuck
-    );
-
-
-const authorData =
-    await database.getUser(
+    await database.addXP(
         guildID,
-        userID
+        userID,
+        reward
     );
 
 
-const currentLevel =
-    xp.getLevel(
-        Number(authorData?.xp) || 0
+    await database.addXP(
+        guildID,
+        target.id,
+        reward
     );
 
 
-const kissTable =
-    currentLevel > 100
-        ? KISS_TABLES.level101Plus
-        : KISS_TABLES.level1To100;
-
-
-// Level 100+ keeps Luck useful, but II / III / MAX
-// use the softer command balance from utils/luck.js.
-const commandLuck =
-    currentLevel >= 100
-        ? luck.getLevel100PlusCommandLuckProfile(
-            activeLuck
-        )
-        : activeLuck;
-
-
-const outcome =
-    luck.rollCommandOutcome(
-        kissTable,
-        commandLuck
+    await quests.recordEvent(
+        message,
+        "earn_xp",
+        reward,
+        {
+            userID
+        }
     );
 
 
-const reward =
-    luck.rollCommandXP(
-        outcome.min,
-        outcome.max,
-        commandLuck
+    await quests.recordEvent(
+        message,
+        "earn_xp",
+        reward,
+        {
+            userID: target.id
+        }
     );
 
 
-await database.giveXP(
-    message.guild.id,
-    target.id,
-    reward
-);
+    // ======================
+    // UPDATE LEVELS
+    // ======================
 
-
-// The kisser receives 15% less XP than the kissed user.
-const kisserReward =
-    Math.floor(
-        reward * 0.85
-    );
-
-
-await database.giveXP(
-    message.guild.id,
-    userID,
-    kisserReward
-);
-
-
-await quests.recordEvent(
+await syncAndTrackLevel(
     message,
-    "earn_xp",
-    reward,
-    {
-        userID: target.id
-    }
-);
-
-
-await quests.recordEvent(
-    message,
-    "earn_xp",
-    kisserReward,
-    {
-        userID
-    }
+    userID
 );
 
 
@@ -647,16 +573,54 @@ await syncAndTrackLevel(
 );
 
 
-await syncAndTrackLevel(
-    message,
-    userID
-);
 
+    // ======================
+    // DIVINE MAX BOOST
+    // ======================
+
+    let authorMaxBoost =
+        null;
+
+
+    let targetMaxBoost =
+        null;
+
+
+    if(rarity === "✨ DIVINE"){
+
+
+        authorMaxBoost =
+            await giveMaxBoost(
+                message,
+                userID
+            );
+
+
+        targetMaxBoost =
+            await giveMaxBoost(
+                message,
+                target.id
+            );
+
+    }
+
+
+
+    // ======================
+    // START COOLDOWN
+    // ======================
+
+await database.setCommandCooldown(
+    guildID,
+    userID,
+    "hug",
+    Date.now() + COOLDOWN
+);
 
 const wonLuckBoost =
     await luck.tryCommandLuckBoostDrop(
         message.member,
-        "kiss"
+        "hug"
     );
 
 
@@ -664,31 +628,43 @@ const luckExtra =
     luck.buildCommandLuckExtra(
         message.author,
         wonLuckBoost,
-        "kiss"
+        "hug"
     );
 
 
-const dialogue =
-    getKissDialogue(
-        outcome.key,
-        message.author,
-        target
+
+    // ======================
+    // RESPONSE
+    // ======================
+
+    if(rarity === "✨ DIVINE"){
+
+        return message.channel.send(
+
+`${text}
+
+${rarity}
+
+💞 Both users received **${reward.toLocaleString()} XP!**
+
+💎 ${message.author} stored <@&${MAX_BOOST_ROLE}>! Inventory: **x${authorMaxBoost.amount}**
+
+💎 ${target} stored <@&${MAX_BOOST_ROLE}>! Inventory: **x${targetMaxBoost.amount}**${usedLuckExtra}${luckExtra}`
+
+        );
+
+    }
+
+
+    return message.channel.send(
+
+`${text}
+
+${rarity}
+
+💞 Both users received **${reward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
+
     );
-
-
-return message.channel.send(
-
-`${outcome.rarity}
-
-${dialogue}
-
-💋 **${message.author.username} kissed ${target.username}!**
-💖 **${target.username} received +${reward.toLocaleString()} XP!**
-💕 **${message.author.username} received +${kisserReward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
-
-);
-
-
 
 }
 
