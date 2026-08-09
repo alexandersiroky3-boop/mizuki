@@ -3065,7 +3065,8 @@ async function replaceQuestCycleData(
     cycleType,
     cycleKey,
     quests,
-    rewards
+    rewards,
+    expiresAt = null
 ){
 
     const result =
@@ -3075,7 +3076,13 @@ async function replaceQuestCycleData(
 
             SET
                 quests=$5::jsonb,
-                rewards=$6::jsonb
+                rewards=$6::jsonb,
+                expiresAt =
+                    CASE
+                        WHEN $7::bigint IS NULL
+                        THEN expiresAt
+                        ELSE $7::bigint
+                    END
 
             WHERE guildID=$1
             AND userID=$2
@@ -3090,7 +3097,10 @@ async function replaceQuestCycleData(
             String(cycleType).toLowerCase(),
             cycleKey,
             JSON.stringify(quests || []),
-            JSON.stringify(rewards || [])
+            JSON.stringify(rewards || []),
+            expiresAt === null
+                ? null
+                : Number(expiresAt)
         ]);
 
 
