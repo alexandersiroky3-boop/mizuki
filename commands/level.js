@@ -16,8 +16,37 @@ async function execute(message){
         );
 
 
+    const totalXP =
+        Math.max(
+            0,
+            Number(user.xp) || 0
+        );
+
+
+    // Always calculate the real level from total XP instead
+    // of trusting a possibly stale stored level.
+    //
+    // This also repairs old trade cases where XP was removed
+    // but the stored level had not been lowered yet.
     const currentLevel =
-        user.level;
+        xp.getLevel(
+            totalXP
+        );
+
+
+    const storedLevel =
+        Number(user.level) || 1;
+
+
+    if(currentLevel !== storedLevel){
+
+        await database.setLevel(
+            message.guild.id,
+            message.author.id,
+            currentLevel
+        );
+
+    }
 
 
     const currentXP =
@@ -33,7 +62,10 @@ async function execute(message){
 
 
     const progressXP =
-        user.xp - currentXP;
+        Math.max(
+            0,
+            totalXP - currentXP
+        );
 
 
     const neededXP =
@@ -56,7 +88,8 @@ async function execute(message){
 
 
 
-    const bars = 20;
+    // 10 blocks keeps the progress bar compact on mobile.
+    const bars = 10;
 
 
     const filled =
@@ -127,7 +160,7 @@ ${progressBar}
 
 > 🏆 **Rank:** #${rank}
 > 💬 **Messages:** ${user.messages.toLocaleString()}
-> ✦ **Total XP:** ${user.xp.toLocaleString()}`
+> ✦ **Total XP:** ${totalXP.toLocaleString()}`
 
         )
 
