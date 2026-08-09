@@ -1236,6 +1236,334 @@ async function rollWithLuck(
 
 
 // ==============================
+// COMMAND-WIDE LUCK SYSTEM
+// ==============================
+//
+// Used by random gameplay commands such as
+// !kiss, !hug, !steal and !ezwin.
+//
+// Luck does TWO things:
+// 1. Higher rarities become much more likely.
+// 2. XP rolls inside the selected rarity are
+//    biased toward the high end of the range.
+//
+// The visible x2/x10/x20/x50/x1000 Luck rating
+// is used as the rarity-weighting strength.
+
+const COMMAND_REWARD_BIAS_POWER = {
+
+    0: 1,
+    1: 0.75,
+    2: 0.50,
+    3: 0.30,
+    4: 0.12,
+    5: 0.03
+
+};
+
+
+const COMMAND_SUCCESS_INFLUENCE = {
+
+    0: 0,
+    1: 0.10,
+    2: 0.25,
+    3: 0.50,
+    4: 0.85,
+    5: 0.98
+
+};
+
+
+function getCommandLuckOrder(profile){
+
+    return Math.max(
+        0,
+        Math.min(
+            5,
+            Number(profile?.order) || 0
+        )
+    );
+
+}
+
+
+function rollCommandOutcome(
+    outcomes,
+    profile
+){
+
+    if(
+        !Array.isArray(outcomes)
+        ||
+        outcomes.length === 0
+    ){
+
+        throw new Error(
+            "rollCommandOutcome requires at least one outcome."
+        );
+
+    }
+
+
+    const order =
+        getCommandLuckOrder(profile);
+
+
+    const luckRating =
+        order > 0
+            ? Math.max(
+                1,
+                Number(profile?.multiplier) || 1
+            )
+            : 1;
+
+
+    const lastIndex =
+        Math.max(
+            1,
+            outcomes.length - 1
+        );
+
+
+    const weighted =
+        outcomes.map(
+            (outcome, index) => {
+
+                const baseChance =
+                    Math.max(
+                        0,
+                        Number(outcome.chancePercent) || 0
+                    );
+
+
+                const rarityPosition =
+                    index / lastIndex;
+
+
+                const luckWeight =
+                    order > 0
+                        ? Math.pow(
+                            luckRating,
+                            rarityPosition * 2
+                        )
+                        : 1;
+
+
+                return {
+                    outcome,
+                    weight:
+                        baseChance * luckWeight
+                };
+
+            }
+        );
+
+
+    const totalWeight =
+        weighted.reduce(
+            (sum, entry) =>
+                sum + entry.weight,
+            0
+        );
+
+
+    if(totalWeight <= 0){
+
+        return outcomes[0];
+
+    }
+
+
+    let roll =
+        Math.random() * totalWeight;
+
+
+    for(const entry of weighted){
+
+        roll -= entry.weight;
+
+        if(roll <= 0){
+
+            return entry.outcome;
+
+        }
+
+    }
+
+
+    return weighted[
+        weighted.length - 1
+    ].outcome;
+
+}
+
+
+function rollCommandXP(
+    min,
+    max,
+    profile
+){
+
+    const safeMin =
+        Math.floor(
+            Math.min(
+                Number(min) || 0,
+                Number(max) || 0
+            )
+        );
+
+
+    const safeMax =
+        Math.floor(
+            Math.max(
+                Number(min) || 0,
+                Number(max) || 0
+            )
+        );
+
+
+    if(safeMax <= safeMin){
+
+        return safeMin;
+
+    }
+
+
+    const order =
+        getCommandLuckOrder(profile);
+
+
+    const power =
+        COMMAND_REWARD_BIAS_POWER[order]
+        || 1;
+
+
+    // No Luck stays completely uniform.
+    // Strong Luck pushes the roll closer to max.
+    const position =
+        Math.pow(
+            Math.random(),
+            power
+        );
+
+
+    return Math.floor(
+        safeMin +
+        position *
+        (safeMax - safeMin + 1)
+    );
+
+}
+
+
+function rollCommandPenalty(
+    min,
+    max,
+    profile
+){
+
+    const safeMin =
+        Math.floor(
+            Math.min(
+                Number(min) || 0,
+                Number(max) || 0
+            )
+        );
+
+
+    const safeMax =
+        Math.floor(
+            Math.max(
+                Number(min) || 0,
+                Number(max) || 0
+            )
+        );
+
+
+    if(safeMax <= safeMin){
+
+        return safeMin;
+
+    }
+
+
+    const order =
+        getCommandLuckOrder(profile);
+
+
+    const power =
+        COMMAND_REWARD_BIAS_POWER[order]
+        || 1;
+
+
+    // Opposite of reward bias: stronger Luck makes
+    // negative penalties trend toward the minimum.
+    const position =
+        1 - Math.pow(
+            Math.random(),
+            power
+        );
+
+
+    return Math.floor(
+        safeMin +
+        position *
+        (safeMax - safeMin + 1)
+    );
+
+}
+
+
+function getCommandSuccessChance(
+    baseChance,
+    profile
+){
+
+    const safeBase =
+        Math.max(
+            0,
+            Math.min(
+                1,
+                Number(baseChance) || 0
+            )
+        );
+
+
+    const order =
+        getCommandLuckOrder(profile);
+
+
+    const influence =
+        COMMAND_SUCCESS_INFLUENCE[order]
+        || 0;
+
+
+    return Math.min(
+        0.9999,
+        safeBase +
+        (1 - safeBase) * influence
+    );
+
+}
+
+
+function buildUsedCommandLuckExtra(profile){
+
+    if(!profile?.roleID){
+
+        return "";
+
+    }
+
+
+    return (
+        `\n🍀 <@&${profile.roleID}> influenced this command with **x${profile.multiplier} luck**.`
+    );
+
+}
+
+
+// ==============================
 // ROLL A LUCK BOOST
 // ==============================
 
@@ -2333,6 +2661,16 @@ module.exports = {
     getActiveLuckBoost,
 
     rollWithLuck,
+
+    rollCommandOutcome,
+
+    rollCommandXP,
+
+    rollCommandPenalty,
+
+    getCommandSuccessChance,
+
+    buildUsedCommandLuckExtra,
 
     tryLuckBoostDrop,
 
