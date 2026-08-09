@@ -193,7 +193,7 @@ async function execute(message){
 
             .setFooter({
                 text:
-                    "Daily and weekly quests use Prague time."
+                    "Daily and weekly quests reset globally at 00:00 UTC."
             })
 
             .setTimestamp();
