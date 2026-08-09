@@ -150,10 +150,9 @@ const LUCK_ROLES = {
             1000,
 
         // Ω's roll behavior is defined separately below.
-        // Keep the message-critical bonus at MAX's value unless
-        // that system is rebalanced independently.
+        // Ω has its own stronger message-critical bonus.
         criticalChanceBonus:
-            25,
+            35,
 
         duration:
             3 * 60 * 1000,
