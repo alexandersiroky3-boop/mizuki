@@ -674,7 +674,9 @@ return message.channel.send(
 ${dialogue}
 
 💋 **${message.author.username} kissed ${target.username}!**
+
 💖 **${target.username} received +${reward.toLocaleString()} XP!**
+
 💕 **${message.author.username} received +${kisserReward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
 
 );
