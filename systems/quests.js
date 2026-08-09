@@ -1301,7 +1301,7 @@ function formatReward(reward){
 
     if(reward.type === "triple_roll"){
 
-        return "Use `!roll` **3 times per cooldown window** for 24 hours";
+        return "Each `!roll` automatically performs **3 rolls at once** for 24 hours";
 
     }
 
