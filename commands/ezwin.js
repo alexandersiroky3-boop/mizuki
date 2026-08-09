@@ -9,7 +9,7 @@ const leveling = require("../systems/leveling");
 // ======================
 
 const COOLDOWN =
-    60 * 60 * 1000; // 1 hour
+    24 * 60 * 60 * 1000; // 24 hours
 
 
 
@@ -174,13 +174,40 @@ await database.setCommandCooldown(
             user.userid || user.userID;
 
 
+        const affectedUser =
+            await database.getUser(
+                guildID,
+                affectedUserID
+            );
+
+
+        const affectedLevel =
+            xp.getLevel(
+                Number(affectedUser?.xp) || 0
+            );
+
+
+        // Players below Level 100 are protected from the
+        // full EZ Win punishment and lose 70% less XP.
+        // In other words, they only take 30% of the rolled loss.
+        const affectedLoss =
+            affectedLevel < 100
+                ? Math.max(
+                    1,
+                    Math.floor(
+                        lostXP * 0.30
+                    )
+                )
+                : lostXP;
+
+
         await database.addXP(
 
             guildID,
 
             affectedUserID,
 
-            -lostXP
+            -affectedLoss
 
         );
 
@@ -235,7 +262,8 @@ message.channel.send(
 
 `*Mizuki giggles playfully and flies closer to ${message.author} before snapping her fingers, using only **0.000001%** of her power...*
 
-💥 **Everyone loses ${lostXP.toLocaleString()} XP!**
+💥 **Level 100+ users lose ${lostXP.toLocaleString()} XP!**
+🛡️ **Users below Level 100 lose 70% less XP!**
 
 🌸 **${message.author} gains +${gainedXP.toLocaleString()} XP!**${usedLuckExtra}`
 
