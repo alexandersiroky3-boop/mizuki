@@ -132,12 +132,46 @@ const LUCK_ROLES = {
         order:
             4
 
+    },
+
+
+    omega: {
+
+        tier:
+            "omega",
+
+        roleID:
+            "1535700310402670592",
+
+        name:
+            "Luck Boost Ω",
+
+        multiplier:
+            1000,
+
+        // Ω's roll behavior is defined separately below.
+        // Keep the message-critical bonus at MAX's value unless
+        // that system is rebalanced independently.
+        criticalChanceBonus:
+            25,
+
+        duration:
+            3 * 60 * 1000,
+
+        durationText:
+            "3 minutes",
+
+        order:
+            5
+
     }
 
 };
 
 
 const LUCK_ROLE_LIST = [
+
+    LUCK_ROLES.omega,
 
     LUCK_ROLES.max,
 
@@ -179,6 +213,11 @@ const LUCK_ROLE_IDS =
 // Anything left over means no Luck Boost drops.
 
 const LUCK_BOOST_DROP_TABLE = [
+
+    {
+        tier: "omega",
+        chancePercent: 0.01
+    },
 
     {
         tier: "max",
@@ -225,7 +264,10 @@ const COMMAND_LUCK_DROP_PERCENT = {
             4,
 
         max:
-            5
+            5,
+
+        omega:
+            0.01
 
     },
 
@@ -242,7 +284,10 @@ const COMMAND_LUCK_DROP_PERCENT = {
             1,
 
         max:
-            0.8
+            0.8,
+
+        omega:
+            0.01
 
     },
 
@@ -259,7 +304,10 @@ const COMMAND_LUCK_DROP_PERCENT = {
             2.5,
 
         max:
-            2
+            2,
+
+        omega:
+            0.01
 
     }
 
@@ -274,6 +322,101 @@ const COMMAND_LUCK_DROP_PERCENT = {
 // This keeps all regular !roll XP chances
 // in the command file where they are easier
 // to find and customize.
+
+
+const OMEGA_ROLL_CHANCE_TABLES = {
+
+    // Levels 1-100.
+    // Every range below 200,000 XP has exactly 0% chance.
+    level1To100: [
+
+        {
+            chancePercent: 55,
+            min: 200000,
+            max: 500000
+        },
+
+        {
+            chancePercent: 35,
+            min: 500000,
+            max: 2000000
+        },
+
+        {
+            chancePercent: 10,
+            min: 2000000,
+            max: 10000000
+        }
+
+    ],
+
+
+    // Levels 101+.
+    // Every range below 200,000 XP has exactly 0% chance.
+    level101Plus: [
+
+        {
+            chancePercent: 25,
+            min: 200000,
+            max: 500000
+        },
+
+        {
+            chancePercent: 60,
+            min: 500000,
+            max: 2000000
+        },
+
+        {
+            chancePercent: 15,
+            min: 2000000,
+            max: 10000000
+        }
+
+    ]
+
+};
+
+
+function rollFromExactPercentTable(table){
+
+    let roll =
+        Math.random() * 100;
+
+
+    for(const outcome of table){
+
+        roll -=
+            Number(
+                outcome.chancePercent
+            );
+
+
+        if(roll < 0){
+
+            return randomInteger(
+                outcome.min,
+                outcome.max
+            );
+
+        }
+
+    }
+
+
+    const fallback =
+        table[
+            table.length - 1
+        ];
+
+
+    return randomInteger(
+        fallback.min,
+        fallback.max
+    );
+
+}
+
 
 
 function percentChance(chancePercent){
@@ -337,6 +480,45 @@ function validateLuckSettings(){
         throw new Error(
             `Luck Boost roll drops total ${totalRollDropPercent}%. They cannot exceed 100%.`
         );
+
+    }
+
+
+    for(
+        const [tableName, table] of
+        Object.entries(
+            OMEGA_ROLL_CHANCE_TABLES
+        )
+    ){
+
+        const total =
+            table.reduce(
+                (sum, outcome) =>
+                    sum +
+                    Number(
+                        outcome.chancePercent
+                    ),
+                0
+            );
+
+
+        if(Math.abs(total - 100) > 0.000001){
+
+            throw new Error(
+                `Luck Boost Ω ${tableName} roll chances must total 100%. Current total: ${total}%.`
+            );
+
+        }
+
+
+        for(const outcome of table){
+
+            validatePercentage(
+                `Luck Boost Ω ${tableName}`,
+                outcome.chancePercent
+            );
+
+        }
 
     }
 
@@ -1003,7 +1185,8 @@ function rollFromWeightedTable(
 
 async function rollWithLuck(
     member,
-    rollChanceTable
+    rollChanceTable,
+    levelTableName = "level1To100"
 ){
 
     if(
@@ -1025,13 +1208,26 @@ async function rollWithLuck(
         );
 
 
-    return {
+    const rolledXP =
+        profile.tier === "omega"
 
-        rolledXP:
-            rollFromWeightedTable(
+            ? rollFromExactPercentTable(
+                OMEGA_ROLL_CHANCE_TABLES[
+                    levelTableName === "level101Plus"
+                        ? "level101Plus"
+                        : "level1To100"
+                ]
+            )
+
+            : rollFromWeightedTable(
                 rollChanceTable,
                 profile
-            ),
+            );
+
+
+    return {
+
+        rolledXP,
 
         profile
 
@@ -1398,7 +1594,8 @@ function rollCommandLuckBoostDrop(
             "tier1",
             "tier2",
             "tier3",
-            "max"
+            "max",
+            "omega"
         ]
     ){
 
