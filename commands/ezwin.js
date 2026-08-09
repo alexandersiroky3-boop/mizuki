@@ -1,4 +1,6 @@
 const database = require("../database");
+const xp = require("../utils/xp");
+const luck = require("../utils/luck");
 
 
 // ======================
@@ -104,11 +106,61 @@ await database.setCommandCooldown(
         );
 
 
-    const gainedXP =
-        randomXP(100,1000);
+    const user =
+        await database.getUser(
+            guildID,
+            userID
+        );
 
-        const lostXP =
-            randomXP(100,500);
+
+    const currentLevel =
+        xp.getLevel(
+            Number(user?.xp) || 0
+        );
+
+
+    const highLevel =
+        currentLevel > 100;
+
+
+    const activeLuck =
+        await luck.getActiveLuckBoost(
+            message.member
+        );
+
+
+    const usedLuckExtra =
+        luck.buildUsedCommandLuckExtra(
+            activeLuck
+        );
+
+
+    const gainedXP =
+        highLevel
+            ? luck.rollCommandXP(
+                100000,
+                250000,
+                activeLuck
+            )
+            : luck.rollCommandXP(
+                12500,
+                50000,
+                activeLuck
+            );
+
+
+    const lostXP =
+        highLevel
+            ? luck.rollCommandXP(
+                20000,
+                100000,
+                activeLuck
+            )
+            : luck.rollCommandXP(
+                2000,
+                12500,
+                activeLuck
+            );
 
 
     for(const user of users){
@@ -151,9 +203,9 @@ message.channel.send(
 
 `*Mizuki giggles playfully and flies closer to ${message.author} before snapping her fingers, using only **0.000001%** of her power...*
 
-💥 **Everyone loses ${lostXP} XP!**
+💥 **Everyone loses ${lostXP.toLocaleString()} XP!**
 
-🌸 **${message.author} gains +${gainedXP} XP!**`
+🌸 **${message.author} gains +${gainedXP.toLocaleString()} XP!**${usedLuckExtra}`
 
 );
 
