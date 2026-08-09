@@ -456,7 +456,8 @@ const rollChanceTable =
 const luckResult =
     await luck.rollWithLuck(
         message.member,
-        rollChanceTable
+        rollChanceTable,
+        levelTableName
     );
 
 
