@@ -1274,6 +1274,72 @@ const COMMAND_SUCCESS_INFLUENCE = {
 };
 
 
+// =====================================================
+// LEVEL 100+ COMMAND LUCK BALANCE
+// =====================================================
+//
+// !steal / !hug / !kiss use this profile for users
+// at Level 100+.
+//
+// The Discord role still keeps its normal x10/x20/x50
+// identity. These values only soften how aggressively
+// those boosts bend command rarity + reward rolls.
+//
+// Luck I is intentionally unchanged.
+// Luck Ω is intentionally unchanged.
+const LEVEL100_PLUS_COMMAND_LUCK = {
+
+    tier2: {
+        multiplier: 7,
+        rewardBiasPower: 0.65
+    },
+
+    tier3: {
+        multiplier: 12,
+        rewardBiasPower: 0.45
+    },
+
+    max: {
+        multiplier: 20,
+        rewardBiasPower: 0.25
+    }
+
+};
+
+
+function getLevel100PlusCommandLuckProfile(profile){
+
+    if(!profile?.tier){
+        return profile;
+    }
+
+
+    const balance =
+        LEVEL100_PLUS_COMMAND_LUCK[
+            String(profile.tier).toLowerCase()
+        ];
+
+
+    if(!balance){
+        return profile;
+    }
+
+
+    return {
+
+        ...profile,
+
+        commandMultiplier:
+            balance.multiplier,
+
+        commandRewardBiasPower:
+            balance.rewardBiasPower
+
+    };
+
+}
+
+
 function getCommandLuckOrder(profile){
 
     return Math.max(
@@ -1313,7 +1379,10 @@ function rollCommandOutcome(
         order > 0
             ? Math.max(
                 1,
-                Number(profile?.multiplier) || 1
+                Number(
+                    profile?.commandMultiplier ??
+                    profile?.multiplier
+                ) || 1
             )
             : 1;
 
@@ -1433,9 +1502,21 @@ function rollCommandXP(
         getCommandLuckOrder(profile);
 
 
+    const customPower =
+        Number(
+            profile?.commandRewardBiasPower
+        );
+
+
     const power =
-        COMMAND_REWARD_BIAS_POWER[order]
-        || 1;
+        Number.isFinite(customPower)
+        &&
+        customPower > 0
+            ? customPower
+            : (
+                COMMAND_REWARD_BIAS_POWER[order]
+                || 1
+            );
 
 
     // No Luck stays completely uniform.
@@ -1491,9 +1572,21 @@ function rollCommandPenalty(
         getCommandLuckOrder(profile);
 
 
+    const customPower =
+        Number(
+            profile?.commandRewardBiasPower
+        );
+
+
     const power =
-        COMMAND_REWARD_BIAS_POWER[order]
-        || 1;
+        Number.isFinite(customPower)
+        &&
+        customPower > 0
+            ? customPower
+            : (
+                COMMAND_REWARD_BIAS_POWER[order]
+                || 1
+            );
 
 
     // Opposite of reward bias: stronger Luck makes
@@ -2667,6 +2760,8 @@ module.exports = {
     rollCommandXP,
 
     rollCommandPenalty,
+
+    getLevel100PlusCommandLuckProfile,
 
     getCommandSuccessChance,
 
