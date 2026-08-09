@@ -31,6 +31,52 @@ function random(min, max){
 }
 
 
+const HUG_OUTCOMES = [
+    {
+        key: "common",
+        chancePercent: 65,
+        min: 15000,
+        max: 30000,
+        rarity: "💞 COMMON"
+    },
+    {
+        key: "rare",
+        chancePercent: 20,
+        min: 30000,
+        max: 75000,
+        rarity: "💖 RARE"
+    },
+    {
+        key: "epic",
+        chancePercent: 10,
+        min: 75000,
+        max: 250000,
+        rarity: "🌇 EPIC"
+    },
+    {
+        key: "legendary",
+        chancePercent: 3.9,
+        min: 250000,
+        max: 750000,
+        rarity: "🪄 LEGENDARY"
+    },
+    {
+        key: "mythic",
+        chancePercent: 1,
+        min: 750000,
+        max: 3000000,
+        rarity: "🌌 MYTHIC"
+    },
+    {
+        key: "divine",
+        chancePercent: 0.1,
+        min: 10000000,
+        max: 10000000,
+        rarity: "✨ DIVINE"
+    }
+];
+
+
 
 // ======================
 // GIVE MAX BOOST
@@ -178,6 +224,18 @@ if(remaining > 0){
     );
 
 
+    const activeLuck =
+        await luck.getActiveLuckBoost(
+            message.member
+        );
+
+
+    const usedLuckExtra =
+        luck.buildUsedCommandLuckExtra(
+            activeLuck
+        );
+
+
     // ======================
     // HUG BOT
     // ======================
@@ -208,7 +266,11 @@ const luckExtra =
 
 
         const success =
-            Math.random() < 0.5;
+            Math.random() <
+            luck.getCommandSuccessChance(
+                0.5,
+                activeLuck
+            );
 
 
 
@@ -217,8 +279,28 @@ const luckExtra =
         if(success){
 
 
+            const botRewardRanges = [
+                { chancePercent: 65, min: 50000, max: 100000 },
+                { chancePercent: 20, min: 100000, max: 250000 },
+                { chancePercent: 10, min: 250000, max: 500000 },
+                { chancePercent: 4, min: 500000, max: 1500000 },
+                { chancePercent: 1, min: 1500000, max: 5000000 }
+            ];
+
+
+            const botOutcome =
+                luck.rollCommandOutcome(
+                    botRewardRanges,
+                    activeLuck
+                );
+
+
             const reward =
-                50000;
+                luck.rollCommandXP(
+                    botOutcome.min,
+                    botOutcome.max,
+                    activeLuck
+                );
 
 
             await database.addXP(
@@ -247,7 +329,7 @@ await syncAndTrackLevel(
 
 **"T-Thank you... ${message.author}."**
 
-💖 ${message.author} earned **${reward.toLocaleString()} XP!**${luckExtra}`
+💖 ${message.author} earned **${reward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
 
             );
 
@@ -307,7 +389,7 @@ await syncAndTrackLevel(
 
 **"You could've at least warned me first..."**
 
-💔 ${message.author} lost **${actualLoss.toLocaleString()} XP!**${luckExtra}`
+💔 ${message.author} lost **${actualLoss.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
 
         );
 
@@ -319,66 +401,37 @@ await syncAndTrackLevel(
     // NORMAL USER HUG
     // ======================
 
-    const chance =
-        Math.random();
+    const outcome =
+        luck.rollCommandOutcome(
+            HUG_OUTCOMES,
+            activeLuck
+        );
 
 
-    let reward;
-    let rarity;
+    const reward =
+        luck.rollCommandXP(
+            outcome.min,
+            outcome.max,
+            activeLuck
+        );
+
+
+    const rarity =
+        outcome.rarity;
+
+
     let text;
 
 
-
-    // ======================
-    // COMMON
-    // 65%
-    // 15,000 - 30,000 XP
-    // ======================
-
-    if(chance < 0.65){
-
-
-        reward =
-            random(
-                15000,
-                30000
-            );
-
-
-        rarity =
-            "💞 COMMON";
-
+    if(outcome.key === "common"){
 
         text =
-
 `🫂 **${message.author} hugged ${target}!** 🫂`;
 
     }
-
-
-
-    // ======================
-    // RARE
-    // 20%
-    // 30,000 - 75,000 XP
-    // ======================
-
-    else if(chance < 0.85){
-
-
-        reward =
-            random(
-                30000,
-                75000
-            );
-
-
-        rarity =
-            "💖 RARE";
-
+    else if(outcome.key === "rare"){
 
         text =
-
 `🫂💖 **A HEARTFELT HUG** 💖🫂
 
 *${message.author} ran up to ${target} and pulled them into a tight hug.*
@@ -386,31 +439,9 @@ await syncAndTrackLevel(
 *Beautiful particles slowly began appearing around them, glowing brighter as the hug continued.*`;
 
     }
-
-
-
-    // ======================
-    // EPIC
-    // 10%
-    // 75,000 - 250,000 XP
-    // ======================
-
-    else if(chance < 0.95){
-
-
-        reward =
-            random(
-                75000,
-                250000
-            );
-
-
-        rarity =
-            "🌇 EPIC";
-
+    else if(outcome.key === "epic"){
 
         text =
-
 `🌇🫂 **THE SURPRISE HUG** 🫂🌇
 
 *${message.author} quietly walked up behind ${target} without making a sound.*
@@ -420,139 +451,48 @@ await syncAndTrackLevel(
 *${target} was completely caught off guard, but eventually relaxed into the hug.*`;
 
     }
-
-
-
-    // ======================
-    // LEGENDARY
-    // 3.9%
-    // 250,000 - 750,000 XP
-    // ======================
-
-    else if(chance < 0.989){
-
-
-        reward =
-            random(
-                250000,
-                750000
-            );
-
-
-        rarity =
-            "🪄 LEGENDARY";
-
+    else if(outcome.key === "legendary"){
 
         text =
-
 `🪄💫 **THE BACK-BREAKING GROUP HUG** 💫🪄
 
 *${message.author} immediately lifted ${target} into the air and hugged them really, really tightly.*
-
-*${message.author} started spinning around while continuing to squeeze ${target}, nearly breaking their back in the process.*
 
 *Mizuki saw what was happening and excitedly flew toward them.*
 
 *"Wait for me! I want to join too~!"*
 
-*Mizuki wrapped her arms around both of them, turning it into a chaotic group hug.*
-
-*${target}'s back may never recover.*`;
+*Mizuki wrapped her arms around both of them, turning it into a chaotic group hug.*`;
 
     }
-
-
-
-    // ======================
-    // MYTHIC
-    // 1%
-    // 750,000 - 3,000,000 XP
-    // ======================
-
-    else if(chance < 0.999){
-
-
-        reward =
-            random(
-                750000,
-                3000000
-            );
-
-
-        rarity =
-            "🌌 MYTHIC";
-
+    else if(outcome.key === "mythic"){
 
         text =
-
 `🌌🌠 **A HUG BEYOND THE UNIVERSE** 🌠🌌
 
-*${message.author} slowly approached ${target} as the sky above them began changing.*
+*${message.author} slowly approached ${target} as stars appeared in the middle of the day.*
 
-*Stars appeared in the middle of the day, and waves of cosmic energy spread across the area.*
-
-*${message.author} wrapped their arms around ${target}.*
-
-*The moment they hugged, both of them were lifted into the air as a massive galaxy formed around their bodies.*
+*The moment they hugged, a massive purple galaxy formed around both of them.*
 
 *Mizuki stared upward in disbelief.*
 
-*"That isn't just a hug..."*
-
-*"Their energy is connecting across the entire universe..."*
-
-*Thousands of glowing stars circled around ${message.author} and ${target} before exploding into beautiful cosmic particles.*
-
-*They slowly returned to the ground, still holding onto each other as the universe became silent once again.*`;
+*"That isn't just a hug... their energy is connecting across the entire universe..."*`;
 
     }
-
-
-
-    // ======================
-    // DIVINE
-    // 0.1%
-    // Guaranteed 10,000,000 XP
-    // Guaranteed XP MAX boost
-    // ======================
-
     else{
 
-
-        reward =
-            10000000;
-
-
-        rarity =
-            "✨ DIVINE";
-
-
         text =
-
 `✨💞 **THE PERFECT HUG** 💞✨
 
 *The entire universe suddenly stopped.*
 
-*Every sound disappeared, time froze and even the stars stopped moving.*
+*The moment ${message.author} and ${target} hugged, an endless wave of energy erupted across every universe.*
 
-*${message.author} and ${target} slowly walked toward each other.*
-
-*The moment they hugged, an endless wave of energy erupted from their bodies and travelled across every universe.*
-
-*Mizuki covered her eyes as the light became brighter than anything she had ever seen.*
-
-*"W-What is this power...?"*
-
-*The energy surrounding ${message.author} and ${target} transformed into countless glowing hearts, stars and galaxies.*
-
-*For one perfect moment, nothing else in existence mattered.*
-
-*Only the hug remained.*
+*Mizuki covered her eyes as countless glowing hearts, stars and galaxies filled reality.*
 
 🌠 **The universe has acknowledged their bond.**`;
 
     }
-
 
 
     // ======================
@@ -685,7 +625,7 @@ ${rarity}
 
 💎 ${message.author} stored <@&${MAX_BOOST_ROLE}>! Inventory: **x${authorMaxBoost.amount}**
 
-💎 ${target} stored <@&${MAX_BOOST_ROLE}>! Inventory: **x${targetMaxBoost.amount}**${luckExtra}`
+💎 ${target} stored <@&${MAX_BOOST_ROLE}>! Inventory: **x${targetMaxBoost.amount}**${usedLuckExtra}${luckExtra}`
 
         );
 
@@ -698,7 +638,7 @@ ${rarity}
 
 ${rarity}
 
-💞 Both users received **${reward.toLocaleString()} XP!**${luckExtra}`
+💞 Both users received **${reward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
 
     );
 
