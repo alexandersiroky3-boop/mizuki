@@ -20,11 +20,20 @@ const luck =
     require("../utils/luck");
 
 
-const TIERS = [
+const XP_TIERS = [
     "tier1",
     "tier2",
     "tier3",
     "max"
+];
+
+
+const LUCK_TIERS = [
+    "tier1",
+    "tier2",
+    "tier3",
+    "max",
+    "omega"
 ];
 
 
@@ -40,7 +49,10 @@ const TIER_LABELS = {
         "III",
 
     max:
-        "MAX"
+        "MAX",
+
+    omega:
+        "Ω"
 
 };
 
@@ -115,7 +127,8 @@ function createEmptyInventory(){
             tier1: 0,
             tier2: 0,
             tier3: 0,
-            max: 0
+            max: 0,
+            omega: 0
 
         }
 
@@ -190,7 +203,8 @@ function formatInventoryTable(
         formatTier("I", inventory.luck.tier1),
         formatTier("II", inventory.luck.tier2),
         formatTier("III", inventory.luck.tier3),
-        formatTier("MAX", inventory.luck.max)
+        formatTier("MAX", inventory.luck.max),
+        formatTier("Ω", inventory.luck.omega)
     ].join("  ");
 
 
@@ -439,14 +453,10 @@ function createBoostButtons(
         new ActionRowBuilder();
 
 
-    for(const tier of TIERS){
+    for(const tier of XP_TIERS){
 
         const xpAmount =
             inventory.xp[tier];
-
-
-        const luckAmount =
-            inventory.luck[tier];
 
 
         xpRow.addComponents(
@@ -475,6 +485,14 @@ function createBoostButtons(
 
         );
 
+    }
+
+
+    for(const tier of LUCK_TIERS){
+
+        const luckAmount =
+            inventory.luck[tier];
+
 
         luckRow.addComponents(
 
@@ -489,9 +507,11 @@ function createBoostButtons(
                 )
 
                 .setStyle(
-                    tier === "max"
-                        ? ButtonStyle.Danger
-                        : ButtonStyle.Success
+                    tier === "omega"
+                        ? ButtonStyle.Primary
+                        : tier === "max"
+                            ? ButtonStyle.Danger
+                            : ButtonStyle.Success
                 )
 
                 .setDisabled(
@@ -511,7 +531,6 @@ function createBoostButtons(
     ];
 
 }
-
 
 function getActivationMessage(
     type,
