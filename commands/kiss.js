@@ -3,6 +3,8 @@ const leveling =
     require("../systems/leveling");
 const luck =
     require("../utils/luck");
+const xp =
+    require("../utils/xp");
 const quests =
     require("../systems/quests");
 
@@ -23,6 +25,164 @@ function random(min, max){
     return Math.floor(
         Math.random() * (max - min + 1)
     ) + min;
+
+}
+
+
+const KISS_TABLES = {
+
+    level1To100: [
+        {
+            key: "common",
+            chancePercent: 65,
+            min: 2000,
+            max: 7500,
+            rarity: "💖 COMMON KISS"
+        },
+        {
+            key: "rare",
+            chancePercent: 20,
+            min: 7500,
+            max: 20000,
+            rarity: "💜 RARE KISS"
+        },
+        {
+            key: "epic",
+            chancePercent: 12.89,
+            min: 20000,
+            max: 100000,
+            rarity: "🌌 EPIC KISS"
+        },
+        {
+            key: "legendary",
+            chancePercent: 2,
+            min: 100000,
+            max: 500000,
+            rarity: "✨ LEGENDARY KISS"
+        },
+        {
+            key: "mythic",
+            chancePercent: 0.1,
+            min: 500000,
+            max: 3000000,
+            rarity: "🔮 MYTHIC KISS"
+        },
+        {
+            key: "divine",
+            chancePercent: 0.01,
+            min: 3000000,
+            max: 12500000,
+            rarity: "🌠 DIVINE KISS"
+        }
+    ],
+
+    level101Plus: [
+        {
+            key: "common",
+            chancePercent: 35,
+            min: 12500,
+            max: 25000,
+            rarity: "💖 COMMON KISS"
+        },
+        {
+            key: "rare",
+            chancePercent: 50,
+            min: 25000,
+            max: 100000,
+            rarity: "💜 RARE KISS"
+        },
+        {
+            key: "epic",
+            chancePercent: 10,
+            min: 100000,
+            max: 750000,
+            rarity: "🌌 EPIC KISS"
+        },
+        {
+            key: "legendary",
+            chancePercent: 4.5,
+            min: 750000,
+            max: 5000000,
+            rarity: "✨ LEGENDARY KISS"
+        },
+        {
+            key: "divine",
+            chancePercent: 0.5,
+            min: 5000000,
+            max: 25000000,
+            rarity: "🌠 DIVINE KISS"
+        }
+    ]
+
+};
+
+
+function getKissDialogue(
+    key,
+    author,
+    target
+){
+
+    const dialogues = {
+
+        common:
+`*${author} leans toward ${target} and gives them a quick kiss before pulling away with a grin.*
+
+*Mizuki notices and quietly giggles.*
+
+*"Awww... that was actually kinda cute~"*`,
+
+        rare:
+`*${author} gently pulls ${target} closer and gives them a warm kiss.*
+
+*For a moment, soft purple hearts float around them while Mizuki watches with a surprised smile.*
+
+*"Okayyy... that one had some feeling behind it~"*`,
+
+        epic:
+`*The moment ${author} kisses ${target}, the air around them flashes violet.*
+
+*Tiny stars and glowing hearts begin orbiting them as time seems to slow for a few seconds.*
+
+*Mizuki blinks twice.*
+
+*"U-Uh... kisses aren't normally supposed to do that."*`,
+
+        legendary:
+`*${author} steps toward ${target} as the sky suddenly turns deep purple.*
+
+*Their kiss releases a wave of energy that shakes the ground and sends glowing particles across the horizon.*
+
+*Mizuki shields her face from the blast.*
+
+*"WHAT KIND OF KISS WAS THAT?!"*`,
+
+        mythic:
+`*${author} kisses ${target} and reality bends around them.*
+
+*A gigantic purple galaxy forms overhead while constellations begin spinning around the two of them.*
+
+*For several seconds, gravity itself seems to forget what it is supposed to do.*
+
+*Mizuki stares upward in silence.*
+
+*"...That kiss just reached another universe."*`,
+
+        divine:
+`*Everything stops the instant ${author} kisses ${target}.*
+
+*Sound disappears. The stars freeze. A violet light spreads through every visible corner of reality.*
+
+*Entire constellations rearrange themselves into a glowing heart above them before exploding into cosmic dust.*
+
+*Mizuki slowly lowers her hands, completely speechless.*
+
+*"The universe itself just approved that kiss..."*`
+
+    };
+
+
+    return dialogues[key] || dialogues.common;
 
 }
 
@@ -150,6 +310,18 @@ await quests.recordEvent(
     1
 );
 
+const activeLuck =
+    await luck.getActiveLuckBoost(
+        message.member
+    );
+
+
+const usedLuckExtra =
+    luck.buildUsedCommandLuckExtra(
+        activeLuck
+    );
+
+
 const wonLuckBoost =
     await luck.tryCommandLuckBoostDrop(
         message.member,
@@ -166,7 +338,11 @@ const luckExtra =
 
 
         const nice =
-            Math.random() < 0.5;
+            Math.random() <
+            luck.getCommandSuccessChance(
+                0.5,
+                activeLuck
+            );
 
 
 
@@ -174,7 +350,11 @@ const luckExtra =
 
 
             const reward =
-                random(5,100);
+                luck.rollCommandXP(
+                    5,
+                    100,
+                    activeLuck
+                );
 
 
 
@@ -213,7 +393,11 @@ await syncAndTrackLevel(
 
 
             const loss =
-                random(5,100);
+                luck.rollCommandPenalty(
+                    5,
+                    100,
+                    activeLuck
+                );
 
 
 
@@ -250,7 +434,7 @@ await syncAndTrackLevel(
 
 "EW! DON'T YOU KISS ME!" *she says with pure shock and anger.*
 
-"For that, I will take **${loss} XP**!" 😤${luckExtra}`
+"For that, I will take **${loss} XP**!" 😤${usedLuckExtra}${luckExtra}`
 
             );
 
@@ -356,6 +540,79 @@ await quests.recordEvent(
     }
 );
 
+// ==========================
+// KISS RARITY + XP
+// ==========================
+
+const activeLuck =
+    await luck.getActiveLuckBoost(
+        message.member
+    );
+
+
+const usedLuckExtra =
+    luck.buildUsedCommandLuckExtra(
+        activeLuck
+    );
+
+
+const authorData =
+    await database.getUser(
+        guildID,
+        userID
+    );
+
+
+const currentLevel =
+    xp.getLevel(
+        Number(authorData?.xp) || 0
+    );
+
+
+const kissTable =
+    currentLevel > 100
+        ? KISS_TABLES.level101Plus
+        : KISS_TABLES.level1To100;
+
+
+const outcome =
+    luck.rollCommandOutcome(
+        kissTable,
+        activeLuck
+    );
+
+
+const reward =
+    luck.rollCommandXP(
+        outcome.min,
+        outcome.max,
+        activeLuck
+    );
+
+
+await database.giveXP(
+    message.guild.id,
+    target.id,
+    reward
+);
+
+
+await quests.recordEvent(
+    message,
+    "earn_xp",
+    reward,
+    {
+        userID: target.id
+    }
+);
+
+
+await syncAndTrackLevel(
+    message,
+    target.id
+);
+
+
 const wonLuckBoost =
     await luck.tryCommandLuckBoostDrop(
         message.member,
@@ -371,100 +628,25 @@ const luckExtra =
     );
 
 
+const dialogue =
+    getKissDialogue(
+        outcome.key,
+        message.author,
+        target
+    );
 
-// ==========================
-// Give XP
-// ==========================
-
-const chance = Math.random();
-
-let reward;
-let rarity;
-
-if(chance < 0.80){
-
-    reward = random(5, 100);
-    rarity = "💖 Common";
-
-}
-
-else if(chance < 0.95){
-
-    reward = random(100, 1000);
-    rarity = "💜 Rare";
-
-}
-
-else if(chance < 0.999){
-
-    reward = random(1000, 5000);
-    rarity = "🌌 Epic";
-
-}
-
-else{
-
-    reward = random(5000, 20000);
-    rarity = "✨ LEGENDARY";
-
-}
-
-await database.giveXP(
-
-    message.guild.id,
-    target.id,
-    reward
-
-);
-
-await quests.recordEvent(
-    message,
-    "earn_xp",
-    reward,
-    {
-        userID: target.id
-    }
-);
-
-await syncAndTrackLevel(
-    message,
-    target.id
-);
-
-let extra = "";
-
-if(rarity === "✨ LEGENDARY"){
-
-    extra =
-`\n\n*Mizuki's eyes widen in complete disbelief...*
-
-*"W-What...? Even I didn't expect a kiss this powerful..."*`;
-
-}
-
-else if(rarity === "🌌 Epic"){
-
-    extra =
-`\n\n*Mizuki smiles warmly as magical particles surround ${target}.*`;
-
-}
-
-else if(rarity === "💜 Rare"){
-
-    extra =
-`\n\n*Mizuki quietly claps, impressed by the heartfelt kiss.*`;
-
-}
 
 return message.channel.send(
 
-`💋 ${message.author} kissed ${target}!
+`${outcome.rarity}
 
-${rarity}
+${dialogue}
 
-**${target.username} received +${reward.toLocaleString()} XP!**${extra}${luckExtra}`
+💋 **${message.author.username} kissed ${target.username}!**
+💖 **${target.username} received +${reward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
 
 );
+
 
 
 }
