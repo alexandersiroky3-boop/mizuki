@@ -508,7 +508,7 @@ function createBoostButtons(
 
                 .setStyle(
                     tier === "omega"
-                        ? ButtonStyle.Primary
+                        ? ButtonStyle.Danger
                         : tier === "max"
                             ? ButtonStyle.Danger
                             : ButtonStyle.Success
