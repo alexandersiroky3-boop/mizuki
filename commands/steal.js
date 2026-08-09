@@ -398,6 +398,17 @@ await syncAndTrackLevel(
 
 
 
+    const thiefXP =
+        Math.max(
+            0,
+            Number(thief.xp) || 0
+        );
+
+
+    const thiefLevel =
+        xp.getLevel(thiefXP);
+
+
     const victimXP =
         Math.max(
             0,
@@ -411,6 +422,16 @@ await syncAndTrackLevel(
 
     const isLevel100Plus =
         victimLevel >= 100;
+
+
+    // Luck belongs to the thief, so the Level 100+ command
+    // nerf is based on the thief's level, not the victim's.
+    const commandLuck =
+        thiefLevel >= 100
+            ? luck.getLevel100PlusCommandLuckProfile(
+                activeLuck
+            )
+            : activeLuck;
 
 
 
@@ -541,7 +562,7 @@ const luckExtra =
     const stealOutcome =
         luck.rollCommandOutcome(
             stealOutcomes,
-            activeLuck
+            commandLuck
         );
 
 
@@ -570,7 +591,7 @@ const luckExtra =
         luck.rollCommandXP(
             stealOutcome.min,
             stealOutcome.max,
-            activeLuck
+            commandLuck
         );
 
 
