@@ -1,6 +1,7 @@
 const database = require("../database");
 const leveling = require("../systems/leveling");
 const luck = require("../utils/luck");
+const xp = require("../utils/xp");
 const boosts = require("../systems/boosts");
 const quests = require("../systems/quests");
 
@@ -401,10 +402,33 @@ await syncAndTrackLevel(
     // NORMAL USER HUG
     // ======================
 
+    const authorData =
+        await database.getUser(
+            guildID,
+            userID
+        );
+
+
+    const authorLevel =
+        xp.getLevel(
+            Number(authorData?.xp) || 0
+        );
+
+
+    // Level 100+ gets a softer Luck II / III / MAX curve.
+    // Luck I and Luck Ω remain unchanged.
+    const commandLuck =
+        authorLevel >= 100
+            ? luck.getLevel100PlusCommandLuckProfile(
+                activeLuck
+            )
+            : activeLuck;
+
+
     const outcome =
         luck.rollCommandOutcome(
             HUG_OUTCOMES,
-            activeLuck
+            commandLuck
         );
 
 
@@ -412,7 +436,7 @@ await syncAndTrackLevel(
         luck.rollCommandXP(
             outcome.min,
             outcome.max,
-            activeLuck
+            commandLuck
         );
 
 
