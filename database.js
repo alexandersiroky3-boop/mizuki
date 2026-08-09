@@ -3894,30 +3894,18 @@ async function useQuestRollCooldown(
             ) > now
         ){
 
-            let windowEndsAt =
+            const windowEndsAt =
                 Number(
                     effect.rollwindowendsat || 0
                 );
 
 
-            let windowUses =
-                Number(
-                    effect.rollwindowuses || 0
-                );
-
-
-            if(windowEndsAt <= now){
-
-                windowEndsAt =
-                    now + safeCooldown;
-
-                windowUses =
-                    0;
-
-            }
-
-
-            if(windowUses >= 3){
+            // Triple Roll now means ONE !roll command performs
+            // all 3 rolls automatically.
+            //
+            // While that command's normal cooldown window is
+            // active, another !roll command is blocked.
+            if(windowEndsAt > now){
 
                 await client.query("COMMIT");
 
@@ -3930,13 +3918,20 @@ async function useQuestRollCooldown(
                             windowEndsAt - now
                         ),
                     tripleRoll: true,
-                    usesLeft: 0
+                    rollCount: 3,
+                    cooldownEndsAt:
+                        windowEndsAt,
+                    activeUntil:
+                        Number(
+                            effect.triplerolluntil
+                        )
                 };
 
             }
 
 
-            windowUses++;
+            const nextWindowEndsAt =
+                now + safeCooldown;
 
 
             await client.query(`
@@ -3945,7 +3940,7 @@ async function useQuestRollCooldown(
 
                 SET
                     rollWindowEndsAt=$3,
-                    rollWindowUses=$4
+                    rollWindowUses=3
 
                 WHERE guildID=$1
                 AND userID=$2
@@ -3953,8 +3948,7 @@ async function useQuestRollCooldown(
             `, [
                 guildID,
                 userID,
-                windowEndsAt,
-                windowUses
+                nextWindowEndsAt
             ]);
 
 
@@ -3965,8 +3959,9 @@ async function useQuestRollCooldown(
                 allowed: true,
                 remaining: 0,
                 tripleRoll: true,
-                usesLeft:
-                    3 - windowUses,
+                rollCount: 3,
+                cooldownEndsAt:
+                    nextWindowEndsAt,
                 activeUntil:
                     Number(
                         effect.triplerolluntil
@@ -4014,7 +4009,11 @@ async function useQuestRollCooldown(
                 allowed: false,
                 remaining,
                 tripleRoll: false,
-                usesLeft: 0
+                rollCount: 1,
+                cooldownEndsAt:
+                    Number(
+                        existing.expiresat
+                    )
             };
 
         }
@@ -4055,7 +4054,9 @@ async function useQuestRollCooldown(
             allowed: true,
             remaining: 0,
             tripleRoll: false,
-            usesLeft: 0
+            rollCount: 1,
+            cooldownEndsAt:
+                now + safeCooldown
         };
 
     }
