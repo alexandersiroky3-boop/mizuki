@@ -597,6 +597,21 @@ await database.giveXP(
 );
 
 
+// The user who gave the kiss also earns XP.
+// They receive 15% less than the kissed user.
+const kisserReward =
+    Math.floor(
+        reward * 0.85
+    );
+
+
+await database.giveXP(
+    message.guild.id,
+    userID,
+    kisserReward
+);
+
+
 await quests.recordEvent(
     message,
     "earn_xp",
@@ -607,9 +622,25 @@ await quests.recordEvent(
 );
 
 
+await quests.recordEvent(
+    message,
+    "earn_xp",
+    kisserReward,
+    {
+        userID
+    }
+);
+
+
 await syncAndTrackLevel(
     message,
     target.id
+);
+
+
+await syncAndTrackLevel(
+    message,
+    userID
 );
 
 
@@ -643,7 +674,8 @@ return message.channel.send(
 ${dialogue}
 
 💋 **${message.author.username} kissed ${target.username}!**
-💖 **${target.username} received +${reward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
+💖 **${target.username} received +${reward.toLocaleString()} XP!**
+💕 **${message.author.username} received +${kisserReward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
 
 );
 
