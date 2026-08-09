@@ -113,66 +113,168 @@ function getLevel(xp){
 
 
 
+function getLevelRequirement(level){
+
+
+    const safeLevel =
+        Math.max(
+            1,
+            Math.floor(
+                Number(level) || 1
+            )
+        );
+
+
+    // ===================================
+    // LEVELS 1-99
+    // ===================================
+    //
+    // Keep the original quadratic system.
+    if(safeLevel < 100){
+
+        return (
+            getNextLevelXP(safeLevel) -
+            getCurrentLevelXP(safeLevel)
+        );
+
+    }
+
+
+    // ===================================
+    // LEVELS 100-150
+    // ===================================
+    //
+    // Level 100 -> 101 = 250,000 XP
+    // Level 150 -> 151 = 2,500,000 XP
+    //
+    // Increase: +45,000 XP per level.
+    if(safeLevel <= 150){
+
+        return Math.floor(
+            250000 +
+            (
+                (safeLevel - 100) / 50
+            ) *
+            2250000
+        );
+
+    }
+
+
+    // ===================================
+    // LEVELS 151-200
+    // ===================================
+    //
+    // Level 150 -> 151 = 2,500,000 XP
+    // Level 200 -> 201 = 10,000,000 XP
+    //
+    // Increase: +150,000 XP per level.
+    if(safeLevel <= 200){
+
+        return Math.floor(
+            2500000 +
+            (
+                (safeLevel - 150) / 50
+            ) *
+            7500000
+        );
+
+    }
+
+
+    // ===================================
+    // LEVELS 201-300
+    // ===================================
+    //
+    // Level 200 -> 201 = 10,000,000 XP
+    // Level 300 -> 301 = 100,000,000 XP
+    //
+    // Increase: +900,000 XP per level.
+    if(safeLevel <= 300){
+
+        return Math.floor(
+            10000000 +
+            (
+                (safeLevel - 200) / 100
+            ) *
+            90000000
+        );
+
+    }
+
+
+    // ===================================
+    // LEVELS 301+
+    // ===================================
+    //
+    // Keep the brutal post-200 growth going.
+    // Every level after 300 costs another
+    // +900,000 XP more than the previous one.
+    return Math.floor(
+        100000000 +
+        (safeLevel - 300) *
+        900000
+    );
+
+
+}
+
+
+
 function getCurrentLevelXP(level){
 
 
-    if(level <= 1){
+    const safeLevel =
+        Math.max(
+            1,
+            Math.floor(
+                Number(level) || 1
+            )
+        );
+
+
+    if(safeLevel <= 1){
 
         return 0;
 
     }
 
 
-
-    // Old formula until level 100
-
-    if(level <= 100){
+    // Original level thresholds through Level 100.
+    if(safeLevel <= 100){
 
         return Math.floor(
-
             Math.pow(
-                level - 1,
+                safeLevel - 1,
                 2
             ) * 250
-
         );
 
     }
 
 
-
-    // Total XP required to reach level 100
-
+    // Exact XP threshold for reaching Level 100.
+    // This must match getCurrentLevelXP(100).
     let total =
         Math.floor(
-
             Math.pow(
-                100,
+                100 - 1,
                 2
             ) * 250
-
         );
 
 
-
-    // Add custom requirements for levels 101+
-
+    // Add the cost of every completed level
+    // beginning with Level 100 -> 101.
     for(
-        let lvl = 101;
-        lvl < level;
+        let lvl = 100;
+        lvl < safeLevel;
         lvl++
     ){
 
         total +=
-            Math.floor(
-
-                250000 +
-
-                (
-                    (lvl - 101) /
-                    19
-                ) * 750000
-
+            getLevelRequirement(
+                lvl
             );
 
     }
@@ -188,44 +290,37 @@ function getCurrentLevelXP(level){
 function getNextLevelXP(level){
 
 
-    // Old formula until level 99 -> 100
+    const safeLevel =
+        Math.max(
+            1,
+            Math.floor(
+                Number(level) || 1
+            )
+        );
 
-    if(level < 100){
+
+    // Preserve the original system below Level 100.
+    if(safeLevel < 100){
 
         return Math.floor(
-
             Math.pow(
-                level,
+                safeLevel,
                 2
             ) * 250
-
         );
 
     }
 
 
-
-    const current =
+    return (
         getCurrentLevelXP(
-            level
-        );
-
-
-
-    const requirement =
-        Math.floor(
-
-            250000 +
-
-            (
-                (level - 100) /
-                19
-            ) * 750000
-
-        );
-
-
-    return current + requirement;
+            safeLevel
+        )
+        +
+        getLevelRequirement(
+            safeLevel
+        )
+    );
 
 
 }
@@ -745,6 +840,9 @@ module.exports = {
 
 
     getCurrentLevelXP,
+
+
+    getLevelRequirement,
 
 
     getLevelXP:
