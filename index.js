@@ -65,6 +65,107 @@ const logsCommand =
 const tradeCommand =
     require("./commands/trade");
 
+
+// =====================================================
+// WELCOME + PRIVATE SERVER LOCK
+// =====================================================
+//
+// Mizuki automatically treats the server that owns this
+// channel as her ONE allowed server.
+const WELCOME_CHANNEL_ID =
+    "1324935982755086398";
+
+
+let MAIN_GUILD_ID =
+    null;
+
+
+function isMainGuild(guildID){
+
+    return (
+        MAIN_GUILD_ID
+        &&
+        String(guildID) ===
+            String(MAIN_GUILD_ID)
+    );
+
+}
+
+
+async function resolveMainGuild(){
+
+    const welcomeChannel =
+        await client.channels.fetch(
+            WELCOME_CHANNEL_ID
+        ).catch(
+            () => null
+        );
+
+
+    if(
+        !welcomeChannel
+        ||
+        !welcomeChannel.guildId
+    ){
+
+        console.error(
+            `CRITICAL: Could not resolve welcome channel ${WELCOME_CHANNEL_ID}. ` +
+            "Mizuki will ignore all guild commands until the channel is accessible."
+        );
+
+        return null;
+
+    }
+
+
+    MAIN_GUILD_ID =
+        String(
+            welcomeChannel.guildId
+        );
+
+
+    console.log(
+        `Mizuki locked to guild ${MAIN_GUILD_ID}.`
+    );
+
+
+    return MAIN_GUILD_ID;
+
+}
+
+
+async function leaveUnauthorizedGuilds(){
+
+    for(
+        const guild of
+        client.guilds.cache.values()
+    ){
+
+        if(isMainGuild(guild.id)){
+            continue;
+        }
+
+
+        console.warn(
+            `Leaving unauthorized guild: ${guild.name} (${guild.id})`
+        );
+
+
+        await guild.leave()
+            .catch(error => {
+
+                console.error(
+                    `Failed to leave unauthorized guild ${guild.id}:`,
+                    error
+                );
+
+            });
+
+    }
+
+}
+
+
 const http = require("http");
 
 const PORT = process.env.PORT || 3000;
@@ -105,6 +206,16 @@ intents:[
 
 
 client.once("clientReady", async () => {
+
+
+    await resolveMainGuild();
+
+
+    if(MAIN_GUILD_ID){
+
+        await leaveUnauthorizedGuilds();
+
+    }
 
 
     await database.initDatabase();
@@ -189,9 +300,104 @@ setInterval(async()=>{
 
 });
 
+// =====================================================
+// PRIVATE GUILD PROTECTION
+// =====================================================
+//
+// If somebody somehow invites Mizuki to another server,
+// she immediately leaves it.
+client.on(
+    "guildCreate",
+    async guild => {
+
+        if(isMainGuild(guild.id)){
+            return;
+        }
+
+
+        console.warn(
+            `Mizuki was invited to unauthorized guild: ${guild.name} (${guild.id}). Leaving.`
+        );
+
+
+        await guild.leave()
+            .catch(console.error);
+
+    }
+);
+
+
+// =====================================================
+// WELCOME MESSAGE
+// =====================================================
+
+client.on(
+    "guildMemberAdd",
+    async member => {
+
+        if(
+            !isMainGuild(
+                member.guild.id
+            )
+        ){
+            return;
+        }
+
+
+        // Only welcome real users, not newly-added bots.
+        if(member.user.bot){
+            return;
+        }
+
+
+        const welcomeChannel =
+            await member.guild.channels.fetch(
+                WELCOME_CHANNEL_ID
+            ).catch(
+                () => null
+            );
+
+
+        if(
+            !welcomeChannel
+            ||
+            !welcomeChannel.isTextBased()
+        ){
+            console.error(
+                `Welcome channel ${WELCOME_CHANNEL_ID} could not be used.`
+            );
+
+            return;
+        }
+
+
+        await welcomeChannel.send(
+            `🌸 Welcome to the server, ${member}~! 💜`
+        ).catch(error => {
+
+            console.error(
+                "Failed to send welcome message:",
+                error
+            );
+
+        });
+
+    }
+);
+
+
 client.on(
     "guildMemberUpdate",
     async (oldMember, newMember) => {
+
+        if(
+            !isMainGuild(
+                newMember.guild.id
+            )
+        ){
+            return;
+        }
+
 
         await boosts.checkBoostRole(
             newMember
@@ -208,6 +414,15 @@ client.on(
 
 
 client.on("guildMemberRemove", async member => {
+
+    if(
+        !isMainGuild(
+            member.guild.id
+        )
+    ){
+        return;
+    }
+
 
     await trades.handleMemberRemove(
         member
@@ -235,6 +450,17 @@ client.on(
     "interactionCreate",
     async interaction => {
 
+        if(
+            !interaction.guildId
+            ||
+            !isMainGuild(
+                interaction.guildId
+            )
+        ){
+            return;
+        }
+
+
         await trades.handleInteraction(
             interaction
         );
@@ -258,6 +484,15 @@ async message => {
 
         if(!message.guild)
             return;
+
+
+        if(
+            !isMainGuild(
+                message.guild.id
+            )
+        ){
+            return;
+        }
 
 
         await quests.recordEvent(
@@ -500,7 +735,7 @@ if(result.critical){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
 
         ).catch(() => {});
 
@@ -529,7 +764,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
 
     ).catch(() => {});
 
