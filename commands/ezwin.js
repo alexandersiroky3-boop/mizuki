@@ -1,6 +1,7 @@
 const database = require("../database");
 const xp = require("../utils/xp");
 const luck = require("../utils/luck");
+const leveling = require("../systems/leveling");
 
 
 // ======================
@@ -169,13 +170,31 @@ await database.setCommandCooldown(
             continue;
 
 
+        const affectedUserID =
+            user.userid || user.userID;
+
+
         await database.addXP(
 
             guildID,
 
-            user.userid || user.userID,
+            affectedUserID,
 
             -lostXP
+
+        );
+
+
+        // Recalculate the user's level immediately after
+        // losing XP. syncLevelAndAnnounce updates levels
+        // downward too, but only announces actual level-ups.
+        await leveling.syncLevelAndAnnounce(
+
+            message.client,
+
+            guildID,
+
+            affectedUserID
 
         );
 
@@ -190,6 +209,19 @@ await database.setCommandCooldown(
         userID,
 
         gainedXP
+
+    );
+
+
+    // Recalculate the winner too, so any level-up from
+    // !ezwin is reflected immediately.
+    await leveling.syncLevelAndAnnounce(
+
+        message.client,
+
+        guildID,
+
+        userID
 
     );
 
