@@ -24,11 +24,11 @@ const BOOST_ROLES = {
 // Luck Boosts add their critical chance bonus.
 // Each consecutive critical adds +4% momentum
 // to the NEXT critical roll, up to +28%.
-// Final critical chance is capped at 85%.
+// Final critical chance is capped at 95%.
 
 const CRITICAL_MOMENTUM_PER_STREAK = 4;
 const CRITICAL_MOMENTUM_CAP = 28;
-const CRITICAL_CHANCE_CAP = 85;
+const CRITICAL_CHANCE_CAP = 95;
 
 
 function getCriticalMomentum(currentStreak){
