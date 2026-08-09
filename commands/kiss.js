@@ -34,30 +34,30 @@ const KISS_TABLES = {
     level1To100: [
         {
             key: "common",
-            chancePercent: 65,
-            min: 2000,
-            max: 7500,
+            chancePercent: 65.009,
+            min: 1000,
+            max: 4000,
             rarity: "💖 COMMON KISS"
         },
         {
             key: "rare",
             chancePercent: 20,
-            min: 7500,
-            max: 20000,
+            min: 4000,
+            max: 10000,
             rarity: "💜 RARE KISS"
         },
         {
             key: "epic",
             chancePercent: 12.89,
-            min: 20000,
-            max: 100000,
+            min: 10000,
+            max: 50000,
             rarity: "🌌 EPIC KISS"
         },
         {
             key: "legendary",
             chancePercent: 2,
-            min: 100000,
-            max: 500000,
+            min: 50000,
+            max: 250000,
             rarity: "✨ LEGENDARY KISS"
         },
         {
@@ -69,9 +69,9 @@ const KISS_TABLES = {
         },
         {
             key: "divine",
-            chancePercent: 0.01,
+            chancePercent: 0.001,
             min: 3000000,
-            max: 12500000,
+            max: 7500000,
             rarity: "🌠 DIVINE KISS"
         }
     ],
@@ -79,37 +79,37 @@ const KISS_TABLES = {
     level101Plus: [
         {
             key: "common",
-            chancePercent: 35,
-            min: 12500,
-            max: 25000,
+            chancePercent: 35.495,
+            min: 5000,
+            max: 15000,
             rarity: "💖 COMMON KISS"
         },
         {
             key: "rare",
             chancePercent: 50,
-            min: 25000,
-            max: 100000,
+            min: 15000,
+            max: 50000,
             rarity: "💜 RARE KISS"
         },
         {
             key: "epic",
             chancePercent: 10,
-            min: 100000,
-            max: 750000,
+            min: 50000,
+            max: 300000,
             rarity: "🌌 EPIC KISS"
         },
         {
             key: "legendary",
             chancePercent: 4.5,
-            min: 750000,
-            max: 5000000,
+            min: 300000,
+            max: 1500000,
             rarity: "✨ LEGENDARY KISS"
         },
         {
             key: "divine",
-            chancePercent: 0.5,
-            min: 5000000,
-            max: 25000000,
+            chancePercent: 0.005,
+            min: 2000000,
+            max: 7500000,
             rarity: "🌠 DIVINE KISS"
         }
     ]
@@ -597,8 +597,7 @@ await database.giveXP(
 );
 
 
-// The user who gave the kiss also earns XP.
-// They receive 15% less than the kissed user.
+// The kisser receives 15% less XP than the kissed user.
 const kisserReward =
     Math.floor(
         reward * 0.85
@@ -674,9 +673,7 @@ return message.channel.send(
 ${dialogue}
 
 💋 **${message.author.username} kissed ${target.username}!**
-
 💖 **${target.username} received +${reward.toLocaleString()} XP!**
-
 💕 **${message.author.username} received +${kisserReward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
 
 );
