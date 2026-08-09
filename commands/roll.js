@@ -292,39 +292,61 @@ function buildRollCooldownExtra(
     rollAccess
 ){
 
-    const usesLeft =
-        Math.max(
-            0,
-            Number(
-                rollAccess?.usesLeft
-            ) || 0
+    const cooldownEndsAt =
+        Number(
+            rollAccess?.cooldownEndsAt
+        ) || (
+            Date.now() +
+            ROLL_COOLDOWN
         );
-
-
-    // The weekly quest reward allows up to three
-    // immediate rolls inside the same cooldown window.
-    if(
-        rollAccess?.tripleRoll
-        &&
-        usesLeft > 0
-    ){
-
-        return (
-            `\n\n⏱️ **Next roll:** Ready now — ` +
-            `**${usesLeft}** immediate ` +
-            `${usesLeft === 1 ? "roll" : "rolls"} left.`
-        );
-
-    }
 
 
     const readyAt =
         Math.floor(
-            (
-                Date.now() +
-                ROLL_COOLDOWN
-            ) / 1000
+            cooldownEndsAt / 1000
         );
+
+
+    if(rollAccess?.tripleRoll){
+
+        const rollNumber =
+            Math.max(
+                1,
+                Number(
+                    rollAccess?.rollNumber
+                ) || 1
+            );
+
+
+        const rollCount =
+            Math.max(
+                1,
+                Number(
+                    rollAccess?.rollCount
+                ) || 3
+            );
+
+
+        const tripleText =
+            `\n\n🎰 **TRIPLE ROLL ${rollNumber}/${rollCount}**`;
+
+
+        // Only the final automatic roll needs to repeat the
+        // cooldown timestamp.
+        if(!rollAccess?.showCooldown){
+
+            return tripleText;
+
+        }
+
+
+        return (
+            tripleText +
+            `\n⏱️ **Next Triple Roll:** ` +
+            `<t:${readyAt}:R> • <t:${readyAt}:T>`
+        );
+
+    }
 
 
     return (
@@ -360,7 +382,7 @@ async function syncRollLevel(
 }
 
 
-async function execute(message){
+async function execute(message, options = {}){
 
 
     if(!message.guild)
@@ -378,6 +400,8 @@ async function execute(message){
     // ======================
 
 const rollAccess =
+    options.rollAccess
+    ||
     await quests.useRollCooldown(
         message.guild.id,
         message.author.id,
@@ -405,7 +429,7 @@ if(!rollAccess.allowed){
 
     const messageText =
         rollAccess.tripleRoll
-            ? `🎲 You already used all 3 quest-reward rolls. Try again <t:${readyAt}:R> • <t:${readyAt}:T>.`
+            ? `🎰 Your Triple Roll is on cooldown. Try again <t:${readyAt}:R> • <t:${readyAt}:T>.`
             : `🎲 You can roll again <t:${readyAt}:R> • <t:${readyAt}:T>.`;
 
 
@@ -413,6 +437,68 @@ if(!rollAccess.allowed){
         messageText
     );
 
+
+}
+
+
+// ======================
+// QUEST TRIPLE ROLL
+// ======================
+//
+// One typed !roll command now performs three complete,
+// independent rolls automatically. Each roll still uses:
+// - its own XP result
+// - its own Luck calculation
+// - its own XP MAX / Luck Boost drop checks
+// - its own quest progress
+// - its own bonus / Impossible bonus
+//
+// The cooldown was already consumed once above.
+if(
+    rollAccess.tripleRoll
+    &&
+    !options.skipCooldown
+){
+
+    const rollCount =
+        Math.max(
+            1,
+            Number(
+                rollAccess.rollCount
+            ) || 3
+        );
+
+
+    for(
+        let rollIndex = 0;
+        rollIndex < rollCount;
+        rollIndex++
+    ){
+
+        await execute(
+            message,
+            {
+                skipCooldown: true,
+
+                rollAccess: {
+                    ...rollAccess,
+
+                    rollNumber:
+                        rollIndex + 1,
+
+                    rollCount,
+
+                    showCooldown:
+                        rollIndex ===
+                        rollCount - 1
+                }
+            }
+        );
+
+    }
+
+
+    return;
 
 }
 
