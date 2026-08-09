@@ -15,8 +15,8 @@ const leveling =
     require("./leveling");
 
 
-const QUEST_TIME_ZONE =
-    "Europe/Prague";
+const QUEST_RESET_TIME_ZONE =
+    "UTC";
 
 
 const DAILY_QUEST_COUNT =
@@ -460,215 +460,24 @@ function generateRewards(cycleType){
 }
 
 
-const dateFormatter =
-    new Intl.DateTimeFormat(
-        "en-CA",
-        {
-            timeZone:
-                QUEST_TIME_ZONE,
-
-            year:
-                "numeric",
-
-            month:
-                "2-digit",
-
-            day:
-                "2-digit"
-        }
-    );
-
-
-function getLocalDateParts(timestamp){
-
-    const parts =
-        dateFormatter.formatToParts(
-            new Date(timestamp)
-        );
-
-
-    const values = {};
-
-
-    for(const part of parts){
-
-        if(part.type !== "literal"){
-
-            values[part.type] =
-                Number(part.value);
-
-        }
-
-    }
-
-
-    return {
-        year:
-            values.year,
-
-        month:
-            values.month,
-
-        day:
-            values.day
-    };
-
-}
-
-
-function addCalendarDays(
-    parts,
-    amount
-){
-
-    const date =
-        new Date(
-            Date.UTC(
-                parts.year,
-                parts.month - 1,
-                parts.day + amount
-            )
-        );
-
-
-    return {
-        year:
-            date.getUTCFullYear(),
-
-        month:
-            date.getUTCMonth() + 1,
-
-        day:
-            date.getUTCDate()
-    };
-
-}
-
-
-function zonedMidnightToUTC(parts){
-
-    const wantedLocalAsUTC =
-        Date.UTC(
-            parts.year,
-            parts.month - 1,
-            parts.day,
-            0,
-            0,
-            0
-        );
-
-
-    let guess =
-        wantedLocalAsUTC;
-
-
-    for(let attempt = 0; attempt < 4; attempt++){
-
-        const actualLocal =
-            getLocalDateTimeParts(
-                guess
-            );
-
-
-        const actualLocalAsUTC =
-            Date.UTC(
-                actualLocal.year,
-                actualLocal.month - 1,
-                actualLocal.day,
-                actualLocal.hour,
-                actualLocal.minute,
-                actualLocal.second
-            );
-
-
-        const difference =
-            wantedLocalAsUTC -
-            actualLocalAsUTC;
-
-
-        guess +=
-            difference;
-
-
-        if(Math.abs(difference) < 1000){
-
-            break;
-
-        }
-
-    }
-
-
-    return guess;
-
-}
-
-
-const dateTimeFormatter =
-    new Intl.DateTimeFormat(
-        "en-CA",
-        {
-            timeZone:
-                QUEST_TIME_ZONE,
-
-            year:
-                "numeric",
-
-            month:
-                "2-digit",
-
-            day:
-                "2-digit",
-
-            hour:
-                "2-digit",
-
-            minute:
-                "2-digit",
-
-            second:
-                "2-digit",
-
-            hourCycle:
-                "h23"
-        }
-    );
-
-
-function getLocalDateTimeParts(timestamp){
-
-    const parts =
-        dateTimeFormatter.formatToParts(
-            new Date(timestamp)
-        );
-
-
-    const values = {};
-
-
-    for(const part of parts){
-
-        if(part.type !== "literal"){
-
-            values[part.type] =
-                Number(part.value);
-
-        }
-
-    }
-
-
-    return values;
-
-}
-
-
-function formatDateKey(parts){
+function formatUTCDateKey(date){
 
     return [
-        String(parts.year),
-        String(parts.month).padStart(2, "0"),
-        String(parts.day).padStart(2, "0")
+        String(
+            date.getUTCFullYear()
+        ),
+        String(
+            date.getUTCMonth() + 1
+        ).padStart(
+            2,
+            "0"
+        ),
+        String(
+            date.getUTCDate()
+        ).padStart(
+            2,
+            "0"
+        )
     ].join("-");
 
 }
@@ -679,68 +488,82 @@ function getCycleInfo(
     now = Date.now()
 ){
 
-    const today =
-        getLocalDateParts(now);
+    const current =
+        new Date(now);
 
 
     if(cycleType === "daily"){
 
-        const tomorrow =
-            addCalendarDays(
-                today,
-                1
+        const start =
+            new Date(
+                Date.UTC(
+                    current.getUTCFullYear(),
+                    current.getUTCMonth(),
+                    current.getUTCDate()
+                )
             );
 
 
         return {
             cycleType,
             cycleKey:
-                formatDateKey(today),
+                formatUTCDateKey(
+                    start
+                ),
             expiresAt:
-                zonedMidnightToUTC(tomorrow)
+                Date.UTC(
+                    start.getUTCFullYear(),
+                    start.getUTCMonth(),
+                    start.getUTCDate() + 1
+                )
         };
 
     }
 
 
-    const weekday =
+    const startOfToday =
         new Date(
             Date.UTC(
-                today.year,
-                today.month - 1,
-                today.day
+                current.getUTCFullYear(),
+                current.getUTCMonth(),
+                current.getUTCDate()
             )
-        ).getUTCDay();
-
-
-    const daysSinceMonday =
-        (weekday + 6) % 7;
-
-
-    const monday =
-        addCalendarDays(
-            today,
-            -daysSinceMonday
         );
 
 
-    const nextMonday =
-        addCalendarDays(
-            monday,
-            7
+    const daysSinceMonday =
+        (
+            startOfToday.getUTCDay() +
+            6
+        ) % 7;
+
+
+    const monday =
+        new Date(
+            Date.UTC(
+                startOfToday.getUTCFullYear(),
+                startOfToday.getUTCMonth(),
+                startOfToday.getUTCDate() -
+                    daysSinceMonday
+            )
         );
 
 
     return {
         cycleType,
         cycleKey:
-            formatDateKey(monday),
+            formatUTCDateKey(
+                monday
+            ),
         expiresAt:
-            zonedMidnightToUTC(nextMonday)
+            Date.UTC(
+                monday.getUTCFullYear(),
+                monday.getUTCMonth(),
+                monday.getUTCDate() + 7
+            )
     };
 
 }
-
 
 function normalizeJSON(value){
 
@@ -1139,12 +962,34 @@ async function migrateActiveQuestCycles(
             );
 
 
-        if(!migrated.changed)
-            continue;
-
-
         const cycle =
             migrated.cycle;
+
+
+        const cycleInfo =
+            getCycleInfo(
+                cycle.cycletype
+            );
+
+
+        // Keep the user's exact quests/progress/reward state. Only move
+        // the currently active matching cycle to the global UTC expiry.
+        const shouldUpdateExpiry =
+            cycle.cyclekey ===
+                cycleInfo.cycleKey
+            &&
+            Number(cycle.expiresat) !==
+                Number(cycleInfo.expiresAt);
+
+
+        if(
+            !migrated.changed &&
+            !shouldUpdateExpiry
+        ){
+
+            continue;
+
+        }
 
 
         const updated =
@@ -1154,7 +999,10 @@ async function migrateActiveQuestCycles(
                 cycle.cycletype,
                 cycle.cyclekey,
                 cycle.quests,
-                cycle.rewards
+                cycle.rewards,
+                shouldUpdateExpiry
+                    ? cycleInfo.expiresAt
+                    : null
             );
 
 
@@ -1278,6 +1126,28 @@ async function ensureCycle(
             );
 
     }
+    else if(
+        Number(
+            cycle.expiresat ||
+            cycle.expiresAt
+        ) !==
+        Number(
+            cycleInfo.expiresAt
+        )
+    ){
+
+        cycle =
+            await database.replaceQuestCycleData(
+                guildID,
+                userID,
+                cycleType,
+                cycleInfo.cycleKey,
+                normalizeJSON(cycle.quests) || [],
+                normalizeJSON(cycle.rewards) || [],
+                cycleInfo.expiresAt
+            );
+
+    }
 
 
     const migrated =
@@ -1295,7 +1165,8 @@ async function ensureCycle(
                 cycleType,
                 cycleInfo.cycleKey,
                 migrated.cycle.quests,
-                migrated.cycle.rewards
+                migrated.cycle.rewards,
+                cycleInfo.expiresAt
             );
 
     }
