@@ -15,6 +15,9 @@ const {
 const database =
     require("../database");
 
+const leveling =
+    require("./leveling");
+
 const boosts =
     require("./boosts");
 
@@ -2309,6 +2312,30 @@ async function handleConfirm(
 
     const completedTrade =
         completion.trade;
+
+
+    // Trading XP can move either participant across one or
+    // more level thresholds in either direction.
+    //
+    // The XP transaction itself is already protected against
+    // insufficient balances. This resync fixes the stored
+    // level immediately so !level never shows negative
+    // "XP into current level" after somebody gives XP away.
+    await Promise.all([
+
+        leveling.syncLevelAndAnnounce(
+            interaction.client,
+            completedTrade.guildid,
+            completedTrade.user1id
+        ),
+
+        leveling.syncLevelAndAnnounce(
+            interaction.client,
+            completedTrade.guildid,
+            completedTrade.user2id
+        )
+
+    ]);
 
 
     await recordSuccessfulTradeQuests(
