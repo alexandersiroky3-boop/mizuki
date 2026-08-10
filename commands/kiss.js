@@ -116,6 +116,226 @@ const KISS_TABLES = {
 
 };
 
+// =====================================================
+// LEVEL 1-99 EXACT KISS CHANCES FOR LUCK II / III / MAX
+// =====================================================
+//
+// These are intentionally MUCH weaker than the Level 101+
+// tables. Lower-level players still benefit from Luck, but
+// they should not jump straight into Legendary/Mythic/Divine
+// outcomes too often.
+//
+// No Luck, Luck I and Luck Ω remain unchanged.
+const LEVEL1_TO99_EXACT_LUCK_TABLES = {
+
+    tier2: [
+        {
+            key: "common",
+            chancePercent: 35
+        },
+        {
+            key: "rare",
+            chancePercent: 45
+        },
+        {
+            key: "epic",
+            chancePercent: 17
+        },
+        {
+            key: "legendary",
+            chancePercent: 2.5
+        },
+        {
+            key: "mythic",
+            chancePercent: 0.45
+        },
+        {
+            key: "divine",
+            chancePercent: 0.05
+        }
+    ],
+
+    tier3: [
+        {
+            key: "common",
+            chancePercent: 27
+        },
+        {
+            key: "rare",
+            chancePercent: 42
+        },
+        {
+            key: "epic",
+            chancePercent: 25
+        },
+        {
+            key: "legendary",
+            chancePercent: 5
+        },
+        {
+            key: "mythic",
+            chancePercent: 0.9
+        },
+        {
+            key: "divine",
+            chancePercent: 0.1
+        }
+    ],
+
+    max: [
+        {
+            key: "common",
+            chancePercent: 18
+        },
+        {
+            key: "rare",
+            chancePercent: 36
+        },
+        {
+            key: "epic",
+            chancePercent: 34
+        },
+        {
+            key: "legendary",
+            chancePercent: 10
+        },
+        {
+            key: "mythic",
+            chancePercent: 1.85
+        },
+        {
+            key: "divine",
+            chancePercent: 0.15
+        }
+    ]
+
+};
+
+
+// =====================================================
+// LEVEL 101+ EXACT KISS CHANCES FOR LUCK II / III / MAX
+// =====================================================
+//
+// These are direct final percentages for !kiss only.
+// They do NOT affect !hug, !steal, !roll, etc.
+//
+// No Luck, Luck I and Luck Ω still use the normal
+// command-luck weighting system unchanged.
+const LEVEL101_PLUS_EXACT_LUCK_TABLES = {
+
+    tier2: [
+        {
+            key: "common",
+            chancePercent: 7.9
+        },
+        {
+            key: "rare",
+            chancePercent: 47
+        },
+        {
+            key: "epic",
+            chancePercent: 35
+        },
+        {
+            key: "legendary",
+            chancePercent: 10
+        },
+        {
+            key: "divine",
+            chancePercent: 0.1
+        }
+    ],
+
+    tier3: [
+        {
+            key: "common",
+            chancePercent: 10
+        },
+        {
+            key: "rare",
+            chancePercent: 35
+        },
+        {
+            key: "epic",
+            chancePercent: 39.8
+        },
+        {
+            key: "legendary",
+            chancePercent: 15
+        },
+        {
+            key: "divine",
+            chancePercent: 0.2
+        }
+    ],
+
+    max: [
+        {
+            key: "common",
+            chancePercent: 4.8
+        },
+        {
+            key: "rare",
+            chancePercent: 25
+        },
+        {
+            key: "epic",
+            chancePercent: 40
+        },
+        {
+            key: "legendary",
+            chancePercent: 30
+        },
+        {
+            key: "divine",
+            chancePercent: 0.2
+        }
+    ]
+
+};
+
+
+function rollExactKissOutcome(
+    baseTable,
+    exactChanceTable
+){
+
+    let roll =
+        Math.random() * 100;
+
+
+    for(const entry of exactChanceTable){
+
+        roll -=
+            Number(
+                entry.chancePercent
+            );
+
+
+        if(roll < 0){
+
+            return (
+                baseTable.find(
+                    outcome =>
+                        outcome.key ===
+                        entry.key
+                )
+                ||
+                baseTable[0]
+            );
+
+        }
+
+    }
+
+
+    return baseTable[
+        baseTable.length - 1
+    ];
+
+}
+
+
 
 function getKissDialogue(
     key,
@@ -575,18 +795,53 @@ const kissTable =
         : KISS_TABLES.level1To100;
 
 
+// Level 100+ keeps Luck useful, but II / III / MAX
+// use the softer command balance from utils/luck.js.
+const commandLuck =
+    currentLevel >= 100
+        ? luck.getLevel100PlusCommandLuckProfile(
+            activeLuck
+        )
+        : activeLuck;
+
+
+const activeLuckTier =
+    String(
+        activeLuck?.tier || ""
+    ).toLowerCase();
+
+
+const exactLuckTable =
+    currentLevel < 100
+        ? LEVEL1_TO99_EXACT_LUCK_TABLES[
+            activeLuckTier
+        ]
+        : (
+            currentLevel > 100
+                ? LEVEL101_PLUS_EXACT_LUCK_TABLES[
+                    activeLuckTier
+                ]
+                : null
+        );
+
+
 const outcome =
-    luck.rollCommandOutcome(
-        kissTable,
-        activeLuck
-    );
+    exactLuckTable
+        ? rollExactKissOutcome(
+            kissTable,
+            exactLuckTable
+        )
+        : luck.rollCommandOutcome(
+            kissTable,
+            commandLuck
+        );
 
 
 const reward =
     luck.rollCommandXP(
         outcome.min,
         outcome.max,
-        activeLuck
+        commandLuck
     );
 
 
