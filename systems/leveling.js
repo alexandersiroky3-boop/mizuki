@@ -107,6 +107,12 @@ const previousCriticalStreak =
     ) || 0;
 
 
+const previousBestCriticalStreak =
+    Number(
+        streakData.best
+    ) || 0;
+
+
 
     // ======================
     // Calculate XP
@@ -123,6 +129,15 @@ const reward =
 
     const earnedXP =
         reward.xp;
+
+
+const newBestCriticalStreak =
+    Boolean(
+        reward.critical
+        &&
+        Number(reward.criticalStreak) >
+            previousBestCriticalStreak
+    );
 
 
 if(reward.critical){
@@ -347,6 +362,18 @@ return {
 
 criticalStreak:
     reward.criticalStreak,
+
+
+previousBestCriticalStreak,
+
+
+bestCriticalStreak:
+    newBestCriticalStreak
+        ? Number(reward.criticalStreak)
+        : previousBestCriticalStreak,
+
+
+newBestCriticalStreak,
 
 
 lostCriticalStreak:
