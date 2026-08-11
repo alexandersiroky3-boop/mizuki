@@ -789,6 +789,25 @@ const currentLevel =
     );
 
 
+const targetData =
+    await database.getUser(
+        guildID,
+        target.id
+    );
+
+
+const targetLevel =
+    xp.getLevel(
+        Number(targetData?.xp) || 0
+    );
+
+
+const lowLevelTargetProtection =
+    currentLevel >= 100
+    &&
+    targetLevel < 100;
+
+
 const kissTable =
     currentLevel > 100
         ? KISS_TABLES.level101Plus
@@ -845,10 +864,23 @@ const reward =
     );
 
 
+// A Level 1-99 target only receives 10% of a player-command
+// reward when the command author is Level 100+.
+const targetReward =
+    lowLevelTargetProtection
+        ? Math.max(
+            1,
+            Math.floor(
+                reward * 0.10
+            )
+        )
+        : reward;
+
+
 await database.giveXP(
     message.guild.id,
     target.id,
-    reward
+    targetReward
 );
 
 
@@ -869,7 +901,7 @@ await database.giveXP(
 await quests.recordEvent(
     message,
     "earn_xp",
-    reward,
+    targetReward,
     {
         userID: target.id
     }
@@ -929,7 +961,7 @@ ${dialogue}
 
 💋 **${message.author.username} kissed ${target.username}!**
 
-💖 **${target.username} received +${reward.toLocaleString()} XP!**
+💖 **${target.username} received +${targetReward.toLocaleString()} XP!**${lowLevelTargetProtection ? " 🛡️ *(90% Lv1-99 protection applied)*" : ""}
 
 💕 **${message.author.username} received +${kisserReward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
 
