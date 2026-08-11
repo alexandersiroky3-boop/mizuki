@@ -27,6 +27,13 @@ const luck =
 const quests =
     require("./quests");
 
+const xp =
+    require("../utils/xp");
+
+
+const TRADE_UNLOCK_LEVEL =
+    50;
+
 
 const TRADE_CATEGORY_ID =
     "1535247237821505556";
@@ -111,6 +118,94 @@ function isParticipant(
         ||
         String(trade.user2id) ===
             String(userID)
+    );
+
+}
+
+
+async function getTradeLevelLock(trade){
+
+    if(!trade){
+
+        return {
+            locked: true,
+            userID: null,
+            level: 0
+        };
+
+    }
+
+
+    const [
+        user1,
+        user2
+    ] = await Promise.all([
+
+        database.getUser(
+            trade.guildid,
+            trade.user1id
+        ),
+
+        database.getUser(
+            trade.guildid,
+            trade.user2id
+        )
+
+    ]);
+
+
+    const level1 =
+        xp.getLevel(
+            Number(user1?.xp) || 0
+        );
+
+
+    const level2 =
+        xp.getLevel(
+            Number(user2?.xp) || 0
+        );
+
+
+    if(level1 < TRADE_UNLOCK_LEVEL){
+
+        return {
+            locked: true,
+            userID:
+                String(trade.user1id),
+            level:
+                level1
+        };
+
+    }
+
+
+    if(level2 < TRADE_UNLOCK_LEVEL){
+
+        return {
+            locked: true,
+            userID:
+                String(trade.user2id),
+            level:
+                level2
+        };
+
+    }
+
+
+    return {
+        locked: false,
+        userID: null,
+        level: null
+    };
+
+}
+
+
+function buildTradeLockedMessage(lock){
+
+    return (
+        `🔒 Trading unlocks at **Level ${TRADE_UNLOCK_LEVEL}**. ` +
+        `<@${lock.userID}> is currently **Level ${lock.level}**, so this trade cannot continue.`
     );
 
 }
@@ -407,7 +502,7 @@ function buildTradePanel(trade){
             .setFooter({
 
                 text:
-                    "Only stored boost inventory and XP can be traded. Active boosts cannot be traded. Level 1-99 players can receive max 100,000 XP per trade."
+                    "Trading unlocks at Level 50. Level 50-99 players can receive max 100,000 XP per trade. Only stored boost inventory and XP can be traded."
 
             })
 
@@ -670,6 +765,29 @@ async function getAuthorizedTrade(
     }
 
 
+    const levelLock =
+        await getTradeLevelLock(
+            trade
+        );
+
+
+    if(levelLock.locked){
+
+        await privateReply(
+            interaction,
+            {
+                content:
+                    buildTradeLockedMessage(
+                        levelLock
+                    )
+            }
+        );
+
+        return null;
+
+    }
+
+
     return trade;
 
 }
@@ -842,6 +960,7 @@ function buildTradeInvite(
 
             .setDescription(
                 `${user1} wants to start a secure trade with you.\n\n` +
+                `🔓 Trading requires **Level ${TRADE_UNLOCK_LEVEL}+** for both players.\n` +
                 `Only **XP** and **stored XP/Luck Boosts** can be traded.\n` +
                 `Every participant pays an automatic fee when the trade completes.\n\n` +
                 `Invite expires <t:${expires}:R>.`
@@ -1311,6 +1430,27 @@ async function handleXPModal(
     }
 
 
+    const levelLock =
+        await getTradeLevelLock(
+            trade
+        );
+
+
+    if(levelLock.locked){
+
+        return privateReply(
+            interaction,
+            {
+                content:
+                    buildTradeLockedMessage(
+                        levelLock
+                    )
+            }
+        );
+
+    }
+
+
     const amount =
         parsePositiveInteger(
             interaction.fields.getTextInputValue(
@@ -1585,6 +1725,27 @@ async function handleBoostSelect(
     }
 
 
+    const levelLock =
+        await getTradeLevelLock(
+            trade
+        );
+
+
+    if(levelLock.locked){
+
+        return privateReply(
+            interaction,
+            {
+                content:
+                    buildTradeLockedMessage(
+                        levelLock
+                    )
+            }
+        );
+
+    }
+
+
     const key =
         String(
             interaction.values[0] || ""
@@ -1719,6 +1880,27 @@ async function handleBoostModal(
             {
                 content:
                     "This trade is no longer editable."
+            }
+        );
+
+    }
+
+
+    const levelLock =
+        await getTradeLevelLock(
+            trade
+        );
+
+
+    if(levelLock.locked){
+
+        return privateReply(
+            interaction,
+            {
+                content:
+                    buildTradeLockedMessage(
+                        levelLock
+                    )
             }
         );
 
@@ -2035,6 +2217,27 @@ async function handleRemoveSelect(
     }
 
 
+    const levelLock =
+        await getTradeLevelLock(
+            trade
+        );
+
+
+    if(levelLock.locked){
+
+        return privateReply(
+            interaction,
+            {
+                content:
+                    buildTradeLockedMessage(
+                        levelLock
+                    )
+            }
+        );
+
+    }
+
+
     const selection =
         String(
             interaction.values[0] || ""
@@ -2195,6 +2398,50 @@ async function handleConfirm(
             {
                 content:
                     "Only the two traders can confirm this trade."
+            }
+        );
+
+    }
+
+
+    const levelLock =
+        await getTradeLevelLock(
+            trade
+        );
+
+
+    if(levelLock.locked){
+
+        await database.cancelTrade(
+            trade.id,
+            interaction.user.id,
+            `Trade locked because ${levelLock.userID} is below Level ${TRADE_UNLOCK_LEVEL}.`,
+            "cancelled"
+        );
+
+
+        await refreshTradePanel(
+            interaction.client,
+            trade.id
+        ).catch(
+            () => {}
+        );
+
+
+        scheduleTradeCleanup(
+            interaction.client,
+            trade.id
+        );
+
+
+        return privateReply(
+            interaction,
+            {
+                content:
+                    buildTradeLockedMessage(
+                        levelLock
+                    ) +
+                    "\nThe trade was cancelled and nothing was transferred."
             }
         );
 
@@ -2552,6 +2799,54 @@ async function handleInviteAccept(
     interaction,
     tradeID
 ){
+
+    const pendingTrade =
+        await database.getTrade(
+            tradeID
+        );
+
+
+    if(!pendingTrade){
+
+        return privateReply(
+            interaction,
+            {
+                content:
+                    "This trade invitation no longer exists."
+            }
+        );
+
+    }
+
+
+    const levelLock =
+        await getTradeLevelLock(
+            pendingTrade
+        );
+
+
+    if(levelLock.locked){
+
+        await database.cancelTrade(
+            pendingTrade.id,
+            interaction.user.id,
+            `Trade locked because ${levelLock.userID} is below Level ${TRADE_UNLOCK_LEVEL}.`,
+            "cancelled"
+        );
+
+
+        return interaction.update({
+            content:
+                buildTradeLockedMessage(
+                    levelLock
+                ) +
+                "\nThis invitation was cancelled.",
+            embeds: [],
+            components: []
+        });
+
+    }
+
 
     const setup =
         await database.beginTradeSetup(
@@ -2922,6 +3217,42 @@ async function restoreTrades(
     for(const trade of processing){
 
         try{
+
+            const levelLock =
+                await getTradeLevelLock(
+                    trade
+                );
+
+
+            if(levelLock.locked){
+
+                const cancelled =
+                    await database.cancelTrade(
+                        trade.id,
+                        null,
+                        `Trade locked because ${levelLock.userID} is below Level ${TRADE_UNLOCK_LEVEL}.`,
+                        "cancelled"
+                    );
+
+
+                await refreshTradePanel(
+                    client,
+                    trade.id
+                ).catch(
+                    () => {}
+                );
+
+
+                await cleanupTradeResources(
+                    client,
+                    cancelled
+                );
+
+
+                continue;
+
+            }
+
 
             const result =
                 await database.executeTradeTransaction(
