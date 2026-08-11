@@ -124,6 +124,12 @@ await database.setCommandCooldown(
         currentLevel > 100;
 
 
+    // Protection starts at exactly Level 100, even though the
+    // existing EZ Win reward tier still uses its old >100 check.
+    const isLevel100PlusActor =
+        currentLevel >= 100;
+
+
     const activeLuck =
         await luck.getActiveLuckBoost(
             message.member
@@ -187,15 +193,22 @@ await database.setCommandCooldown(
             );
 
 
-        // Players below Level 100 are protected from the
-        // full EZ Win punishment and lose 70% less XP.
-        // In other words, they only take 30% of the rolled loss.
+        // Existing low-level protection remains for low-level
+        // attackers (30% of the rolled loss).
+        //
+        // NEW: if the !ezwin user is Level 100+, a Level 1-99
+        // victim only takes 10% of the rolled loss.
         const affectedLoss =
             affectedLevel < 100
                 ? Math.max(
                     1,
                     Math.floor(
-                        lostXP * 0.30
+                        lostXP *
+                        (
+                            isLevel100PlusActor
+                                ? 0.10
+                                : 0.30
+                        )
                     )
                 )
                 : lostXP;
@@ -263,7 +276,7 @@ message.channel.send(
 `*Mizuki giggles playfully and flies closer to ${message.author} before snapping her fingers, using only **0.000001%** of her power...*
 
 💥 **Level 100+ users lose ${lostXP.toLocaleString()} XP!**
-🛡️ **Users below Level 100 lose 70% less XP!**
+🛡️ **Users below Level 100 lose ${isLevel100PlusActor ? "90%" : "70%"} less XP!**
 
 🌸 **${message.author} gains +${gainedXP.toLocaleString()} XP!**${usedLuckExtra}`
 
