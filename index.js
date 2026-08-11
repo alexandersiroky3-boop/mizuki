@@ -846,6 +846,17 @@ if(result.critical){
     );
 
 
+    if(result.newBestCriticalStreak){
+
+        await quests.recordEvent(
+            message,
+            "new_best_critical_streak",
+            1
+        );
+
+    }
+
+
     // React to every critical message.
     message.react(
         "💥"
