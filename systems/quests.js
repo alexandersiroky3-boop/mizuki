@@ -26,11 +26,22 @@ const DAILY_QUEST_COUNT =
 const WEEKLY_QUEST_COUNT =
     3;
 
+
+const QUEST_UNLOCK_LEVEL =
+    100;
+
+
 const QUEST_RULESET_VERSION =
-    2;
+    4;
 
 
-const DAILY_QUEST_POOL = [
+// =====================================================
+// LEVEL 1-99 DAILY QUESTS
+// =====================================================
+//
+// Keep the existing lower-level quest difficulty.
+// Weekly quests are locked until Level 100.
+const DAILY_QUEST_POOL_LOW = [
 
     {
         type: "messages",
@@ -43,7 +54,7 @@ const DAILY_QUEST_POOL = [
         type: "roll_xp",
         icon: "🎲",
         targets: [5000, 10000, 50000],
-        label: target => `Roll ${target.toLocaleString()} XP`
+        label: target => `Roll a total of ${target.toLocaleString()} XP`
     },
 
     {
@@ -127,7 +138,124 @@ const DAILY_QUEST_POOL = [
 ];
 
 
-const WEEKLY_QUEST_POOL = [
+// =====================================================
+// LEVEL 100+ DAILY QUESTS
+// =====================================================
+//
+// Only the quests requested by the owner are buffed.
+// All other daily quests keep their previous targets.
+const DAILY_QUEST_POOL_HIGH = [
+
+    {
+        type: "messages",
+        icon: "💬",
+        targets: [25, 50, 100, 200],
+        label: target => `Send ${target.toLocaleString()} messages`
+    },
+
+    {
+        type: "roll_xp",
+        icon: "🎲",
+        targets: [500000, 1000000, 2500000],
+        label: target => `Roll a total of ${target.toLocaleString()} XP`
+    },
+
+    {
+        type: "single_roll_xp",
+        icon: "🎯",
+        // Stored as threshold + 1 so "more than" is literal.
+        targets: [25001, 50001, 100001],
+        mode: "max",
+        label: target =>
+            `Roll more than ${(target - 1).toLocaleString()} XP in one roll`
+    },
+
+    {
+        type: "earn_xp",
+        icon: "✦",
+        targets: [1000000, 2500000, 3000000],
+        label: target => `Earn ${target.toLocaleString()} XP`
+    },
+
+    {
+        type: "steal_xp",
+        icon: "💰",
+        targets: [25000, 50000, 100000],
+        label: target => `Steal ${target.toLocaleString()} XP`
+    },
+
+    {
+        type: "get_stolen",
+        icon: "💰",
+        targets: [1],
+        label: () => "Get stolen from by someone"
+    },
+
+    {
+        type: "kiss_given",
+        icon: "💋",
+        targets: [3, 5, 10],
+        label: target => `Kiss someone ${target} times`
+    },
+
+    {
+        type: "kiss_received",
+        icon: "💋",
+        targets: [3, 5, 10],
+        label: target => `Get kissed ${target} times`
+    },
+
+    {
+        type: "roll_count",
+        icon: "🎲",
+        targets: [10, 20, 50],
+        label: target => `Use !roll ${target} times`
+    },
+
+    {
+        type: "critical_streak",
+        icon: "💥",
+        targets: [5, 10, 15],
+        mode: "max",
+        label: target => `Reach a ${target}x critical streak`
+    },
+
+    {
+        type: "level_change",
+        icon: "★",
+        targets: [1],
+        label: () => "Gain or lose a level"
+    },
+
+    {
+        type: "shop_purchase",
+        icon: "💸",
+        targets: [1],
+        label: () => "Buy something from the shop"
+    },
+
+    {
+        type: "successful_trade",
+        icon: "🤝",
+        targets: [2, 4, 6],
+        label: target => `Successfully trade with someone ${target} times`
+    },
+
+    {
+        type: "hug_given",
+        icon: "🫂",
+        targets: [1],
+        label: () => "Hug someone"
+    }
+
+];
+
+
+// =====================================================
+// LEVEL 100+ WEEKLY QUESTS
+// =====================================================
+
+const WEEKLY_QUEST_POOL_HIGH = [
 
     {
         type: "messages",
@@ -140,20 +268,29 @@ const WEEKLY_QUEST_POOL = [
         type: "roll_xp",
         icon: "🎲",
         targets: [1000000],
-        label: target => `Roll ${target.toLocaleString()} XP`
+        label: target => `Roll a total of ${target.toLocaleString()} XP`
+    },
+
+    {
+        type: "single_roll_xp",
+        icon: "🎯",
+        targets: [500001, 750001, 1000001],
+        mode: "max",
+        label: target =>
+            `Roll more than ${(target - 1).toLocaleString()} XP in one roll`
     },
 
     {
         type: "earn_xp",
         icon: "✦",
-        targets: [2000000, 5000000, 10000000],
+        targets: [25000000, 50000000, 100000000],
         label: target => `Earn ${target.toLocaleString()} XP`
     },
 
     {
         type: "steal_xp",
         icon: "💰",
-        targets: [20000, 50000, 75000],
+        targets: [250000, 500000, 1000000],
         label: target => `Steal ${target.toLocaleString()} XP`
     },
 
@@ -179,11 +316,10 @@ const WEEKLY_QUEST_POOL = [
     },
 
     {
-        type: "critical_streak",
-        icon: "💥",
-        targets: [10, 15, 20],
-        mode: "max",
-        label: target => `Reach a ${target}x critical streak`
+        type: "new_best_critical_streak",
+        icon: "🏅",
+        targets: [1],
+        label: () => "Get a new highest Best critical streak"
     },
 
     {
@@ -198,9 +334,88 @@ const WEEKLY_QUEST_POOL = [
         icon: "💸",
         targets: [2, 3],
         label: target => `Buy Luck Boost MAX ${target} times`
+    },
+
+    {
+        type: "sold_out_store",
+        icon: "🛒",
+        targets: [1],
+        label: () => "Sell out the entire store"
     }
 
 ];
+
+
+// Compatibility only:
+// Existing active weekly "Reach a critical streak" quests are NOT replaced
+// mid-week, because that would destroy or reinterpret saved progress.
+// They remain valid until the current weekly cycle resets.
+const LEGACY_WEEKLY_CRITICAL_STREAK = {
+    type: "critical_streak",
+    icon: "💥",
+    targets: [10, 15, 20],
+    mode: "max",
+    label: target => `Reach a ${target}x critical streak`
+};
+
+
+const DAILY_TARGET_MIGRATIONS = {
+
+    roll_xp: {
+        low: [5000, 10000, 50000],
+        high: [500000, 1000000, 2500000]
+    },
+
+    earn_xp: {
+        low: [20000, 50000, 100000],
+        high: [1000000, 2500000, 3000000]
+    },
+
+    steal_xp: {
+        low: [500, 1000, 2500],
+        high: [25000, 50000, 100000]
+    },
+
+    critical_streak: {
+        low: [2, 3],
+        high: [5, 10, 15]
+    }
+
+};
+
+
+const WEEKLY_TARGET_MIGRATIONS = {
+
+    earn_xp: {
+        old: [2000000, 5000000, 10000000],
+        high: [25000000, 50000000, 100000000]
+    },
+
+    steal_xp: {
+        old: [20000, 50000, 75000],
+        high: [250000, 500000, 1000000]
+    }
+
+};
+
+
+function isHighQuestLevel(level){
+
+    return (
+        Number(level) >=
+        QUEST_UNLOCK_LEVEL
+    );
+
+}
+
+
+function getLevelBand(level){
+
+    return isHighQuestLevel(level)
+        ? "high"
+        : "low";
+
+}
 
 
 function randomChoice(values){
@@ -250,7 +465,8 @@ function shuffle(values){
 
 function makeQuest(
     definition,
-    slot
+    slot,
+    levelBand
 ){
 
     const target =
@@ -265,6 +481,8 @@ function makeQuest(
 
         rulesetVersion:
             QUEST_RULESET_VERSION,
+
+        levelBand,
 
         type:
             definition.type,
@@ -294,13 +512,35 @@ function makeQuest(
 
 
 function generateQuests(
-    cycleType
+    cycleType,
+    level
 ){
+
+    const highLevel =
+        isHighQuestLevel(
+            level
+        );
+
+
+    if(
+        cycleType === "weekly"
+        &&
+        !highLevel
+    ){
+
+        return [];
+
+    }
+
 
     const pool =
         cycleType === "daily"
-            ? DAILY_QUEST_POOL
-            : WEEKLY_QUEST_POOL;
+            ? (
+                highLevel
+                    ? DAILY_QUEST_POOL_HIGH
+                    : DAILY_QUEST_POOL_LOW
+            )
+            : WEEKLY_QUEST_POOL_HIGH;
 
 
     const amount =
@@ -309,14 +549,76 @@ function generateQuests(
             : WEEKLY_QUEST_COUNT;
 
 
+    const band =
+        getLevelBand(
+            level
+        );
+
+
     return shuffle(pool)
         .slice(0, amount)
-        .map(makeQuest);
+        .map(
+            (definition, slot) =>
+                makeQuest(
+                    definition,
+                    slot,
+                    band
+                )
+        );
 
 }
 
 
-function generateDailyRewards(){
+function generateDailyRewardsLow(){
+
+    return [
+
+        {
+            type: "xp",
+            amount:
+                randomChoice([
+                    50000,
+                    100000,
+                    200000
+                ]),
+            levelBand: "low"
+        },
+
+        randomChoice([
+
+            {
+                type: "boost",
+                boostType: "luck",
+                tier: "tier3",
+                amount:
+                    randomChoice([1, 2]),
+                levelBand: "low"
+            },
+
+            {
+                type: "boost",
+                boostType: "xp",
+                tier: "tier3",
+                amount:
+                    randomChoice([1, 2]),
+                levelBand: "low"
+            },
+
+            {
+                type: "guaranteed_roll",
+                rollType: "daily_25k_75k",
+                amount: 1,
+                levelBand: "low"
+            }
+
+        ])
+
+    ];
+
+}
+
+
+function generateDailyRewardsHigh(){
 
     const xpReward = {
         type: "xp",
@@ -325,7 +627,8 @@ function generateDailyRewards(){
                 200000,
                 500000,
                 1000000
-            ])
+            ]),
+        levelBand: "high"
     };
 
 
@@ -340,7 +643,8 @@ function generateDailyRewards(){
                         "tier2",
                         "tier3"
                     ]),
-                amount: 5
+                amount: 5,
+                levelBand: "high"
             },
 
             {
@@ -351,13 +655,15 @@ function generateDailyRewards(){
                         "tier2",
                         "tier3"
                     ]),
-                amount: 5
+                amount: 5,
+                levelBand: "high"
             },
 
             {
                 type: "guaranteed_roll",
                 rollType: "daily_25k_75k",
-                amount: 1
+                amount: 1,
+                levelBand: "high"
             }
 
         ]);
@@ -378,9 +684,9 @@ function generateWeeklyRewards(){
             type: "xp",
             amount:
                 randomChoice([
-                    2000000,
-                    5000000,
-                    10000000
+                    15000000,
+                    30000000,
+                    50000000
                 ])
         }
     ];
@@ -394,7 +700,7 @@ function generateWeeklyRewards(){
                 boostType: "luck",
                 tier: "max",
                 amount:
-                    randomChoice([2, 3, 5])
+                    randomChoice([2, 5])
             },
 
             {
@@ -402,7 +708,7 @@ function generateWeeklyRewards(){
                 boostType: "xp",
                 tier: "max",
                 amount:
-                    randomChoice([2, 3, 5])
+                    randomChoice([2, 5])
             },
 
             {
@@ -410,7 +716,7 @@ function generateWeeklyRewards(){
                 boostType: "luck",
                 tier: "tier3",
                 amount:
-                    randomChoice([5, 10])
+                    randomChoice([10, 20])
             },
 
             {
@@ -418,7 +724,7 @@ function generateWeeklyRewards(){
                 boostType: "xp",
                 tier: "tier3",
                 amount:
-                    randomChoice([5, 10])
+                    randomChoice([10, 20])
             },
 
             {
@@ -451,11 +757,24 @@ function generateWeeklyRewards(){
 
 }
 
-function generateRewards(cycleType){
 
-    return cycleType === "daily"
-        ? generateDailyRewards()
-        : generateWeeklyRewards();
+function generateRewards(
+    cycleType,
+    level
+){
+
+    if(cycleType === "daily"){
+
+        return isHighQuestLevel(level)
+            ? generateDailyRewardsHigh()
+            : generateDailyRewardsLow();
+
+    }
+
+
+    return isHighQuestLevel(level)
+        ? generateWeeklyRewards()
+        : [];
 
 }
 
@@ -628,88 +947,235 @@ function normalizeCycle(row){
 
 function getQuestDefinition(
     cycleType,
-    questType
+    questType,
+    level = QUEST_UNLOCK_LEVEL
 ){
 
-    const pool =
-        cycleType === "daily"
-            ? DAILY_QUEST_POOL
-            : WEEKLY_QUEST_POOL;
+    const highLevel =
+        isHighQuestLevel(
+            level
+        );
 
 
-    return pool.find(
-        definition =>
-            definition.type === questType
-    ) || null;
+    let pool;
+
+
+    if(cycleType === "daily"){
+
+        pool =
+            highLevel
+                ? DAILY_QUEST_POOL_HIGH
+                : DAILY_QUEST_POOL_LOW;
+
+    }
+    else{
+
+        pool =
+            WEEKLY_QUEST_POOL_HIGH;
+
+    }
+
+
+    const definition =
+        pool.find(
+            item =>
+                item.type === questType
+        );
+
+
+    if(definition){
+
+        return definition;
+
+    }
+
+
+    // Cross-band fallback keeps an active quest readable if somebody
+    // crosses Level 100 in the middle of a cycle.
+    const fallbackPools = [
+        DAILY_QUEST_POOL_LOW,
+        DAILY_QUEST_POOL_HIGH,
+        WEEKLY_QUEST_POOL_HIGH
+    ];
+
+
+    for(const fallbackPool of fallbackPools){
+
+        const found =
+            fallbackPool.find(
+                item =>
+                    item.type === questType
+            );
+
+
+        if(found){
+
+            return found;
+
+        }
+
+    }
+
+
+    if(
+        cycleType === "weekly"
+        &&
+        questType ===
+            LEGACY_WEEKLY_CRITICAL_STREAK.type
+    ){
+
+        return LEGACY_WEEKLY_CRITICAL_STREAK;
+
+    }
+
+
+    return null;
 
 }
 
 
-function migrateWeeklyTarget(quest){
+function mapTargetByDifficulty(
+    target,
+    fromTargets,
+    toTargets
+){
+
+    const numericTarget =
+        Number(target) || 0;
+
+
+    if(
+        toTargets.includes(
+            numericTarget
+        )
+    ){
+
+        return numericTarget;
+
+    }
+
+
+    let index =
+        fromTargets.indexOf(
+            numericTarget
+        );
+
+
+    if(index < 0){
+
+        let bestDistance =
+            Infinity;
+
+
+        for(
+            let i = 0;
+            i < fromTargets.length;
+            i++
+        ){
+
+            const distance =
+                Math.abs(
+                    numericTarget -
+                    fromTargets[i]
+                );
+
+
+            if(distance < bestDistance){
+
+                bestDistance =
+                    distance;
+
+                index =
+                    i;
+
+            }
+
+        }
+
+    }
+
+
+    index =
+        Math.max(
+            0,
+            Math.min(
+                index,
+                toTargets.length - 1
+            )
+        );
+
+
+    return toTargets[index];
+
+}
+
+
+function migrateQuestTarget(
+    cycleType,
+    quest,
+    level
+){
 
     const target =
-        Number(quest.target) || 0;
+        Number(quest.target) || 1;
 
 
-    if(quest.type === "kiss_received"){
+    if(cycleType === "daily"){
 
-        const oldToNew = {
-            50: 25,
-            100: 35,
-            200: 50
-        };
-
-
-        if(oldToNew[target])
-            return oldToNew[target];
+        const mapping =
+            DAILY_TARGET_MIGRATIONS[
+                quest.type
+            ];
 
 
-        if([25, 35, 50].includes(target))
-            return target;
-
-
-        return Math.max(
-            25,
-            Math.min(50, target || 25)
-        );
-
-    }
-
-
-    if(quest.type === "critical_streak"){
-
-        if([10, 15, 20].includes(target))
-            return target;
-
-
-        return Math.max(
-            10,
-            Math.min(20, target || 10)
-        );
-
-    }
-
-
-    if(quest.type === "earn_xp"){
-
-        if([
-            2000000,
-            5000000,
-            10000000
-        ].includes(target)){
+        if(!mapping){
 
             return target;
 
         }
 
 
-        if(target <= 2000000)
-            return 2000000;
+        if(isHighQuestLevel(level)){
 
-        if(target <= 5000000)
-            return 5000000;
+            return mapTargetByDifficulty(
+                target,
+                mapping.low,
+                mapping.high
+            );
 
-        return 10000000;
+        }
+
+
+        return mapTargetByDifficulty(
+            target,
+            mapping.high,
+            mapping.low
+        );
+
+    }
+
+
+    if(
+        cycleType === "weekly"
+        &&
+        isHighQuestLevel(level)
+    ){
+
+        const mapping =
+            WEEKLY_TARGET_MIGRATIONS[
+                quest.type
+            ];
+
+
+        if(mapping){
+
+            return mapTargetByDifficulty(
+                target,
+                mapping.old,
+                mapping.high
+            );
+
+        }
 
     }
 
@@ -719,67 +1185,341 @@ function migrateWeeklyTarget(quest){
 }
 
 
-function migrateWeeklyReward(reward){
+function migrateDailyRewardsForLevel(
+    rewards,
+    level
+){
 
-    const migrated = {
-        ...reward
-    };
-
-
-    if(migrated.type === "xp"){
-
-        migrated.amount =
-            Math.min(
-                10000000,
-                Math.max(
-                    0,
-                    Number(migrated.amount) || 0
-                )
-            );
-
-    }
-    else if(migrated.type === "boost"){
-
-        const tier =
-            String(
-                migrated.tier || ""
-            ).toLowerCase();
+    const highLevel =
+        isHighQuestLevel(
+            level
+        );
 
 
-        if(tier === "max"){
+    return (rewards || []).map(
+        reward => {
 
-            migrated.amount =
-                Math.min(
-                    5,
+            const migrated = {
+                ...reward
+            };
+
+
+            const oldBand =
+                String(
+                    migrated.levelBand || ""
+                ).toLowerCase();
+
+
+            if(migrated.type === "xp"){
+
+                const amount =
+                    Math.max(
+                        0,
+                        Number(migrated.amount) || 0
+                    );
+
+
+                if(highLevel){
+
+                    if(oldBand === "low"){
+
+                        migrated.amount =
+                            mapTargetByDifficulty(
+                                amount,
+                                [50000, 100000, 200000],
+                                [200000, 500000, 1000000]
+                            );
+
+                    }
+                    else if(amount <= 50000){
+
+                        migrated.amount =
+                            200000;
+
+                    }
+                    else if(amount <= 100000){
+
+                        migrated.amount =
+                            500000;
+
+                    }
+                    else if(
+                        ![
+                            200000,
+                            500000,
+                            1000000
+                        ].includes(amount)
+                    ){
+
+                        migrated.amount =
+                            Math.min(
+                                1000000,
+                                Math.max(
+                                    200000,
+                                    amount
+                                )
+                            );
+
+                    }
+
+                }
+                else{
+
+                    if([
+                        50000,
+                        100000,
+                        200000
+                    ].includes(amount)){
+
+                        migrated.amount =
+                            amount;
+
+                    }
+                    else if(amount <= 50000){
+
+                        migrated.amount =
+                            50000;
+
+                    }
+                    else if(amount <= 100000){
+
+                        migrated.amount =
+                            100000;
+
+                    }
+                    else{
+
+                        migrated.amount =
+                            200000;
+
+                    }
+
+                }
+
+
+                migrated.levelBand =
+                    highLevel
+                        ? "high"
+                        : "low";
+
+            }
+            else if(migrated.type === "boost"){
+
+                if(highLevel){
+
+                    // A reward that came from the low-level daily pool
+                    // upgrades to the normal Level 100+ daily quantity.
+                    if(
+                        oldBand === "low"
+                        ||
+                        Number(migrated.amount) <= 2
+                    ){
+
+                        migrated.tier =
+                            "tier3";
+
+                        migrated.amount =
+                            5;
+
+                    }
+
+                }
+                else{
+
+                    // Lv1-99 daily boosts are ONLY Luck III / XP III,
+                    // in quantities of 1x or 2x.
+                    migrated.tier =
+                        "tier3";
+
+                    migrated.amount =
+                        Math.max(
+                            1,
+                            Math.min(
+                                2,
+                                Number(migrated.amount) || 1
+                            )
+                        );
+
+                }
+
+
+                migrated.levelBand =
+                    highLevel
+                        ? "high"
+                        : "low";
+
+            }
+            else if(
+                migrated.type === "guaranteed_roll"
+                &&
+                migrated.rollType === "daily_25k_75k"
+            ){
+
+                migrated.amount =
                     Math.max(
                         1,
                         Number(migrated.amount) || 1
-                    )
-                );
+                    );
+
+                migrated.levelBand =
+                    highLevel
+                        ? "high"
+                        : "low";
+
+            }
+
+
+            return migrated;
 
         }
-        else if(tier === "tier3"){
-
-            migrated.amount =
-                Math.min(
-                    10,
-                    Math.max(
-                        1,
-                        Number(migrated.amount) || 1
-                    )
-                );
-
-        }
-
-    }
-
-
-    return migrated;
+    );
 
 }
 
 
-function migrateCycleData(cycle){
+function migrateWeeklyRewards(
+    rewards
+){
+
+    return (rewards || []).map(
+        reward => {
+
+            const migrated = {
+                ...reward
+            };
+
+
+            // -----------------------------
+            // WEEKLY XP
+            // -----------------------------
+            if(migrated.type === "xp"){
+
+                const amount =
+                    Math.max(
+                        0,
+                        Number(migrated.amount) || 0
+                    );
+
+
+                // Old weekly XP difficulty:
+                // 2m / 5m / 10m
+                //
+                // New weekly XP difficulty:
+                // 15m / 30m / 50m
+                if(amount <= 2000000){
+
+                    migrated.amount =
+                        15000000;
+
+                }
+                else if(amount <= 5000000){
+
+                    migrated.amount =
+                        30000000;
+
+                }
+                else if(
+                    ![
+                        15000000,
+                        30000000,
+                        50000000
+                    ].includes(amount)
+                ){
+
+                    migrated.amount =
+                        50000000;
+
+                }
+
+            }
+
+
+            // -----------------------------
+            // WEEKLY BOOSTS
+            // -----------------------------
+            else if(migrated.type === "boost"){
+
+                const boostType =
+                    String(
+                        migrated.boostType || ""
+                    ).toLowerCase();
+
+
+                const tier =
+                    String(
+                        migrated.tier || ""
+                    ).toLowerCase();
+
+
+                const amount =
+                    Math.max(
+                        0,
+                        Number(migrated.amount) || 0
+                    );
+
+
+                // Luck/XP MAX:
+                // old 2 / 3 / 5
+                // new 2 / 5
+                if(
+                    (
+                        boostType === "luck"
+                        ||
+                        boostType === "xp"
+                    )
+                    &&
+                    tier === "max"
+                ){
+
+                    migrated.amount =
+                        amount <= 2
+                            ? 2
+                            : 5;
+
+                }
+
+
+                // Luck/XP III:
+                // old 5 / 10
+                // new 10 / 20
+                else if(
+                    (
+                        boostType === "luck"
+                        ||
+                        boostType === "xp"
+                    )
+                    &&
+                    tier === "tier3"
+                ){
+
+                    migrated.amount =
+                        amount <= 5
+                            ? 10
+                            : 20;
+
+                }
+
+            }
+
+
+            // IMPORTANT:
+            // guaranteed_roll:impossible stays unchanged.
+            // triple_roll stays unchanged.
+            // Any other reward type stays unchanged.
+
+
+            return migrated;
+
+        }
+    );
+
+}
+
+
+function migrateCycleData(
+    cycle,
+    level = QUEST_UNLOCK_LEVEL
+){
 
     const normalized =
         normalizeCycle(cycle);
@@ -795,14 +1535,37 @@ function migrateCycleData(cycle){
     }
 
 
+    // Weekly quests are frozen/hidden for Lv1-99.
+    // Do not rewrite their saved quest progress while locked.
+    if(
+        normalized.cycletype === "weekly"
+        &&
+        !isHighQuestLevel(level)
+    ){
+
+        return {
+            changed: false,
+            cycle: normalized
+        };
+
+    }
+
+
     const beforeQuests =
         JSON.stringify(
             normalized.quests
         );
 
+
     const beforeRewards =
         JSON.stringify(
             normalized.rewards
+        );
+
+
+    const band =
+        getLevelBand(
+            level
         );
 
 
@@ -815,21 +1578,22 @@ function migrateCycleData(cycle){
                 };
 
 
-                const legacyRuleset =
-                    Number(
-                        migrated.rulesetVersion ||
-                        0
-                    ) < QUEST_RULESET_VERSION;
-
-
+                // Never replace an active weekly legacy critical-streak quest
+                // with the new "best streak" quest mid-cycle. That would make
+                // saved progress meaningless. New cycles use the new quest.
                 if(
-                    normalized.cycletype === "weekly" &&
-                    legacyRuleset
+                    !(
+                        normalized.cycletype === "weekly"
+                        &&
+                        migrated.type === "critical_streak"
+                    )
                 ){
 
                     migrated.target =
-                        migrateWeeklyTarget(
-                            migrated
+                        migrateQuestTarget(
+                            normalized.cycletype,
+                            migrated,
+                            level
                         );
 
                 }
@@ -838,11 +1602,15 @@ function migrateCycleData(cycle){
                 migrated.rulesetVersion =
                     QUEST_RULESET_VERSION;
 
+                migrated.levelBand =
+                    band;
+
 
                 const definition =
                     getQuestDefinition(
                         normalized.cycletype,
-                        migrated.type
+                        migrated.type,
+                        level
                     );
 
 
@@ -862,11 +1630,13 @@ function migrateCycleData(cycle){
                 }
 
 
+                // Absolutely preserve existing progress and completed state.
                 const progress =
                     Math.max(
                         0,
                         Number(migrated.progress) || 0
                     );
+
 
                 const target =
                     Math.max(
@@ -875,14 +1645,16 @@ function migrateCycleData(cycle){
                     );
 
 
-                // Keep the user's saved progress. If a nerfed target is now
-                // already met, finish the quest instead of throwing progress away.
                 migrated.progress =
                     progress;
 
 
+                // A completed quest always stays completed even if its target
+                // gets buffed. An incomplete quest only auto-completes if its
+                // already-saved progress meets the new target.
                 if(
-                    !migrated.completed &&
+                    !migrated.completed
+                    &&
                     progress >= target
                 ){
 
@@ -906,16 +1678,32 @@ function migrateCycleData(cycle){
         normalized.rewards;
 
 
-    // Never claw back rewards that were already claimed.
-    if(
-        normalized.cycletype === "weekly" &&
-        !normalized.rewarded
-    ){
+    // Never modify/claw back rewards that were already claimed.
+    if(!normalized.rewarded){
 
-        rewards =
-            normalized.rewards.map(
-                migrateWeeklyReward
-            );
+        if(
+            normalized.cycletype === "daily"
+        ){
+
+            rewards =
+                migrateDailyRewardsForLevel(
+                    normalized.rewards,
+                    level
+                );
+
+        }
+        else if(
+            normalized.cycletype === "weekly"
+            &&
+            isHighQuestLevel(level)
+        ){
+
+            rewards =
+                migrateWeeklyRewards(
+                    normalized.rewards
+                );
+
+        }
 
     }
 
@@ -954,11 +1742,73 @@ async function migrateActiveQuestCycles(
     let autoClaimedCount = 0;
 
 
+    const levelCache =
+        new Map();
+
+
     for(const row of rows){
+
+        const guildID =
+            row.guildid ||
+            row.guildID;
+
+        const userID =
+            row.userid ||
+            row.userID;
+
+        const cacheKey =
+            `${guildID}:${userID}`;
+
+
+        let level =
+            levelCache.get(
+                cacheKey
+            );
+
+
+        if(!level){
+
+            const user =
+                await database.getUser(
+                    guildID,
+                    userID
+                );
+
+
+            const xpUtil =
+                require("../utils/xp");
+
+
+            level =
+                xpUtil.getLevel(
+                    Number(user?.xp) || 0
+                );
+
+
+            levelCache.set(
+                cacheKey,
+                level
+            );
+
+        }
+
+
+        const normalizedRow =
+            normalizeCycle(
+                row
+            );
+
+
+        const weeklyLocked =
+            normalizedRow.cycletype === "weekly"
+            &&
+            !isHighQuestLevel(level);
+
 
         const migrated =
             migrateCycleData(
-                row
+                row,
+                level
             );
 
 
@@ -972,8 +1822,6 @@ async function migrateActiveQuestCycles(
             );
 
 
-        // Keep the user's exact quests/progress/reward state. Only move
-        // the currently active matching cycle to the global UTC expiry.
         const shouldUpdateExpiry =
             cycle.cyclekey ===
                 cycleInfo.cycleKey
@@ -983,44 +1831,61 @@ async function migrateActiveQuestCycles(
 
 
         if(
-            !migrated.changed &&
-            !shouldUpdateExpiry
+            migrated.changed
+            ||
+            shouldUpdateExpiry
         ){
+
+            const updated =
+                await database.replaceQuestCycleData(
+                    guildID,
+                    userID,
+                    cycle.cycletype,
+                    cycle.cyclekey,
+                    cycle.quests,
+                    cycle.rewards,
+                    shouldUpdateExpiry
+                        ? cycleInfo.expiresAt
+                        : null
+                );
+
+
+            if(updated){
+
+                changedCount++;
+
+            }
+
+        }
+
+
+        // Weekly completion/rewards stay frozen for Lv1-99 until Level 100.
+        if(weeklyLocked){
 
             continue;
 
         }
 
 
-        const updated =
-            await database.replaceQuestCycleData(
-                row.guildid || row.guildID,
-                row.userid || row.userID,
+        const refreshed =
+            await database.getQuestCycle(
+                guildID,
+                userID,
                 cycle.cycletype,
-                cycle.cyclekey,
-                cycle.quests,
-                cycle.rewards,
-                shouldUpdateExpiry
-                    ? cycleInfo.expiresAt
-                    : null
+                cycle.cyclekey
             );
-
-
-        if(!updated)
-            continue;
-
-
-        changedCount++;
 
 
         const normalizedUpdated =
             normalizeCycle(
-                updated
+                refreshed ||
+                cycle
             );
 
 
         const allCompleted =
-            normalizedUpdated.quests.length > 0 &&
+            normalizedUpdated.quests.length > 0
+            &&
             normalizedUpdated.quests.every(
                 quest =>
                     Boolean(quest.completed)
@@ -1028,14 +1893,15 @@ async function migrateActiveQuestCycles(
 
 
         if(
-            allCompleted &&
+            allCompleted
+            &&
             !normalizedUpdated.rewarded
         ){
 
             const claim =
                 await database.claimQuestCycleRewards(
-                    row.guildid || row.guildID,
-                    row.userid || row.userID,
+                    guildID,
+                    userID,
                     normalizedUpdated.cycletype,
                     normalizedUpdated.cyclekey
                 );
@@ -1047,18 +1913,20 @@ async function migrateActiveQuestCycles(
 
 
                 if(
-                    client &&
+                    client
+                    &&
                     claim.rewards.some(
                         reward =>
-                            reward.type === "xp" &&
+                            reward.type === "xp"
+                            &&
                             Number(reward.amount) > 0
                     )
                 ){
 
                     await leveling.syncLevelAndAnnounce(
                         client,
-                        row.guildid || row.guildID,
-                        row.userid || row.userID
+                        guildID,
+                        userID
                     ).catch(
                         () => {}
                     );
@@ -1073,7 +1941,7 @@ async function migrateActiveQuestCycles(
 
 
     console.log(
-        `✅ Quest migration updated ${changedCount} active cycles and auto-claimed ${autoClaimedCount} completed cycles without resetting progress.`
+        `✅ Quest ruleset v${QUEST_RULESET_VERSION} migrated ${changedCount} active cycles and auto-claimed ${autoClaimedCount} eligible completed cycles without resetting progress.`
     );
 
 
@@ -1088,7 +1956,8 @@ async function migrateActiveQuestCycles(
 async function ensureCycle(
     guildID,
     userID,
-    cycleType
+    cycleType,
+    level
 ){
 
     const cycleInfo =
@@ -1112,8 +1981,14 @@ async function ensureCycle(
             cycleType,
             cycleInfo.cycleKey,
             cycleInfo.expiresAt,
-            generateQuests(cycleType),
-            generateRewards(cycleType)
+            generateQuests(
+                cycleType,
+                level
+            ),
+            generateRewards(
+                cycleType,
+                level
+            )
         );
 
 
@@ -1152,7 +2027,8 @@ async function ensureCycle(
 
     const migrated =
         migrateCycleData(
-            cycle
+            cycle,
+            level
         );
 
 
@@ -1182,29 +2058,82 @@ async function ensureUserQuests(
     userID
 ){
 
-    const [
-        daily,
-        weekly
-    ] = await Promise.all([
+    const user =
+        await database.getUser(
+            guildID,
+            userID
+        );
 
-        ensureCycle(
+
+    const xpUtil =
+        require("../utils/xp");
+
+
+    const level =
+        xpUtil.getLevel(
+            Number(user?.xp) || 0
+        );
+
+
+    const daily =
+        await ensureCycle(
             guildID,
             userID,
-            "daily"
-        ),
+            "daily",
+            level
+        );
 
-        ensureCycle(
-            guildID,
-            userID,
-            "weekly"
-        )
 
-    ]);
+    const weeklyLocked =
+        !isHighQuestLevel(
+            level
+        );
+
+
+    let weekly = null;
+
+
+    if(weeklyLocked){
+
+        // Do NOT create or progress weekly quests for Lv1-99.
+        // If they had an older active weekly cycle, it remains saved
+        // untouched in PostgreSQL and resumes if they reach Level 100
+        // before the weekly reset.
+        const weeklyInfo =
+            getCycleInfo(
+                "weekly"
+            );
+
+
+        weekly =
+            normalizeCycle(
+                await database.getQuestCycle(
+                    guildID,
+                    userID,
+                    "weekly",
+                    weeklyInfo.cycleKey
+                )
+            );
+
+    }
+    else{
+
+        weekly =
+            await ensureCycle(
+                guildID,
+                userID,
+                "weekly",
+                level
+            );
+
+    }
 
 
     return {
         daily,
-        weekly
+        weekly,
+        weeklyLocked,
+        level
     };
 
 }
@@ -1499,13 +2428,26 @@ async function recordEventUnsafe(
     const results = [];
 
 
-    for(const cycleType of [
-        "daily",
-        "weekly"
-    ]){
+    const cycleTypes =
+        cycles.weeklyLocked
+            ? ["daily"]
+            : [
+                "daily",
+                "weekly"
+            ];
+
+
+    for(const cycleType of cycleTypes){
 
         const cycle =
             cycles[cycleType];
+
+
+        if(!cycle){
+
+            continue;
+
+        }
 
 
         const result =
@@ -1679,6 +2621,8 @@ async function useRollCooldown(
 
 
 module.exports = {
+
+    QUEST_UNLOCK_LEVEL,
 
     ensureUserQuests,
 
