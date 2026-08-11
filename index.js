@@ -224,6 +224,42 @@ client.once("clientReady", async () => {
     await database.initDatabase();
 
 
+    // =====================================================
+    // MIZUKI MUST NEVER BE A LEADERBOARD PLAYER
+    // =====================================================
+    //
+    // Older versions of !kiss allowed "@Mizuki" to fall
+    // through the normal user path, which created an XP row
+    // for the bot. Remove that old row every startup.
+    //
+    // The fixed !kiss command no longer creates it again.
+    if(
+        MAIN_GUILD_ID
+        &&
+        client.user?.id
+    ){
+
+        await database.removeUser(
+            MAIN_GUILD_ID,
+            client.user.id
+        ).then(() => {
+
+            console.log(
+                "Removed Mizuki from the XP leaderboard/database user table."
+            );
+
+        }).catch(error => {
+
+            console.error(
+                "Failed to remove Mizuki's old leaderboard entry:",
+                error
+            );
+
+        });
+
+    }
+
+
     await quests.migrateActiveQuestCycles(
         client
     );
