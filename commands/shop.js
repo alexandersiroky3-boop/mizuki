@@ -592,6 +592,17 @@ async function execute(message){
 
                     }
 
+
+                    if(result.entireStoreSoldOut){
+
+                        await quests.recordEvent(
+                            interaction,
+                            "sold_out_store",
+                            1
+                        );
+
+                    }
+
                 }
 
 
