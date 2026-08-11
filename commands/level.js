@@ -4,6 +4,8 @@ const {
 
 const database = require("../database");
 const xp = require("../utils/xp");
+const levelRoles =
+    require("../systems/levelRoles");
 
 
 async function execute(message){
@@ -47,6 +49,19 @@ async function execute(message){
         );
 
     }
+
+
+    const levelRoleResult =
+        await levelRoles.syncMemberLevelRole(
+            message.member,
+            currentLevel
+        );
+
+
+    const levelRoleMention =
+        levelRoleResult?.role?.roleID
+            ? `<@&${levelRoleResult.role.roleID}>`
+            : "None";
 
 
     const currentXP =
@@ -158,6 +173,7 @@ ${progressBar}
 
 \`${percentage}% Complete\`
 
+> 🎖️ **Level Role:** ${levelRoleMention}
 > 🏆 **Rank:** #${rank}
 > 💬 **Messages:** ${user.messages.toLocaleString()}
 > ✦ **Total XP:** ${totalXP.toLocaleString()}`
