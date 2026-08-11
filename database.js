@@ -2912,6 +2912,29 @@ async function purchaseGlobalShopItem(
             ]);
 
 
+        // lockAndRefreshShop() holds the single shop_state row
+        // FOR UPDATE, so all purchases are serialized. This makes
+        // the "sell out the entire store" check race-safe.
+        const totalStockResult =
+            await client.query(`
+
+                SELECT
+                    COALESCE(
+                        SUM(amount),
+                        0
+                    ) AS total
+
+                FROM shop_stock
+
+            `);
+
+
+        const entireStoreSoldOut =
+            Number(
+                totalStockResult.rows[0]?.total || 0
+            ) <= 0;
+
+
         await client.query("COMMIT");
 
 
@@ -2933,6 +2956,7 @@ async function purchaseGlobalShopItem(
                 Number(
                     updatedStock.rows[0]?.amount || 0
                 ),
+            entireStoreSoldOut,
             inventoryAmount:
                 Number(
                     inventoryResult.rows[0]?.amount || 0
