@@ -1,6 +1,8 @@
 const database = require("../database");
 const xp = require("../utils/xp");
 const boosts = require("./boosts");
+const levelRoles =
+    require("./levelRoles");
 const XP_LOG_CHANNEL =
     "1527632057574887474";
 
@@ -268,10 +270,11 @@ await database.addXPLog(
     let leveledUp = false;
 
 
+    const numericOldLevel =
+        Number(oldLevel) || 1;
 
 
-
-    if(newLevel > oldLevel){
+    if(newLevel !== numericOldLevel){
 
 
         await database.setLevel(
@@ -285,9 +288,17 @@ await database.addXPLog(
         );
 
 
-        leveledUp = true;
+        leveledUp =
+            newLevel >
+            numericOldLevel;
 
     }
+
+
+    await levelRoles.syncMemberLevelRole(
+        message.member,
+        newLevel
+    );
 
 
 
@@ -419,6 +430,16 @@ async function syncLevelAndAnnounce(
         );
 
     }
+
+
+    // Always update the exclusive Discord level role,
+    // including level-downs such as Level 50 -> 49.
+    await levelRoles.syncLevelRoleByIDs(
+        client,
+        guildID,
+        userID,
+        newLevel
+    );
 
 
     // Only announce actual level-ups.
