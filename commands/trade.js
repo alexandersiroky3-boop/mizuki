@@ -4,6 +4,13 @@ const database =
 const trades =
     require("../systems/trades");
 
+const xp =
+    require("../utils/xp");
+
+
+const TRADE_UNLOCK_LEVEL =
+    50;
+
 
 const TRADE_REQUEST_COOLDOWN =
     60 * 1000;
@@ -30,6 +37,29 @@ async function execute(message){
 
     if(!message.guild)
         return;
+
+
+    const senderData =
+        await database.getUser(
+            message.guild.id,
+            message.author.id
+        );
+
+
+    const senderLevel =
+        xp.getLevel(
+            Number(senderData?.xp) || 0
+        );
+
+
+    if(senderLevel < TRADE_UNLOCK_LEVEL){
+
+        return sendStarterFeedback(
+            message,
+            `🔒 Trading unlocks at **Level ${TRADE_UNLOCK_LEVEL}**. You are currently **Level ${senderLevel}**.`
+        );
+
+    }
 
 
     const cooldownRemaining =
@@ -109,6 +139,29 @@ async function execute(message){
         return sendStarterFeedback(
             message,
             "That user is not currently in this server."
+        );
+
+    }
+
+
+    const targetData =
+        await database.getUser(
+            message.guild.id,
+            target.id
+        );
+
+
+    const targetLevel =
+        xp.getLevel(
+            Number(targetData?.xp) || 0
+        );
+
+
+    if(targetLevel < TRADE_UNLOCK_LEVEL){
+
+        return sendStarterFeedback(
+            message,
+            `🔒 ${target} cannot receive trades yet. Trading unlocks at **Level ${TRADE_UNLOCK_LEVEL}**, and they are currently **Level ${targetLevel}**.`
         );
 
     }
