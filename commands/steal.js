@@ -424,6 +424,15 @@ await syncAndTrackLevel(
         victimLevel >= 100;
 
 
+    // Serious protection:
+    // If the thief is Level 100+ and the victim is Level 1-99,
+    // only 10% of the normally rolled steal amount can be taken.
+    const lowLevelVictimProtection =
+        thiefLevel >= 100
+        &&
+        victimLevel < 100;
+
+
     // Luck belongs to the thief, so the Level 100+ command
     // nerf is based on the thief's level, not the victim's.
     const commandLuck =
@@ -603,18 +612,35 @@ const luckExtra =
     // CAP STEAL AT VICTIM'S XP
     // ==========================
 
+    const protectedAttemptedAmount =
+        lowLevelVictimProtection
+            ? Math.max(
+                1,
+                Math.floor(
+                    attemptedAmount * 0.10
+                )
+            )
+            : attemptedAmount;
+
+
     const stolenXP =
         Math.min(
-            attemptedAmount,
+            protectedAttemptedAmount,
             victimXP
         );
+
+
+    const protectionExtra =
+        lowLevelVictimProtection
+            ? `\n🛡️ **Level 1-99 protection:** ${target.username} kept **90%** of the XP that would normally have been stolen.`
+            : "";
 
 
     if(stolenXP <= 0){
 
         return message.channel.send(
 
-            `💀 ${target} didn't have enough XP to steal.${usedLuckExtra}${luckExtra}`
+            `💀 ${target} didn't have enough XP to steal.${usedLuckExtra}${luckExtra}${protectionExtra}`
 
         );
 
@@ -702,7 +728,7 @@ await syncAndTrackLevel(
 
 `💰 **${message.author} STOLE FROM ${target}!** 💰
 
-💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${usedLuckExtra}${luckExtra}`
+💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${usedLuckExtra}${luckExtra}${protectionExtra}`
 
         );
 
@@ -726,7 +752,7 @@ await syncAndTrackLevel(
 
 *${message.author} quickly grabbed ${target}'s bag and started running away while ${target} chased after them, screaming with anger.*
 
-💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${usedLuckExtra}${luckExtra}`
+💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${usedLuckExtra}${luckExtra}${protectionExtra}`
 
         );
 
@@ -756,7 +782,7 @@ await syncAndTrackLevel(
 
 *Mizuki quickly flew away like nothing had happened.*
 
-💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${usedLuckExtra}${luckExtra}`
+💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${usedLuckExtra}${luckExtra}${protectionExtra}`
 
         );
 
@@ -792,7 +818,7 @@ await syncAndTrackLevel(
 
 *Kape used his Thanos gauntlet to pull gravity itself, dragging ${target} toward him and holding them in his giant gauntlet hand.*
 
-💸 **Kape and ${message.author.username} successfully stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${usedLuckExtra}${luckExtra}`
+💸 **Kape and ${message.author.username} successfully stole ${stolenXP.toLocaleString()} XP from ${target.username}!**${usedLuckExtra}${luckExtra}${protectionExtra}`
 
         );
 
@@ -860,7 +886,7 @@ await syncAndTrackLevel(
 
 💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**
 
-✨ **The robbery was inevitable.**${usedLuckExtra}${luckExtra}`
+✨ **The robbery was inevitable.**${usedLuckExtra}${luckExtra}${protectionExtra}`
 
     );
 
