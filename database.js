@@ -24,6 +24,24 @@ const userCache = new Map();
 const CACHE_TIME = 30000;
 
 
+// =====================================================
+// LEVEL 1-99 PROTECTION
+// =====================================================
+//
+// Current leveling formula reaches Level 100 at:
+// (100 - 1)^2 * 250 = 2,450,250 total XP.
+//
+// Kept here instead of importing utils/xp.js because
+// utils/xp.js -> utils/luck.js -> database.js would create
+// a circular dependency.
+const LEVEL_100_XP_THRESHOLD =
+    Math.pow(99, 2) * 250;
+
+
+const LOW_LEVEL_TRADE_INCOMING_XP_CAP =
+    100000;
+
+
 // =======================
 // GLOBAL BOOST SHOP
 // =======================
@@ -5317,6 +5335,112 @@ async function executeTradeTransaction(
             balances.get(
                 String(trade.user2id)
             ) || 0;
+
+
+        // =====================================================
+        // LEVEL 1-99 TRADE XP PROTECTION
+        // =====================================================
+        //
+        // A player who is below Level 100 BEFORE this trade
+        // may receive at most 100,000 raw incoming XP from the
+        // other trader. This is checked inside the same locked
+        // PostgreSQL transaction so it cannot be bypassed by
+        // racing confirmations or changing XP at the same time.
+        const user1BelowLevel100 =
+            balance1 <
+            LEVEL_100_XP_THRESHOLD;
+
+
+        const user2BelowLevel100 =
+            balance2 <
+            LEVEL_100_XP_THRESHOLD;
+
+
+        const resetForLowLevelTradeCap =
+            async (
+                protectedUserID,
+                incomingXP
+            ) => {
+
+                const reset =
+                    await client.query(`
+
+                        UPDATE trades
+
+                        SET
+                            status='active',
+                            user1Confirmed=FALSE,
+                            user2Confirmed=FALSE,
+                            failureReason=$2,
+                            updatedAt=$3,
+                            expiresAt=$4
+
+                        WHERE id=$1
+
+                        RETURNING *
+
+                    `, [
+                        Number(tradeID),
+                        `Level 1-99 protection: User ${protectedUserID} can receive at most ${LOW_LEVEL_TRADE_INCOMING_XP_CAP.toLocaleString()} XP per trade.`,
+                        Date.now(),
+                        Number(retryExpiresAt)
+                    ]);
+
+
+                await client.query("COMMIT");
+
+
+                return {
+                    success: false,
+                    status:
+                        "low-level-xp-cap",
+                    userID:
+                        String(
+                            protectedUserID
+                        ),
+                    incomingXP:
+                        Number(incomingXP) || 0,
+                    cap:
+                        LOW_LEVEL_TRADE_INCOMING_XP_CAP,
+                    trade:
+                        parseTradeRow(
+                            reset.rows[0]
+                        )
+                };
+
+            };
+
+
+        // User 1 receives the XP offered by User 2.
+        if(
+            user1BelowLevel100
+            &&
+            offer2.xp >
+                LOW_LEVEL_TRADE_INCOMING_XP_CAP
+        ){
+
+            return resetForLowLevelTradeCap(
+                trade.user1id,
+                offer2.xp
+            );
+
+        }
+
+
+        // User 2 receives the XP offered by User 1.
+        if(
+            user2BelowLevel100
+            &&
+            offer1.xp >
+                LOW_LEVEL_TRADE_INCOMING_XP_CAP
+        ){
+
+            return resetForLowLevelTradeCap(
+                trade.user2id,
+                offer1.xp
+            );
+
+        }
 
 
         const required1 =
