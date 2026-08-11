@@ -2,7 +2,8 @@ require("dotenv").config();
 
 const {
     Client,
-    GatewayIntentBits
+    GatewayIntentBits,
+    Partials
 } = require("discord.js");
 
 
@@ -67,6 +68,9 @@ const logsCommand =
 
 const tradeCommand =
     require("./commands/trade");
+
+const sendVerifyMSGCommand =
+    require("./commands/sendverifymsg");
 
 
 // =====================================================
@@ -198,7 +202,18 @@ intents:[
 
     GatewayIntentBits.GuildMessages,
 
+    GatewayIntentBits.GuildMessageReactions,
+
     GatewayIntentBits.MessageContent
+
+],
+
+partials:[
+
+    Partials.Message,
+    Partials.Channel,
+    Partials.Reaction,
+    Partials.User
 
 ]
 
@@ -595,6 +610,133 @@ client.on(
 );
 
 
+// =====================================================
+// VERIFICATION REACTION SYSTEM
+// =====================================================
+//
+// Works even after a bot restart because it identifies
+// Mizuki's verification embed instead of storing only
+// a temporary message ID in memory.
+client.on(
+    "messageReactionAdd",
+    async (reaction, user) => {
+
+        if(user.bot){
+            return;
+        }
+
+
+        try{
+
+            if(reaction.partial){
+
+                await reaction.fetch();
+
+            }
+
+
+            const message =
+                reaction.message;
+
+
+            if(message.partial){
+
+                await message.fetch();
+
+            }
+
+
+            if(
+                !message.guild
+                ||
+                !isMainGuild(
+                    message.guild.id
+                )
+            ){
+                return;
+            }
+
+
+            if(
+                reaction.emoji.name !==
+                    sendVerifyMSGCommand.VERIFY_EMOJI
+            ){
+                return;
+            }
+
+
+            // Only Mizuki's own verification message is valid.
+            if(
+                message.author?.id !==
+                    client.user.id
+            ){
+                return;
+            }
+
+
+            const embed =
+                message.embeds?.[0];
+
+
+            if(
+                !embed
+                ||
+                embed.title !==
+                    sendVerifyMSGCommand.VERIFY_EMBED_TITLE
+                ||
+                embed.footer?.text !==
+                    sendVerifyMSGCommand.VERIFY_EMBED_FOOTER
+            ){
+                return;
+            }
+
+
+            const member =
+                await message.guild.members.fetch(
+                    user.id
+                ).catch(
+                    () => null
+                );
+
+
+            if(!member){
+                return;
+            }
+
+
+            if(
+                member.roles.cache.has(
+                    sendVerifyMSGCommand.VERIFY_ROLE_ID
+                )
+            ){
+                return;
+            }
+
+
+            await member.roles.add(
+                sendVerifyMSGCommand.VERIFY_ROLE_ID,
+                "Completed Mizuki reaction verification"
+            );
+
+
+            console.log(
+                `Verified ${member.user.tag} (${member.id}).`
+            );
+
+        }
+        catch(error){
+
+            console.error(
+                "Verification reaction failed:",
+                error
+            );
+
+        }
+
+    }
+);
+
+
 
 client.on(
 "messageCreate",
@@ -648,6 +790,20 @@ async message => {
 
             return message.reply(
                 "🚫 **You cannot use commands in this channel.**"
+            );
+
+        }
+
+
+        if(
+            message.content
+                .trim()
+                .toLowerCase() ===
+                    "!sendverifymsg"
+        ){
+
+            return sendVerifyMSGCommand.execute(
+                message
             );
 
         }
@@ -904,7 +1060,7 @@ if(result.critical){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
 
         ).catch(() => {});
 
@@ -933,7 +1089,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
 
     ).catch(() => {});
 
