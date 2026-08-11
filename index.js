@@ -18,6 +18,9 @@ const quests =
 const trades =
     require("./systems/trades");
 
+const levelRoles =
+    require("./systems/levelRoles");
+
 
 const levelCommand = require("./commands/level");
 const rankCommand = require("./commands/rank");
@@ -236,6 +239,34 @@ client.once("clientReady", async () => {
     await trades.restoreTrades(client);
 
 
+    if(MAIN_GUILD_ID){
+
+        const mainGuild =
+            await client.guilds.fetch(
+                MAIN_GUILD_ID
+            ).catch(
+                () => null
+            );
+
+
+        if(mainGuild){
+
+            await levelRoles.syncGuildLevelRoles(
+                mainGuild
+            ).catch(error => {
+
+                console.error(
+                    "Initial level-role sync failed:",
+                    error
+                );
+
+            });
+
+        }
+
+    }
+
+
 
 setInterval(async()=>{
 
@@ -298,6 +329,40 @@ setInterval(async()=>{
 },60000);
 
 
+// Backup reconciliation catches unusual/admin XP paths that
+// do not call the normal level-sync function.
+setInterval(async()=>{
+
+    if(!MAIN_GUILD_ID)
+        return;
+
+
+    const guild =
+        await client.guilds.fetch(
+            MAIN_GUILD_ID
+        ).catch(
+            () => null
+        );
+
+
+    if(!guild)
+        return;
+
+
+    await levelRoles.syncGuildLevelRoles(
+        guild
+    ).catch(error => {
+
+        console.error(
+            "Periodic level-role sync failed:",
+            error
+        );
+
+    });
+
+},5 * 60 * 1000);
+
+
 });
 
 // =====================================================
@@ -350,6 +415,18 @@ client.on(
         }
 
 
+        await levelRoles.syncMemberLevelRole(
+            member
+        ).catch(error => {
+
+            console.error(
+                "Failed to assign join level role:",
+                error
+            );
+
+        });
+
+
         const welcomeChannel =
             await member.guild.channels.fetch(
                 WELCOME_CHANNEL_ID
@@ -397,6 +474,19 @@ client.on(
         ){
             return;
         }
+
+
+        await levelRoles.handleProtectedRoleUpdate(
+            oldMember,
+            newMember
+        ).catch(error => {
+
+            console.error(
+                "Level-role protection failed:",
+                error
+            );
+
+        });
 
 
         await boosts.checkBoostRole(
