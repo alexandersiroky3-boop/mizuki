@@ -619,6 +619,19 @@ await quests.recordEvent(
 );
 
 
+// "Roll more than X XP" quests use ONE individual roll only.
+// Triple Roll calls this same single-roll path three times, so
+// three smaller rolls can never combine into one single-roll quest.
+await quests.recordEvent(
+    message,
+    "single_roll_xp",
+    Math.max(
+        0,
+        rolledXP
+    )
+);
+
+
 await quests.recordEvent(
     message,
     "earn_xp",
