@@ -415,6 +415,25 @@ await syncAndTrackLevel(
         );
 
 
+    const targetData =
+        await database.getUser(
+            guildID,
+            target.id
+        );
+
+
+    const targetLevel =
+        xp.getLevel(
+            Number(targetData?.xp) || 0
+        );
+
+
+    const lowLevelTargetProtection =
+        authorLevel >= 100
+        &&
+        targetLevel < 100;
+
+
     // Level 100+ gets a softer Luck II / III / MAX curve.
     // Luck I and Luck Ω remain unchanged.
     const commandLuck =
@@ -442,6 +461,26 @@ await syncAndTrackLevel(
 
     const rarity =
         outcome.rarity;
+
+
+    // The high-level author keeps their normal reward.
+    // The protected Lv1-99 target only receives 10%.
+    const targetReward =
+        lowLevelTargetProtection
+            ? Math.max(
+                1,
+                Math.floor(
+                    reward * 0.10
+                )
+            )
+            : reward;
+
+
+    const rewardSummary =
+        lowLevelTargetProtection
+            ? `💞 ${message.author} received **${reward.toLocaleString()} XP!**\n` +
+              `🛡️ ${target} received **${targetReward.toLocaleString()} XP** after **90% Lv1-99 protection**.`
+            : `💞 Both users received **${reward.toLocaleString()} XP!**`;
 
 
     let text;
@@ -533,7 +572,7 @@ await syncAndTrackLevel(
     await database.addXP(
         guildID,
         target.id,
-        reward
+        targetReward
     );
 
 
@@ -550,7 +589,7 @@ await syncAndTrackLevel(
     await quests.recordEvent(
         message,
         "earn_xp",
-        reward,
+        targetReward,
         {
             userID: target.id
         }
@@ -645,7 +684,7 @@ const luckExtra =
 
 ${rarity}
 
-💞 Both users received **${reward.toLocaleString()} XP!**
+${rewardSummary}
 
 💎 ${message.author} stored <@&${MAX_BOOST_ROLE}>! Inventory: **x${authorMaxBoost.amount}**
 
@@ -662,7 +701,7 @@ ${rarity}
 
 ${rarity}
 
-💞 Both users received **${reward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
+${rewardSummary}${usedLuckExtra}${luckExtra}`
 
     );
 
