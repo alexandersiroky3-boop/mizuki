@@ -621,6 +621,38 @@ async message => {
         }
 
 
+        // =====================================================
+        // NO-COMMANDS CHAT CHANNEL
+        // =====================================================
+        //
+        // Channel 1536777096200720545 is normal chat only.
+        // Block any command-looking message BEFORE:
+        // - command handlers
+        // - quest message progress
+        // - normal message XP
+        //
+        // This means commands typed here do absolutely nothing
+        // except receive the warning below.
+        const NO_COMMANDS_CHANNEL_ID =
+            "1536777096200720545";
+
+
+        if(
+            String(message.channel.id) ===
+                NO_COMMANDS_CHANNEL_ID
+            &&
+            message.content
+                .trim()
+                .startsWith("!")
+        ){
+
+            return message.reply(
+                "🚫 **You cannot use commands in this channel.**"
+            );
+
+        }
+
+
         await quests.recordEvent(
             message,
             "messages",
