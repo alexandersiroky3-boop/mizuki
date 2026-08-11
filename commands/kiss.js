@@ -509,13 +509,43 @@ if(remaining > 0){
 
 
     // ==========================
-    // Kiss bot
+    // Kiss Mizuki / bot
     // ==========================
+    //
+    // Treat all of these EXACTLY like "!kiss bot":
+    // - !kiss bot
+    // - !kiss @Mizuki
+    // - !kiss <Mizuki's user ID>
+    //
+    // This prevents Mizuki from falling through into the
+    // normal player-kiss path and receiving leaderboard XP.
+    const mizukiUserID =
+        String(
+            message.client.user.id
+        );
 
-    if(
-        targetInput.toLowerCase()
-        === BOT_NAME
-    ){
+
+    const normalizedTargetInput =
+        String(
+            targetInput
+        ).trim().toLowerCase();
+
+
+    const isMizukiTarget =
+        normalizedTargetInput ===
+            BOT_NAME
+        ||
+        normalizedTargetInput ===
+            mizukiUserID
+        ||
+        normalizedTargetInput ===
+            `<@${mizukiUserID}>`
+        ||
+        normalizedTargetInput ===
+            `<@!${mizukiUserID}>`;
+
+
+    if(isMizukiTarget){
 
 await database.setCommandCooldown(
     guildID,
