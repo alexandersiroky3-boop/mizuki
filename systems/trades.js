@@ -407,7 +407,7 @@ function buildTradePanel(trade){
             .setFooter({
 
                 text:
-                    "Only stored boost inventory and XP can be traded. Active boosts cannot be traded."
+                    "Only stored boost inventory and XP can be traded. Active boosts cannot be traded. Level 1-99 players can receive max 100,000 XP per trade."
 
             })
 
@@ -2289,6 +2289,16 @@ async function handleConfirm(
             message +=
                 `\n<@${completion.userID}> no longer owns enough **${getBoostMention(completion.key)}** ` +
                 `(${completion.available}/${completion.required}).`;
+
+        }
+        else if(
+            completion.status ===
+            "low-level-xp-cap"
+        ){
+
+            message +=
+                `\n🛡️ <@${completion.userID}> is below **Level 100** and can receive at most **${completion.cap.toLocaleString()} XP** in one trade. ` +
+                `This trade tried to send them **${completion.incomingXP.toLocaleString()} XP**.`;
 
         }
         else if(
