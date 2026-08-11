@@ -180,10 +180,12 @@ async function execute(message){
                         "Weekly Quests",
 
                     value:
-                        formatCycle(
-                            dashboard.weekly,
-                            "Weekly"
-                        ),
+                        dashboard.weeklyLocked
+                            ? "**Get to Level 100 to unlock Weekly quests**"
+                            : formatCycle(
+                                dashboard.weekly,
+                                "Weekly"
+                            ),
 
                     inline:
                         false
@@ -193,7 +195,9 @@ async function execute(message){
 
             .setFooter({
                 text:
-                    "Daily and weekly quests reset globally at 00:00 UTC."
+                    dashboard.weeklyLocked
+                        ? "Daily quests reset at 00:00 UTC. Weekly quests unlock at Level 100."
+                        : "Daily and weekly quests reset globally at 00:00 UTC."
             })
 
             .setTimestamp();
