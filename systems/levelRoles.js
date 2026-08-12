@@ -16,6 +16,9 @@ const xp =
 const OWNER_ID =
     "1239975819112353969";
 
+const BANNED_ROLE_ID =
+    "1537100069533126676";
+
 
 const LEVEL_ROLES = [
 
@@ -314,6 +317,14 @@ async function syncMemberLevelRole(
 
         return null;
 
+    }
+
+
+    // A temporary moderation ban owns the member's role state.
+    // Keep every automatic level role removed until unban restores
+    // the saved role snapshot.
+    if(member.roles.cache.has(BANNED_ROLE_ID)){
+        return setExactLevelRole(member, null);
     }
 
 
