@@ -72,6 +72,14 @@ const tradeCommand =
 const sendVerifyMSGCommand =
     require("./commands/sendverifymsg");
 
+const moderation =
+    require("./systems/moderation");
+
+const banCommand = require("./commands/ban");
+const unbanCommand = require("./commands/unban");
+const kickCommand = require("./commands/kick");
+const permabanCommand = require("./commands/permaban");
+
 
 // =====================================================
 // WELCOME + PRIVATE SERVER LOCK
@@ -289,6 +297,12 @@ client.once("clientReady", async () => {
     await luck.restoreLuckBoosts(client);
     await trades.restoreTrades(client);
 
+    if(MAIN_GUILD_ID){
+        await moderation.initialize(client, MAIN_GUILD_ID).catch(error => {
+            console.error("Moderation restore failed:", error);
+        });
+    }
+
 
     if(MAIN_GUILD_ID){
 
@@ -378,6 +392,23 @@ setInterval(async()=>{
     }
 
 },60000);
+
+
+setInterval(async()=>{
+
+    try{
+        await moderation.restoreExpiredBans(client);
+
+        if(MAIN_GUILD_ID){
+            const guild = await client.guilds.fetch(MAIN_GUILD_ID).catch(() => null);
+            if(guild) await moderation.updateBanList(guild);
+        }
+    }
+    catch(error){
+        console.error("Temporary-ban cleanup failed:", error);
+    }
+
+},30000);
 
 
 // Backup reconciliation catches unusual/admin XP paths that
@@ -538,6 +569,13 @@ client.on(
             );
 
         });
+
+
+        // A temporarily banned member must keep only the Banned role;
+        // automatic XP/Luck boost role repair resumes after unban.
+        if(newMember.roles.cache.has(moderation.BANNED_ROLE_ID)){
+            return;
+        }
 
 
         await boosts.checkBoostRole(
@@ -872,10 +910,30 @@ if(
         message
     );
 
-}
+        }
 
 
-if(
+        const normalizedCommand =
+            message.content.trim().toLowerCase();
+
+        if(/^!permaban(?:\s|$)/i.test(normalizedCommand)){
+            return permabanCommand.execute(message);
+        }
+
+        if(/^!unban(?:\s|$)/i.test(normalizedCommand)){
+            return unbanCommand.execute(message);
+        }
+
+        if(/^!kick(?:\s|$)/i.test(normalizedCommand)){
+            return kickCommand.execute(message);
+        }
+
+        if(/^!ban(?:\s|$)/i.test(normalizedCommand)){
+            return banCommand.execute(message);
+        }
+
+
+        if(
     /^!trade(?:\s|$)/i.test(
         message.content.trim()
     )
