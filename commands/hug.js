@@ -78,6 +78,70 @@ const HUG_OUTCOMES = [
 ];
 
 
+// Level 100+ base rates are intentionally much stronger than !kiss.
+// !hug has a 5-hour cooldown while !kiss has a 15-minute cooldown,
+// so every Hug use must have meaningfully better high-rarity odds.
+const LEVEL100_PLUS_HUG_OUTCOMES = [
+    { key: "common", chancePercent: 20, min: 15000, max: 30000, rarity: "💞 COMMON" },
+    { key: "rare", chancePercent: 35, min: 30000, max: 75000, rarity: "💖 RARE" },
+    { key: "epic", chancePercent: 27, min: 75000, max: 250000, rarity: "🌇 EPIC" },
+    { key: "legendary", chancePercent: 13, min: 250000, max: 750000, rarity: "🪄 LEGENDARY" },
+    { key: "mythic", chancePercent: 4, min: 750000, max: 3000000, rarity: "🌌 MYTHIC" },
+    { key: "divine", chancePercent: 1, min: 10000000, max: 10000000, rarity: "✨ DIVINE" }
+];
+
+
+// Exact final percentages prevent the generic rarity multiplier from making
+// a weaker boost outperform a stronger one. Luck Omega is deliberately not
+// listed here, so it keeps the normal uncapped/OP weighting behavior.
+const LEVEL100_PLUS_HUG_LUCK_TABLES = {
+    tier1: [
+        { key: "common", chancePercent: 15 },
+        { key: "rare", chancePercent: 32 },
+        { key: "epic", chancePercent: 31 },
+        { key: "legendary", chancePercent: 16 },
+        { key: "mythic", chancePercent: 5 },
+        { key: "divine", chancePercent: 1 }
+    ],
+    tier2: [
+        { key: "common", chancePercent: 10 },
+        { key: "rare", chancePercent: 30 },
+        { key: "epic", chancePercent: 34.8 },
+        { key: "legendary", chancePercent: 19 },
+        { key: "mythic", chancePercent: 5 },
+        { key: "divine", chancePercent: 1.2 }
+    ],
+    tier3: [
+        { key: "common", chancePercent: 5 },
+        { key: "rare", chancePercent: 20 },
+        { key: "epic", chancePercent: 35 },
+        { key: "legendary", chancePercent: 27 },
+        { key: "mythic", chancePercent: 11 },
+        { key: "divine", chancePercent: 2 }
+    ],
+    max: [
+        { key: "common", chancePercent: 2 },
+        { key: "rare", chancePercent: 8 },
+        { key: "epic", chancePercent: 30 },
+        { key: "legendary", chancePercent: 35 },
+        { key: "mythic", chancePercent: 20 },
+        { key: "divine", chancePercent: 5 }
+    ]
+};
+
+
+function rollExactOutcome(baseTable, chanceTable){
+    let roll = Math.random() * 100;
+    for(const entry of chanceTable){
+        roll -= entry.chancePercent;
+        if(roll < 0){
+            return baseTable.find(outcome => outcome.key === entry.key) || baseTable[0];
+        }
+    }
+    return baseTable[0];
+}
+
+
 
 // ======================
 // GIVE MAX BOOST
@@ -434,8 +498,9 @@ await syncAndTrackLevel(
         targetLevel < 100;
 
 
-    // Level 100+ gets a softer Luck II / III / MAX curve.
-    // Luck I and Luck Ω remain unchanged.
+    // Level 100+ uses softened XP-range bias for Luck II / III / MAX.
+    // Rarity odds for I / II / III / MAX are exact tables above;
+    // Luck Ω intentionally continues through the uncapped weighting system.
     const commandLuck =
         authorLevel >= 100
             ? luck.getLevel100PlusCommandLuckProfile(
@@ -444,11 +509,20 @@ await syncAndTrackLevel(
             : activeLuck;
 
 
+    const hugTable =
+        authorLevel >= 100
+            ? LEVEL100_PLUS_HUG_OUTCOMES
+            : HUG_OUTCOMES;
+
+    const exactHugLuckTable =
+        authorLevel >= 100
+            ? LEVEL100_PLUS_HUG_LUCK_TABLES[String(activeLuck?.tier || "").toLowerCase()]
+            : null;
+
     const outcome =
-        luck.rollCommandOutcome(
-            HUG_OUTCOMES,
-            commandLuck
-        );
+        exactHugLuckTable
+            ? rollExactOutcome(hugTable, exactHugLuckTable)
+            : luck.rollCommandOutcome(hugTable, commandLuck);
 
 
     const reward =
