@@ -781,6 +781,49 @@ await db.query(`
 
 await db.query(`
 
+    CREATE TABLE IF NOT EXISTS moderation_bans (
+
+        guildID TEXT NOT NULL,
+        userID TEXT NOT NULL,
+        moderatorID TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        savedRoleIDs JSONB NOT NULL DEFAULT '[]'::jsonb,
+        startedAt BIGINT NOT NULL,
+        expiresAt BIGINT NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        endedAt BIGINT,
+        endedBy TEXT,
+
+        PRIMARY KEY(guildID, userID)
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS moderation_bans_expiry_idx
+
+    ON moderation_bans(active, expiresAt)
+
+`);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS moderation_config (
+
+        guildID TEXT PRIMARY KEY,
+        panelMessageID TEXT
+
+    )
+
+`);
+
+
+await db.query(`
+
     DELETE FROM quest_cycles
 
     WHERE expiresAt < $1
@@ -6098,6 +6141,104 @@ async function markTradeCleaned(
 }
 
 
+// =====================================================
+// MODERATION SYSTEM
+// =====================================================
+
+async function createModerationBan({
+    guildID,
+    userID,
+    moderatorID,
+    reason,
+    expiresAt,
+    savedRoleIDs
+}){
+    const result = await db.query(`
+        INSERT INTO moderation_bans
+        (guildID, userID, moderatorID, reason, savedRoleIDs, startedAt, expiresAt, active, endedAt, endedBy)
+        VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,TRUE,NULL,NULL)
+        ON CONFLICT(guildID, userID)
+        DO UPDATE SET
+            moderatorID=EXCLUDED.moderatorID,
+            reason=EXCLUDED.reason,
+            savedRoleIDs=EXCLUDED.savedRoleIDs,
+            startedAt=EXCLUDED.startedAt,
+            expiresAt=EXCLUDED.expiresAt,
+            active=TRUE,
+            endedAt=NULL,
+            endedBy=NULL
+        RETURNING *
+    `, [
+        String(guildID),
+        String(userID),
+        String(moderatorID),
+        String(reason),
+        JSON.stringify(savedRoleIDs || []),
+        Date.now(),
+        Number(expiresAt)
+    ]);
+    return result.rows[0] || null;
+}
+
+async function getActiveModerationBan(guildID, userID){
+    const result = await db.query(`
+        SELECT * FROM moderation_bans
+        WHERE guildID=$1 AND userID=$2 AND active=TRUE
+        LIMIT 1
+    `, [String(guildID), String(userID)]);
+    return result.rows[0] || null;
+}
+
+async function getActiveModerationBans(guildID){
+    const result = await db.query(`
+        SELECT * FROM moderation_bans
+        WHERE guildID=$1 AND active=TRUE
+        ORDER BY expiresAt ASC
+    `, [String(guildID)]);
+    return result.rows;
+}
+
+async function getExpiredModerationBans(){
+    const result = await db.query(`
+        SELECT * FROM moderation_bans
+        WHERE active=TRUE AND expiresAt <= $1
+        ORDER BY expiresAt ASC
+    `, [Date.now()]);
+    return result.rows;
+}
+
+async function finishModerationBan(guildID, userID, endedBy){
+    await db.query(`
+        UPDATE moderation_bans
+        SET active=FALSE, endedAt=$3, endedBy=$4
+        WHERE guildID=$1 AND userID=$2 AND active=TRUE
+    `, [String(guildID), String(userID), Date.now(), String(endedBy || "Unknown")]);
+}
+
+async function cancelModerationBan(guildID, userID){
+    await db.query(`
+        DELETE FROM moderation_bans
+        WHERE guildID=$1 AND userID=$2 AND active=TRUE
+    `, [String(guildID), String(userID)]);
+}
+
+async function getModerationPanelMessageID(guildID){
+    const result = await db.query(`
+        SELECT panelMessageID FROM moderation_config WHERE guildID=$1
+    `, [String(guildID)]);
+    return result.rows[0]?.panelmessageid || null;
+}
+
+async function setModerationPanelMessageID(guildID, messageID){
+    await db.query(`
+        INSERT INTO moderation_config(guildID, panelMessageID)
+        VALUES($1,$2)
+        ON CONFLICT(guildID)
+        DO UPDATE SET panelMessageID=EXCLUDED.panelMessageID
+    `, [String(guildID), String(messageID)]);
+}
+
+
 
 module.exports = {
 
@@ -6242,6 +6383,15 @@ module.exports = {
     getTradesNeedingCleanup,
 
     markTradeCleaned,
+
+    createModerationBan,
+    getActiveModerationBan,
+    getActiveModerationBans,
+    getExpiredModerationBans,
+    finishModerationBan,
+    cancelModerationBan,
+    getModerationPanelMessageID,
+    setModerationPanelMessageID,
 
 
 };
