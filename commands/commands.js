@@ -25,12 +25,6 @@ Here are all available commands:
 \`!boost\`
 > Shows your current XP Boost Tier, timer, progress and next tier.
 
-\`!shop\`
-> Buy boosts & more from the shop.
-
-\`!quests\`
-> Shows you your Daily & Weekly quests and big rewards.
-
 
 🥵 **Fun Commands**
 
@@ -46,9 +40,6 @@ Here are all available commands:
 \`!hug @user/userid/bot\`
 > You can hug other users and even the bot
 
-\`!trade @user\`
-> Trade Boosts and XP with a user!
-
 \`!ezwin\`
 > Takes everyone's XP (except you) and you gain XP...
 
@@ -58,6 +49,21 @@ Here are all available commands:
 \`!warn @user/userid\`
 > Warn a bad behaving little user and remove 500+ XP from them...
 > My dad can only use this. (aka Kape)
+
+
+🛡️ **Moderator Commands**
+
+\`!ban @user <time> <reason>\`
+> Temporarily bans a member and saves their roles. Time examples: 30m, 12h, 7d, 2w.
+
+\`!unban @user/userid\`
+> Ends a temporary ban and restores the member's saved roles. Can also remove a permanent Discord ban by ID.
+
+\`!kick @user [reason]\`
+> Kicks a member, but allows them to join again.
+
+\`!permaban @user [reason]\`
+> Permanently bans a member from the server.
 
 
 ✦ **XP Management**
