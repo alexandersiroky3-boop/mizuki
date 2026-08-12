@@ -290,7 +290,7 @@ const WEEKLY_QUEST_POOL_HIGH = [
     {
         type: "steal_xp",
         icon: "💰",
-        targets: [250000, 500000, 1000000],
+        targets: [1000000, 2500000, 5000000],
         label: target => `Steal ${target.toLocaleString()} XP`
     },
 
