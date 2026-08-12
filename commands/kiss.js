@@ -79,7 +79,7 @@ const KISS_TABLES = {
     level101Plus: [
         {
             key: "common",
-            chancePercent: 35.495,
+            chancePercent: 40.995,
             min: 5000,
             max: 15000,
             rarity: "💖 COMMON KISS"
@@ -93,14 +93,14 @@ const KISS_TABLES = {
         },
         {
             key: "epic",
-            chancePercent: 10,
+            chancePercent: 7,
             min: 50000,
             max: 300000,
             rarity: "🌌 EPIC KISS"
         },
         {
             key: "legendary",
-            chancePercent: 4.5,
+            chancePercent: 2,
             min: 300000,
             max: 1500000,
             rarity: "✨ LEGENDARY KISS"
@@ -226,19 +226,19 @@ const LEVEL101_PLUS_EXACT_LUCK_TABLES = {
     tier2: [
         {
             key: "common",
-            chancePercent: 7.9
+            chancePercent: 15
         },
         {
             key: "rare",
-            chancePercent: 47
+            chancePercent: 60
         },
         {
             key: "epic",
-            chancePercent: 35
+            chancePercent: 20
         },
         {
             key: "legendary",
-            chancePercent: 10
+            chancePercent: 4.9
         },
         {
             key: "divine",
@@ -249,19 +249,19 @@ const LEVEL101_PLUS_EXACT_LUCK_TABLES = {
     tier3: [
         {
             key: "common",
-            chancePercent: 10
+            chancePercent: 18
         },
         {
             key: "rare",
-            chancePercent: 35
+            chancePercent: 52
         },
         {
             key: "epic",
-            chancePercent: 39.8
+            chancePercent: 24
         },
         {
             key: "legendary",
-            chancePercent: 15
+            chancePercent: 5.8
         },
         {
             key: "divine",
@@ -272,23 +272,23 @@ const LEVEL101_PLUS_EXACT_LUCK_TABLES = {
     max: [
         {
             key: "common",
-            chancePercent: 4.8
+            chancePercent: 10
         },
         {
             key: "rare",
-            chancePercent: 25
+            chancePercent: 45
         },
         {
             key: "epic",
-            chancePercent: 40
+            chancePercent: 32
         },
         {
             key: "legendary",
-            chancePercent: 30
+            chancePercent: 12.7
         },
         {
             key: "divine",
-            chancePercent: 0.2
+            chancePercent: 0.3
         }
     ]
 
@@ -839,7 +839,7 @@ const lowLevelTargetProtection =
 
 
 const kissTable =
-    currentLevel > 100
+    currentLevel >= 100
         ? KISS_TABLES.level101Plus
         : KISS_TABLES.level1To100;
 
@@ -866,7 +866,7 @@ const exactLuckTable =
             activeLuckTier
         ]
         : (
-            currentLevel > 100
+            currentLevel >= 100
                 ? LEVEL101_PLUS_EXACT_LUCK_TABLES[
                     activeLuckTier
                 ]
