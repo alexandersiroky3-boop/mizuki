@@ -37,6 +37,44 @@ function random(min, max){
 }
 
 
+function rollExactOutcome(baseTable, chanceTable){
+    let roll = Math.random() * 100;
+
+    for(const entry of chanceTable){
+        roll -= entry.chancePercent;
+        if(roll < 0){
+            return baseTable.find(outcome => outcome.key === entry.key) || baseTable[0];
+        }
+    }
+
+    return baseTable[0];
+}
+
+
+// Final Level 100+ !steal percentages while Luck III/MAX is active.
+// Omega intentionally continues through the normal OP weighting system.
+const LEVEL100_PLUS_STEAL_LUCK_TABLES = {
+    tier3: [
+        { key: "failure", chancePercent: 5 },
+        { key: "common", chancePercent: 50 },
+        { key: "rare", chancePercent: 28 },
+        { key: "epic", chancePercent: 11 },
+        { key: "legendary", chancePercent: 4.5 },
+        { key: "mythic", chancePercent: 1.2 },
+        { key: "mythic_high", chancePercent: 0.3 }
+    ],
+    max: [
+        { key: "failure", chancePercent: 2 },
+        { key: "common", chancePercent: 38 },
+        { key: "rare", chancePercent: 32 },
+        { key: "epic", chancePercent: 17 },
+        { key: "legendary", chancePercent: 8 },
+        { key: "mythic", chancePercent: 2.4 },
+        { key: "mythic_high", chancePercent: 0.6 }
+    ]
+};
+
+
 
 // ==========================
 // FORMAT TIME
@@ -421,7 +459,7 @@ await syncAndTrackLevel(
 
 
     const isLevel100Plus =
-        victimLevel >= 100;
+        thiefLevel >= 100;
 
 
     // Serious protection:
@@ -487,48 +525,48 @@ const luckExtra =
             ? [
                 {
                     key: "failure",
-                    chancePercent: 13.35
+                    chancePercent: 10.4
                 },
                 {
                     key: "common",
-                    chancePercent: 75,
-                    min: 100,
-                    max: 2000,
+                    chancePercent: 60,
+                    min: 20000,
+                    max: 50000,
                     rarity: "COMMON"
                 },
                 {
                     key: "rare",
-                    chancePercent: 10,
-                    min: 2000,
-                    max: 15000,
+                    chancePercent: 20,
+                    min: 50000,
+                    max: 150000,
                     rarity: "RARE"
                 },
                 {
                     key: "epic",
-                    chancePercent: 1,
-                    min: 15000,
-                    max: 50000,
+                    chancePercent: 7,
+                    min: 150000,
+                    max: 300000,
                     rarity: "EPIC"
                 },
                 {
                     key: "legendary",
-                    chancePercent: 0.5,
-                    min: 50000,
-                    max: 100000,
+                    chancePercent: 2,
+                    min: 300000,
+                    max: 500000,
                     rarity: "LEGENDARY"
                 },
                 {
                     key: "mythic",
-                    chancePercent: 0.1,
-                    min: 100000,
-                    max: 500000,
+                    chancePercent: 0.5,
+                    min: 500000,
+                    max: 1000000,
                     rarity: "MYTHIC"
                 },
                 {
                     key: "mythic_high",
-                    chancePercent: 0.05,
-                    min: 500000,
-                    max: 3000000,
+                    chancePercent: 0.1,
+                    min: 1000000,
+                    max: 2500000,
                     rarity: "MYTHIC"
                 }
             ]
@@ -568,11 +606,15 @@ const luckExtra =
             ];
 
 
+    const exactStealLuckTable =
+        isLevel100Plus
+            ? LEVEL100_PLUS_STEAL_LUCK_TABLES[String(activeLuck?.tier || "").toLowerCase()]
+            : null;
+
     const stealOutcome =
-        luck.rollCommandOutcome(
-            stealOutcomes,
-            commandLuck
-        );
+        exactStealLuckTable
+            ? rollExactOutcome(stealOutcomes, exactStealLuckTable)
+            : luck.rollCommandOutcome(stealOutcomes, commandLuck);
 
 
     if(stealOutcome.key === "failure"){
@@ -830,8 +872,7 @@ await syncAndTrackLevel(
     // MYTHIC DIALOGUE
     // ==========================
 
-    return message.channel.send(
-
+    const mythicDialogue =
 `🌌💎 **MRHACKER'S INEVITABLE PLAN** 💎🌌
 
 *Mrnoob had a universal plan.*
@@ -886,9 +927,31 @@ await syncAndTrackLevel(
 
 💸 **${message.author.username} stole ${stolenXP.toLocaleString()} XP from ${target.username}!**
 
-✨ **The robbery was inevitable.**${usedLuckExtra}${luckExtra}${protectionExtra}`
+✨ **The robbery was inevitable.**${usedLuckExtra}${luckExtra}${protectionExtra}`;
 
-    );
+    // Discord rejects normal messages over 2,000 characters. The Mythic
+    // dialogue can exceed that after mentions/extras are inserted, so send
+    // it in safe paragraph-sized chunks instead of silently losing it.
+    const paragraphs = mythicDialogue.split("\n\n");
+    const chunks = [];
+    let chunk = "";
+
+    for(const paragraph of paragraphs){
+        const candidate = chunk ? `${chunk}\n\n${paragraph}` : paragraph;
+        if(candidate.length > 1900 && chunk){
+            chunks.push(chunk);
+            chunk = paragraph;
+        } else {
+            chunk = candidate;
+        }
+    }
+    if(chunk) chunks.push(chunk);
+
+    for(const content of chunks){
+        await message.channel.send(content);
+    }
+
+    return;
 
 }
 
