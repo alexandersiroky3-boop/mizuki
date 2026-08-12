@@ -79,6 +79,7 @@ const banCommand = require("./commands/ban");
 const unbanCommand = require("./commands/unban");
 const kickCommand = require("./commands/kick");
 const permabanCommand = require("./commands/permaban");
+const sendStaffRulesMSGCommand = require("./commands/sendstaffrulesmsg");
 
 
 // =====================================================
@@ -915,6 +916,10 @@ if(
 
         const normalizedCommand =
             message.content.trim().toLowerCase();
+
+        if(normalizedCommand === "!sendstaffrulesmsg"){
+            return sendStaffRulesMSGCommand.execute(message);
+        }
 
         if(/^!permaban(?:\s|$)/i.test(normalizedCommand)){
             return permabanCommand.execute(message);
