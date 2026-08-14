@@ -6,18 +6,139 @@ const { Pool } = require("pg");
 // DATABASE CONNECTION
 // =======================
 
+const DATABASE_URL =
+    String(
+        process.env.DATABASE_URL || ""
+    ).trim();
+
+
+if(!DATABASE_URL){
+
+    throw new Error(
+        "DATABASE_URL is missing. Add a PostgreSQL reference variable to the bot service."
+    );
+
+}
+
+
 const db = new Pool({
 
     connectionString:
-        process.env.DATABASE_URL,
+        DATABASE_URL,
 
     ssl:{
         rejectUnauthorized:false
     },
 
-    max:10
+    max:10,
+
+    connectionTimeoutMillis:
+        15000,
+
+    idleTimeoutMillis:
+        30000,
+
+    keepAlive:
+        true,
+
+    keepAliveInitialDelayMillis:
+        10000
 
 });
+
+
+// pg emits an "error" event when an idle pooled connection is
+// unexpectedly killed by the database. Without this listener Node treats
+// it as an unhandled error and crashes the entire bot.
+db.on("error", error => {
+
+    console.error(
+        "PostgreSQL pooled connection was interrupted. The pool will reconnect on the next query:"
+    );
+
+    console.error(
+        error?.message || error
+    );
+
+});
+
+
+const TRANSIENT_DATABASE_CODES =
+    new Set([
+        "08000",
+        "08001",
+        "08003",
+        "08004",
+        "08006",
+        "08007",
+        "08P01",
+        "57P01",
+        "57P02",
+        "57P03",
+        "ECONNREFUSED",
+        "ECONNRESET",
+        "ETIMEDOUT",
+        "EHOSTUNREACH",
+        "ENETUNREACH",
+        "ENOTFOUND"
+    ]);
+
+
+function isTransientDatabaseError(error){
+
+    const code =
+        String(
+            error?.code || ""
+        ).toUpperCase();
+
+
+    if(
+        TRANSIENT_DATABASE_CODES.has(code)
+        ||
+        code.startsWith("08")
+    ){
+
+        return true;
+
+    }
+
+
+    const message =
+        String(
+            error?.message || error || ""
+        ).toLowerCase();
+
+
+    return (
+        message.includes("connection terminated unexpectedly")
+        ||
+        message.includes("connection terminated due to connection timeout")
+        ||
+        message.includes("connection timeout")
+        ||
+        message.includes("connection reset")
+        ||
+        message.includes("server closed the connection")
+        ||
+        message.includes("the database system is starting up")
+        ||
+        message.includes("cannot connect now")
+    );
+
+}
+
+
+function wait(milliseconds){
+
+    return new Promise(
+        resolve =>
+            setTimeout(
+                resolve,
+                milliseconds
+            )
+    );
+
+}
 
 const userCache = new Map();
 
@@ -893,18 +1014,79 @@ for(const item of Object.values(SHOP_CATALOG)){
 
 async function initDatabase() {
 
-    try {
+    let attempt =
+        0;
 
-        await createTables();
 
-        console.log("✅ PostgreSQL database ready");
+    while(true){
 
-    } catch (err) {
+        try{
 
-        console.error("FAILED TO CREATE TABLES");
-        console.error(err);
+            // Fail here with a clear connection error before attempting the
+            // schema queries. Pool automatically replaces dead connections.
+            await db.query(
+                "SELECT 1"
+            );
 
-        throw err;
+
+            await createTables();
+
+
+            console.log(
+                "✅ PostgreSQL database ready"
+            );
+
+
+            return;
+
+        }
+        catch(error){
+
+            console.error(
+                "FAILED TO INITIALIZE POSTGRESQL"
+            );
+
+            console.error(
+                error?.message || error
+            );
+
+
+            // SQL/schema/authentication errors should remain fatal because
+            // retrying them forever would hide a real configuration bug.
+            if(!isTransientDatabaseError(error)){
+
+                throw error;
+
+            }
+
+
+            attempt++;
+
+
+            const retryDelay =
+                Math.min(
+                    60000,
+                    2000 *
+                    Math.pow(
+                        2,
+                        Math.min(
+                            attempt - 1,
+                            5
+                        )
+                    )
+                );
+
+
+            console.error(
+                `PostgreSQL is unavailable. Retrying in ${Math.ceil(retryDelay / 1000)} seconds (attempt ${attempt})...`
+            );
+
+
+            await wait(
+                retryDelay
+            );
+
+        }
 
     }
 
