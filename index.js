@@ -245,9 +245,6 @@ client.once("clientReady", async () => {
     }
 
 
-    await database.initDatabase();
-
-
     // =====================================================
     // MIZUKI MUST NEVER BE A LEADERBOARD PLAYER
     // =====================================================
@@ -1123,7 +1120,7 @@ if(result.critical){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
 
         ).catch(() => {});
 
@@ -1152,7 +1149,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
 
     ).catch(() => {});
 
@@ -1265,6 +1262,30 @@ catch(error){
 
 
 
-client.login(
-    process.env.TOKEN
-);
+async function startBot(){
+
+    // Do not connect Discord until PostgreSQL and its tables are ready.
+    // This prevents commands/events from running against an unavailable DB.
+    await database.initDatabase();
+
+
+    await client.login(
+        process.env.TOKEN
+    );
+
+}
+
+
+startBot().catch(error => {
+
+    console.error(
+        "Mizuki could not start:"
+    );
+
+    console.error(
+        error
+    );
+
+    process.exitCode = 1;
+
+});
