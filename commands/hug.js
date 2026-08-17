@@ -197,7 +197,7 @@ async function syncAndTrackLevel(
 }
 
 
-async function execute(message){
+async function execute(message, options = {}){
 
 
     if(!message.guild)
@@ -212,17 +212,91 @@ async function execute(message){
         message.author.id;
 
 
+    if(!options.questRepeatChild){
+
+        const targetInput =
+            message.content
+                .trim()
+                .split(/\s+/)[1];
+
+
+        const repeatTarget =
+            message.mentions.users.first();
+
+
+        const repeatCount =
+            targetInput
+            &&
+            repeatTarget
+            &&
+            repeatTarget.id !== userID
+                ? await quests.getSocialCommandRepeatCount(
+                    guildID,
+                    userID
+                )
+                : 1;
+
+
+        if(repeatCount > 1){
+
+            const remaining =
+                await database.getCommandCooldownRemaining(
+                    guildID,
+                    userID,
+                    "hug"
+                );
+
+
+            if(remaining > 0){
+
+                return execute(
+                    message,
+                    {
+                        questRepeatChild: true
+                    }
+                );
+
+            }
+
+
+            for(
+                let repeatIndex = 0;
+                repeatIndex < repeatCount;
+                repeatIndex++
+            ){
+
+                await execute(
+                    message,
+                    {
+                        questRepeatChild: true,
+                        skipCooldown:
+                            repeatIndex > 0
+                    }
+                );
+
+            }
+
+
+            return;
+
+        }
+
+    }
+
+
 
     // ======================
     // COOLDOWN
     // ======================
 
 const remaining =
-    await database.getCommandCooldownRemaining(
-        guildID,
-        userID,
-        "hug"
-    );
+    options.skipCooldown
+        ? 0
+        : await database.getCommandCooldownRemaining(
+            guildID,
+            userID,
+            "hug"
+        );
 
 
 if(remaining > 0){
