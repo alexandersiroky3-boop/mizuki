@@ -367,7 +367,7 @@ async function buildShopPanel(
             )
 
             .setDescription(
-                "Stock is shared across the entire server. A purchased boost is added to your `!boost` inventory."
+                "Stock is shared across the entire server. A purchased boost is added to your `!boost` inventory. Active quest discounts are applied automatically at checkout."
             )
 
             .addFields(
@@ -475,10 +475,17 @@ function getPurchaseMessage(
         "not-enough-xp"
     ){
 
+        const discountText =
+            Number(result.discountPercent) > 0
+                ? `\nQuest discount applied: **${result.discountPercent}% off** ` +
+                    `(normal price: ${Number(result.basePrice).toLocaleString()} XP)`
+                : "";
+
         return (
             `You need **${result.price.toLocaleString()} XP** to buy <@&${profile.roleID}>.\n` +
             `Current balance: **${result.balance.toLocaleString()} XP**\n` +
-            `Missing: **${result.missing.toLocaleString()} XP**`
+            `Missing: **${result.missing.toLocaleString()} XP**` +
+            discountText
         );
 
     }
@@ -493,12 +500,20 @@ function getPurchaseMessage(
     }
 
 
+    const discountText =
+        Number(result.discountPercent) > 0
+            ? `\nQuest discount: **${result.discountPercent}% off** ` +
+                `(normal price: ${Number(result.basePrice).toLocaleString()} XP)`
+            : "";
+
+
     return (
         `${interaction.user} purchased <@&${profile.roleID}>.\n` +
         `Price paid: **${result.price.toLocaleString()} XP**\n` +
         `Inventory amount: **${result.inventoryAmount}**\n` +
         `Global stock remaining: **${result.remainingStock}**\n` +
-        `XP balance: **${result.balance.toLocaleString()} XP**`
+        `XP balance: **${result.balance.toLocaleString()} XP**` +
+        discountText
     );
 
 }
