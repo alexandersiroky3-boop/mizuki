@@ -11,7 +11,7 @@ const quests =
 
 // 1 hour cooldown
 const COOLDOWN =
-    15 * 60 * 1000;
+    20 * 60 * 1000;
 
 
 
