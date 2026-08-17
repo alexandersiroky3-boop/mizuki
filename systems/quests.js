@@ -39,6 +39,10 @@ const QUEST_RULESET_VERSION =
     6;
 
 
+const QUEST_RESET_CONFIG =
+    database.QUEST_RESET_CONFIG;
+
+
 // =====================================================
 // LEVEL 1-99 DAILY QUESTS
 // =====================================================
@@ -1226,7 +1230,17 @@ function normalizeCycle(row){
             normalizeJSON(row.rewards) || [],
 
         rewarded:
-            Boolean(row.rewarded)
+            Boolean(row.rewarded),
+
+        resetcount:
+            Math.max(
+                0,
+                Number(
+                    row.resetcount ??
+                    row.resetCount ??
+                    0
+                )
+            )
     };
 
 }
@@ -2543,6 +2557,197 @@ async function ensureUserQuests(
 }
 
 
+function generateQuestResetData(
+    cycleType,
+    level,
+    currentCycle
+){
+
+    const currentSignature =
+        JSON.stringify({
+            quests:
+                currentCycle?.quests || [],
+            rewards:
+                currentCycle?.rewards || []
+        });
+
+
+    let nextData;
+
+
+    // A reset is intended to reroll both lists. Try several times so a
+    // user is not normally charged just to see the exact same panel.
+    for(let attempt = 0; attempt < 10; attempt++){
+
+        nextData = {
+            quests:
+                generateQuests(
+                    cycleType,
+                    level
+                ),
+            rewards:
+                generateRewards(
+                    cycleType,
+                    level
+                )
+        };
+
+
+        if(
+            JSON.stringify(nextData) !==
+            currentSignature
+        ){
+
+            break;
+
+        }
+
+    }
+
+
+    return nextData;
+
+}
+
+
+async function resetQuestCycle(
+    guildID,
+    userID,
+    cycleType
+){
+
+    const normalizedCycleType =
+        String(
+            cycleType || ""
+        ).toLowerCase();
+
+
+    const config =
+        QUEST_RESET_CONFIG[
+            normalizedCycleType
+        ];
+
+
+    if(!config){
+
+        return {
+            success: false,
+            status: "invalid-cycle-type"
+        };
+
+    }
+
+
+    const dashboard =
+        await ensureUserQuests(
+            guildID,
+            userID
+        );
+
+
+    if(
+        normalizedCycleType === "weekly"
+        &&
+        dashboard.weeklyLocked
+    ){
+
+        return {
+            success: false,
+            status: "weekly-locked",
+            cycleType:
+                normalizedCycleType,
+            level:
+                dashboard.level,
+            unlockLevel:
+                QUEST_UNLOCK_LEVEL,
+            price:
+                config.price,
+            maxResets:
+                config.maxResets
+        };
+
+    }
+
+
+    const currentCycle =
+        dashboard[
+            normalizedCycleType
+        ];
+
+
+    if(!currentCycle){
+
+        return {
+            success: false,
+            status: "missing-cycle",
+            cycleType:
+                normalizedCycleType
+        };
+
+    }
+
+
+    const resetCount =
+        Math.max(
+            0,
+            Number(
+                currentCycle.resetcount || 0
+            )
+        );
+
+
+    if(resetCount >= config.maxResets){
+
+        return {
+            success: false,
+            status: "reset-limit-reached",
+            cycleType:
+                normalizedCycleType,
+            price:
+                config.price,
+            maxResets:
+                config.maxResets,
+            resetCount,
+            remainingResets: 0,
+            nextResetAt:
+                currentCycle.expiresat
+        };
+
+    }
+
+
+    const nextData =
+        generateQuestResetData(
+            normalizedCycleType,
+            dashboard.level,
+            currentCycle
+        );
+
+
+    const result =
+        await database.resetQuestCycleWithXP(
+            guildID,
+            userID,
+            normalizedCycleType,
+            currentCycle.cyclekey,
+            nextData.quests,
+            nextData.rewards
+        );
+
+
+    return {
+        ...result,
+        cycle:
+            result.cycle
+                ? normalizeCycle(
+                    result.cycle
+                )
+                : null
+    };
+
+}
+
+
 function getContext(
     source,
     userIDOverride = null
@@ -3163,7 +3368,11 @@ module.exports = {
 
     ELITE_REWARD_LEVEL,
 
+    QUEST_RESET_CONFIG,
+
     ensureUserQuests,
+
+    resetQuestCycle,
 
     migrateActiveQuestCycles,
 
