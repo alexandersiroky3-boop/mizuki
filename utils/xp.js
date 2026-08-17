@@ -24,10 +24,15 @@ const BOOST_ROLES = {
 // Luck Boosts add their critical chance bonus.
 // Each consecutive critical adds +4% momentum
 // to the NEXT critical roll, up to +28%.
+// An active streak of 20+ adds another +3% chance,
+// and critical rewards at 20+ receive 5x XP.
 // Final critical chance is capped at 95%.
 
 const CRITICAL_MOMENTUM_PER_STREAK = 4;
 const CRITICAL_MOMENTUM_CAP = 28;
+const CRITICAL_STREAK_BONUS_THRESHOLD = 20;
+const CRITICAL_STREAK_CHANCE_BONUS = 3;
+const CRITICAL_STREAK_XP_MULTIPLIER = 5;
 const CRITICAL_CHANCE_CAP = 95;
 
 
@@ -61,12 +66,22 @@ function buildCriticalChance(
         );
 
 
+    const streakChanceBonus =
+        Math.max(
+            0,
+            Number(currentStreak) || 0
+        ) >= CRITICAL_STREAK_BONUS_THRESHOLD
+            ? CRITICAL_STREAK_CHANCE_BONUS
+            : 0;
+
+
     const finalChance =
         Math.min(
             CRITICAL_CHANCE_CAP,
             Number(baseCriticalChance) +
             Number(luckCriticalBonus) +
-            momentumBonus
+            momentumBonus +
+            streakChanceBonus
         );
 
 
@@ -79,6 +94,8 @@ function buildCriticalChance(
             Number(luckCriticalBonus),
 
         momentumBonus,
+
+        streakChanceBonus,
 
         finalChance
 
@@ -360,7 +377,8 @@ function randomXP(
 function getXPAmount(
     member,
     currentStreak = 0,
-    currentLevel = 1
+    currentLevel = 1,
+    options = {}
 ){
 
 
@@ -596,12 +614,23 @@ function getXPAmount(
     // CRITICAL ROLL
     // ======================
 
+    const forcedCritical =
+        Boolean(
+            options.forcedCritical
+        );
+
+
     const critical =
+        forcedCritical
+        ||
         Math.random() * 100 <
-        criticalChance;
+            criticalChance;
 
 
     let criticalMultiplier = 1;
+
+
+    let streakXPMultiplier = 1;
 
 
     let criticalStreak =
@@ -623,6 +652,20 @@ function getXPAmount(
         earnedXP +=
             criticalBonus *
             criticalMultiplier;
+
+
+        if(
+            criticalStreak >=
+                CRITICAL_STREAK_BONUS_THRESHOLD
+        ){
+
+            streakXPMultiplier =
+                CRITICAL_STREAK_XP_MULTIPLIER;
+
+            earnedXP *=
+                streakXPMultiplier;
+
+        }
 
 
     }
@@ -659,6 +702,9 @@ function getXPAmount(
         critical,
 
 
+        forcedCritical,
+
+
         criticalBonus,
 
 
@@ -674,6 +720,10 @@ function getXPAmount(
             chanceData.momentumBonus,
 
 
+        streakChanceBonus:
+            chanceData.streakChanceBonus,
+
+
         criticalChance,
 
 
@@ -682,6 +732,9 @@ function getXPAmount(
 
 
         criticalMultiplier,
+
+
+        streakXPMultiplier,
 
 
         criticalStreak,
