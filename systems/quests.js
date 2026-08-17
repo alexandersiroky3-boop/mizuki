@@ -31,8 +31,12 @@ const QUEST_UNLOCK_LEVEL =
     100;
 
 
+const ELITE_REWARD_LEVEL =
+    150;
+
+
 const QUEST_RULESET_VERSION =
-    4;
+    6;
 
 
 // =====================================================
@@ -409,7 +413,24 @@ function isHighQuestLevel(level){
 }
 
 
+function isEliteRewardLevel(level){
+
+    return (
+        Number(level) >=
+        ELITE_REWARD_LEVEL
+    );
+
+}
+
+
 function getLevelBand(level){
+
+    if(isEliteRewardLevel(level)){
+
+        return "elite";
+
+    }
+
 
     return isHighQuestLevel(level)
         ? "high"
@@ -677,7 +698,122 @@ function generateDailyRewardsHigh(){
 }
 
 
-function generateWeeklyRewards(){
+function generateDailyRewardsElite(){
+
+    const levelBand =
+        "elite";
+
+
+    const xpReward = {
+        type: "xp",
+        amount:
+            randomChoice([
+                2500000,
+                7000000,
+                14000000
+            ]),
+        levelBand
+    };
+
+
+    const extras =
+        shuffle([
+
+        {
+            type: "boost",
+            boostType: "xp",
+            tier: "max",
+            amount:
+                randomChoice([2, 4, 6]),
+            levelBand
+        },
+
+        {
+            type: "boost",
+            boostType: "luck",
+            tier: "max",
+            amount:
+                randomChoice([2, 4, 6]),
+            levelBand
+        },
+
+        {
+            type: "boost",
+            boostType: "xp",
+            tier: "tier3",
+            amount:
+                randomChoice([5, 10, 15]),
+            levelBand
+        },
+
+        {
+            type: "boost",
+            boostType: "luck",
+            tier: "tier3",
+            amount:
+                randomChoice([5, 10, 15]),
+            levelBand
+        },
+
+        {
+            type: "guaranteed_roll_minimum",
+            minXP:
+                randomChoice([
+                    250000,
+                    500000,
+                    1000000
+                ]),
+            amount: 1,
+            levelBand
+        },
+
+        {
+            type: "next_roll_burst",
+            rollCount:
+                randomChoice([10, 20, 50]),
+            amount: 1,
+            levelBand
+        },
+
+        {
+            type: "shop_discount",
+            discountPercent: 50,
+            durationMs:
+                24 * 60 * 60 * 1000,
+            levelBand
+        },
+
+        {
+            type: "guaranteed_criticals",
+            amount:
+                randomChoice([15, 20, 25]),
+            levelBand
+        },
+
+        {
+            type: "chat_xp_multiplier",
+            multiplier: 2,
+            durationMs:
+                24 * 60 * 60 * 1000,
+            levelBand
+        }
+
+        ]);
+
+
+    const extraCount =
+        randomChoice([3, 4]);
+
+
+    return [
+        xpReward,
+        ...extras.slice(0, extraCount)
+    ];
+
+}
+
+
+function generateWeeklyRewardsHigh(){
 
     const rewards = [
         {
@@ -687,7 +823,8 @@ function generateWeeklyRewards(){
                     15000000,
                     30000000,
                     50000000
-                ])
+                ]),
+            levelBand: "high"
         }
     ];
 
@@ -700,7 +837,8 @@ function generateWeeklyRewards(){
                 boostType: "luck",
                 tier: "max",
                 amount:
-                    randomChoice([2, 5])
+                    randomChoice([2, 5]),
+                levelBand: "high"
             },
 
             {
@@ -708,7 +846,8 @@ function generateWeeklyRewards(){
                 boostType: "xp",
                 tier: "max",
                 amount:
-                    randomChoice([2, 5])
+                    randomChoice([2, 5]),
+                levelBand: "high"
             },
 
             {
@@ -716,7 +855,8 @@ function generateWeeklyRewards(){
                 boostType: "luck",
                 tier: "tier3",
                 amount:
-                    randomChoice([10, 20])
+                    randomChoice([10, 20]),
+                levelBand: "high"
             },
 
             {
@@ -724,19 +864,22 @@ function generateWeeklyRewards(){
                 boostType: "xp",
                 tier: "tier3",
                 amount:
-                    randomChoice([10, 20])
+                    randomChoice([10, 20]),
+                levelBand: "high"
             },
 
             {
                 type: "guaranteed_roll",
                 rollType: "impossible",
-                amount: 1
+                amount: 1,
+                levelBand: "high"
             },
 
             {
                 type: "triple_roll",
                 durationMs:
-                    24 * 60 * 60 * 1000
+                    24 * 60 * 60 * 1000,
+                levelBand: "high"
             }
 
         ]);
@@ -758,12 +901,149 @@ function generateWeeklyRewards(){
 }
 
 
+function generateWeeklyRewardsElite(){
+
+    const levelBand =
+        "elite";
+
+
+    const rewards = [
+        {
+            type: "xp",
+            amount:
+                randomChoice([
+                    30000000,
+                    45000000,
+                    67676767
+                ]),
+            levelBand
+        }
+    ];
+
+
+    const multiRollStrength =
+        randomChoice([
+            {
+                rollCount: 3,
+                durationMs:
+                    24 * 60 * 60 * 1000
+            },
+            {
+                rollCount: 6,
+                durationMs:
+                    24 * 60 * 60 * 1000
+            },
+            {
+                rollCount: 9,
+                durationMs:
+                    48 * 60 * 60 * 1000
+            }
+        ]);
+
+
+    const socialDuration =
+        randomChoice([
+            24 * 60 * 60 * 1000,
+            24 * 60 * 60 * 1000,
+            48 * 60 * 60 * 1000
+        ]);
+
+
+    const extras =
+        shuffle([
+
+            {
+                type: "boost",
+                boostType: "luck",
+                tier: "max",
+                amount:
+                    randomChoice([7, 10, 12]),
+                levelBand
+            },
+
+            {
+                type: "guaranteed_roll_minimum",
+                minXP:
+                    randomChoice([
+                        10000000,
+                        15000000,
+                        25000000
+                    ]),
+                amount: 1,
+                levelBand
+            },
+
+            {
+                type: "multi_roll",
+                rollCount:
+                    multiRollStrength.rollCount,
+                durationMs:
+                    multiRollStrength.durationMs,
+                levelBand
+            },
+
+            {
+                type: "chat_xp_multiplier",
+                multiplier: 10,
+                durationMs:
+                    24 * 60 * 60 * 1000,
+                levelBand
+            },
+
+            {
+                type: "shop_discount",
+                discountPercent: 90,
+                durationMs:
+                    24 * 60 * 60 * 1000,
+                levelBand
+            },
+
+            {
+                type: "social_command_triple",
+                repeatCount: 3,
+                durationMs:
+                    socialDuration,
+                levelBand
+            },
+
+            {
+                type: "boost",
+                boostType: "luck",
+                tier: "omega",
+                amount: 1,
+                levelBand
+            }
+
+        ]);
+
+
+    const extraCount =
+        randomChoice([3, 4, 5]);
+
+
+    rewards.push(
+        ...extras.slice(0, extraCount)
+    );
+
+
+    return rewards;
+
+}
+
+
 function generateRewards(
     cycleType,
     level
 ){
 
     if(cycleType === "daily"){
+
+        if(isEliteRewardLevel(level)){
+
+            return generateDailyRewardsElite();
+
+        }
+
 
         return isHighQuestLevel(level)
             ? generateDailyRewardsHigh()
@@ -772,8 +1052,15 @@ function generateRewards(
     }
 
 
+    if(isEliteRewardLevel(level)){
+
+        return generateWeeklyRewardsElite();
+
+    }
+
+
     return isHighQuestLevel(level)
-        ? generateWeeklyRewards()
+        ? generateWeeklyRewardsHigh()
         : [];
 
 }
@@ -1190,13 +1477,72 @@ function migrateDailyRewardsForLevel(
     level
 ){
 
+    const eliteLevel =
+        isEliteRewardLevel(
+            level
+        );
+
+
     const highLevel =
         isHighQuestLevel(
             level
         );
 
 
-    return (rewards || []).map(
+    const currentRewards =
+        rewards || [];
+
+
+    const hasEliteRewards =
+        currentRewards.some(
+            reward =>
+                String(
+                    reward.levelBand || ""
+                ).toLowerCase() === "elite"
+        );
+
+
+    // Crossing the Level 150 boundary swaps the entire unclaimed reward
+    // set. This guarantees that old Level 100-149 rewards never leak into
+    // the separate Level 150+ pool (and vice versa after a level loss).
+    if(eliteLevel){
+
+        const allElite =
+            currentRewards.length > 0
+            &&
+            currentRewards.every(
+                reward =>
+                    String(
+                        reward.levelBand || ""
+                    ).toLowerCase() === "elite"
+            )
+            &&
+            [4, 5].includes(
+                currentRewards.length
+            );
+
+
+        return allElite
+            ? currentRewards.map(
+                reward => ({
+                    ...reward
+                })
+            )
+            : generateDailyRewardsElite();
+
+    }
+
+
+    if(hasEliteRewards){
+
+        return highLevel
+            ? generateDailyRewardsHigh()
+            : generateDailyRewardsLow();
+
+    }
+
+
+    return currentRewards.map(
         reward => {
 
             const migrated = {
@@ -1378,10 +1724,63 @@ function migrateDailyRewardsForLevel(
 
 
 function migrateWeeklyRewards(
-    rewards
+    rewards,
+    level
 ){
 
-    return (rewards || []).map(
+    const currentRewards =
+        rewards || [];
+
+
+    const eliteLevel =
+        isEliteRewardLevel(
+            level
+        );
+
+
+    const allElite =
+        currentRewards.length > 0
+        &&
+        currentRewards.every(
+            reward =>
+                String(
+                    reward.levelBand || ""
+                ).toLowerCase() === "elite"
+        )
+        &&
+        currentRewards.length >= 4
+        &&
+        currentRewards.length <= 6;
+
+
+    if(eliteLevel){
+
+        return allElite
+            ? currentRewards.map(
+                reward => ({
+                    ...reward
+                })
+            )
+            : generateWeeklyRewardsElite();
+
+    }
+
+
+    if(
+        currentRewards.some(
+            reward =>
+                String(
+                    reward.levelBand || ""
+                ).toLowerCase() === "elite"
+        )
+    ){
+
+        return generateWeeklyRewardsHigh();
+
+    }
+
+
+    return currentRewards.map(
         reward => {
 
             const migrated = {
@@ -1506,6 +1905,10 @@ function migrateWeeklyRewards(
             // guaranteed_roll:impossible stays unchanged.
             // triple_roll stays unchanged.
             // Any other reward type stays unchanged.
+
+
+            migrated.levelBand =
+                "high";
 
 
             return migrated;
@@ -1700,7 +2103,8 @@ function migrateCycleData(
 
             rewards =
                 migrateWeeklyRewards(
-                    normalized.rewards
+                    normalized.rewards,
+                    level
                 );
 
         }
@@ -2180,6 +2584,31 @@ function getContext(
 }
 
 
+function formatRewardDuration(durationMs){
+
+    const safeDuration =
+        Math.max(
+            1,
+            Number(durationMs) ||
+            24 * 60 * 60 * 1000
+        );
+
+
+    const hours =
+        Math.max(
+            1,
+            Math.round(
+                safeDuration /
+                (60 * 60 * 1000)
+            )
+        );
+
+
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+
+}
+
+
 function formatReward(reward){
 
     if(reward.type === "xp"){
@@ -2231,6 +2660,75 @@ function formatReward(reward){
     if(reward.type === "triple_roll"){
 
         return "Each `!roll` automatically performs **3 rolls at once** for 24 hours";
+
+    }
+
+
+    if(reward.type === "guaranteed_roll_minimum"){
+
+        return (
+            `Guaranteed **${Number(reward.minXP).toLocaleString()}+ XP** ` +
+            "on your next `!roll`"
+        );
+
+    }
+
+
+    if(reward.type === "next_roll_burst"){
+
+        return (
+            `Your next \`!roll\` performs **${Number(reward.rollCount).toLocaleString()} rolls at once**`
+        );
+
+    }
+
+
+    if(reward.type === "shop_discount"){
+
+        return (
+            `**${Number(reward.discountPercent)}% off** \`!shop\` for ` +
+            `**${formatRewardDuration(reward.durationMs)}**`
+        );
+
+    }
+
+
+    if(reward.type === "guaranteed_criticals"){
+
+        return (
+            `Your next **${Number(reward.amount)}** chat XP drops are guaranteed criticals in a row`
+        );
+
+    }
+
+
+    if(reward.type === "chat_xp_multiplier"){
+
+        return (
+            `Earn **${Number(reward.multiplier)}x chat XP** for ` +
+            `**${formatRewardDuration(reward.durationMs)}**`
+        );
+
+    }
+
+
+    if(reward.type === "multi_roll"){
+
+        return (
+            `Each \`!roll\` performs **${Number(reward.rollCount)} rolls at once** for ` +
+            `**${formatRewardDuration(reward.durationMs)}**`
+        );
+
+    }
+
+
+    if(reward.type === "social_command_triple"){
+
+        return (
+            "Each `!hug`, `!kiss`, and `!steal` performs " +
+            `**${Number(reward.repeatCount) || 3} uses at once** for ` +
+            `**${formatRewardDuration(reward.durationMs)}**`
+        );
 
     }
 
@@ -2620,9 +3118,50 @@ async function useRollCooldown(
 }
 
 
+async function getChatXPMultiplier(
+    guildID,
+    userID
+){
+
+    return database.getQuestChatXPMultiplier(
+        guildID,
+        userID
+    );
+
+}
+
+
+async function consumeGuaranteedCritical(
+    guildID,
+    userID
+){
+
+    return database.consumeQuestGuaranteedCritical(
+        guildID,
+        userID
+    );
+
+}
+
+
+async function getSocialCommandRepeatCount(
+    guildID,
+    userID
+){
+
+    return database.getQuestSocialCommandRepeatCount(
+        guildID,
+        userID
+    );
+
+}
+
+
 module.exports = {
 
     QUEST_UNLOCK_LEVEL,
+
+    ELITE_REWARD_LEVEL,
 
     ensureUserQuests,
 
@@ -2637,6 +3176,12 @@ module.exports = {
     consumeGuaranteedRoll,
 
     useRollCooldown,
+
+    getChatXPMultiplier,
+
+    consumeGuaranteedCritical,
+
+    getSocialCommandRepeatCount,
 
     formatReward
 
