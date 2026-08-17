@@ -113,6 +113,13 @@ const previousBestCriticalStreak =
     ) || 0;
 
 
+const guaranteedCritical =
+    await database.consumeQuestGuaranteedCritical(
+        guildID,
+        userID
+    );
+
+
 
     // ======================
     // Calculate XP
@@ -123,12 +130,26 @@ const reward =
     xp.getXPAmount(
         message.member,
         previousCriticalStreak,
-        currentLevel
+        currentLevel,
+        {
+            forcedCritical:
+                guaranteedCritical.forced
+        }
+    );
+
+
+const chatXPMultiplier =
+    await database.getQuestChatXPMultiplier(
+        guildID,
+        userID
     );
 
 
     const earnedXP =
-        reward.xp;
+        Math.floor(
+            reward.xp *
+            chatXPMultiplier
+        );
 
 
 const newBestCriticalStreak =
@@ -330,6 +351,17 @@ return {
 
     critical:
         reward.critical,
+
+
+    forcedCritical:
+        reward.forcedCritical,
+
+
+    guaranteedCriticalsRemaining:
+        guaranteedCritical.remaining,
+
+
+    chatXPMultiplier,
 
 
     criticalBonus:
