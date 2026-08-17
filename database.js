@@ -322,6 +322,779 @@ function getRandomShopPrice(item){
 }
 
 
+// ==============================
+// TRAVELING MERCHANT
+// ==============================
+//
+// One appearance roll happens per real shop refresh while
+// shop_state is locked. A visit lasts for that complete shop cycle.
+// While the merchant is visiting, his six global deals and their
+// stock rotate independently every 30 minutes.
+
+const TRAVELING_MERCHANT_CHANCE =
+    0.15;
+
+
+const TRAVELING_MERCHANT_DEALS_PER_VISIT =
+    6;
+
+
+const TRAVELING_MERCHANT_REFRESH_TIME =
+    30 * 60 * 1000;
+
+
+const MERCHANT_HOUR =
+    60 * 60 * 1000;
+
+
+function merchantBoost(
+    boostType,
+    tier,
+    amount
+){
+
+    return {
+        boostType,
+        tier,
+        amount
+    };
+
+}
+
+
+function merchantSide({
+    xp = 0,
+    boosts = [],
+    perk = null
+} = {}){
+
+    return {
+        xp,
+        boosts,
+        perk
+    };
+
+}
+
+
+const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
+
+    {
+        id: "luck_i_cache",
+        name: "Overgrown Luck Cache",
+        stockOptions: [5],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "tier1", 100)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "tier1", 250)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "tier1", 300)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "xp_luck_iii_bundle",
+        name: "Fortune and Experience Bundle",
+        stockOptions: [10],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    xp: 1000000,
+                    boosts: [
+                        merchantBoost("luck", "tier3", 1)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 2)
+                    ]
+                }),
+                reward: merchantSide({
+                    xp: 2000000,
+                    boosts: [
+                        merchantBoost("luck", "tier3", 2)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 4)
+                    ]
+                }),
+                reward: merchantSide({
+                    xp: 3500000,
+                    boosts: [
+                        merchantBoost("luck", "tier3", 2)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "omega_fortune_bundle",
+        name: "Omega Fortune Bundle",
+        stockOptions: [1, 2],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    xp: 5000000,
+                    boosts: [
+                        merchantBoost("luck", "max", 10)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    xp: 10000000,
+                    boosts: [
+                        merchantBoost("luck", "max", 20)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    xp: 20000000,
+                    boosts: [
+                        merchantBoost("luck", "max", 35)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "sell_omega_for_xp",
+        name: "Omega Liquidation",
+        stockOptions: [1, 2],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    xp: 50000000
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    xp: 125000000
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    xp: 175000000
+                })
+            }
+        ]
+    },
+
+    {
+        id: "buy_omega_with_xp",
+        name: "Experience-for-Omega Exchange",
+        stockOptions: [3],
+        variants: [
+            {
+                cost: merchantSide({
+                    xp: 50000000
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    xp: 100000000
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    xp: 250000000
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "buy_omega_with_luck_max",
+        name: "MAX-for-Omega Exchange",
+        stockOptions: [1, 2],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 20)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 40)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 69)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "luck_iii_upgrade",
+        name: "Luck Tier Upgrade",
+        stockOptions: [5],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "tier3", 3)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 1)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "tier3", 5)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 2)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "tier3", 10)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 2)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "xp_max_for_luck_max",
+        name: "Bulk XP Boost MAX Crate",
+        stockOptions: [3],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 5)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "max", 100)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 10)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "max", 300)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 15)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "max", 500)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "xp_max_for_xp",
+        name: "Experience-Funded XP Boost Crate",
+        stockOptions: [5],
+        variants: [
+            {
+                cost: merchantSide({
+                    xp: 5000000
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "max", 50)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    xp: 10000000
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "max", 75)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    xp: 20000000
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "max", 100)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "timed_triple_roll",
+        name: "Temporary Triple Roll License",
+        stockOptions: [1, 2],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 5)
+                    ]
+                }),
+                reward: merchantSide({
+                    perk: {
+                        type: "multi_roll_timed",
+                        rollCount: 3,
+                        durationMs:
+                            24 * MERCHANT_HOUR
+                    }
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 10)
+                    ]
+                }),
+                reward: merchantSide({
+                    perk: {
+                        type: "multi_roll_timed",
+                        rollCount: 3,
+                        durationMs:
+                            48 * MERCHANT_HOUR
+                    }
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 15)
+                    ]
+                }),
+                reward: merchantSide({
+                    perk: {
+                        type: "multi_roll_timed",
+                        rollCount: 3,
+                        durationMs:
+                            48 * MERCHANT_HOUR
+                    }
+                })
+            }
+        ]
+    },
+
+    {
+        id: "permanent_double_chat_xp",
+        name: "Permanent Double Chat XP",
+        stockOptions: [1],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 2)
+                    ]
+                }),
+                reward: merchantSide({
+                    perk: {
+                        type:
+                            "chat_xp_permanent",
+                        multiplier: 2
+                    }
+                })
+            }
+        ]
+    },
+
+    {
+        id: "permanent_triple_roll",
+        name: "Permanent Triple Roll License",
+        stockOptions: [1],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 2)
+                    ]
+                }),
+                reward: merchantSide({
+                    perk: {
+                        type:
+                            "multi_roll_permanent",
+                        rollCount: 3
+                    }
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 3)
+                    ]
+                }),
+                reward: merchantSide({
+                    perk: {
+                        type:
+                            "multi_roll_permanent",
+                        rollCount: 3
+                    }
+                })
+            }
+        ]
+    },
+
+    {
+        id: "timed_nine_roll",
+        name: "Nine-Roll License",
+        stockOptions: [1],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    perk: {
+                        type: "multi_roll_timed",
+                        rollCount: 9,
+                        durationMs:
+                            48 * MERCHANT_HOUR
+                    }
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    perk: {
+                        type: "multi_roll_timed",
+                        rollCount: 9,
+                        durationMs:
+                            72 * MERCHANT_HOUR
+                    }
+                })
+            }
+        ]
+    }
+
+];
+
+
+function safeMerchantRandom(random){
+
+    const value =
+        Number(
+            random()
+        );
+
+
+    if(!Number.isFinite(value)){
+        return 0;
+    }
+
+
+    return Math.min(
+        0.999999999,
+        Math.max(
+            0,
+            value
+        )
+    );
+
+}
+
+
+function pickMerchantOption(
+    options,
+    random
+){
+
+    return options[
+        Math.floor(
+            safeMerchantRandom(random) *
+            options.length
+        )
+    ];
+
+}
+
+
+function cloneMerchantSide(side){
+
+    return {
+
+        xp:
+            Math.max(
+                0,
+                Number(side?.xp) || 0
+            ),
+
+        boosts:
+            Array.isArray(side?.boosts)
+                ? side.boosts.map(
+                    boost => ({
+                        boostType:
+                            String(
+                                boost.boostType
+                            ).toLowerCase(),
+                        tier:
+                            String(
+                                boost.tier
+                            ).toLowerCase(),
+                        amount:
+                            Math.max(
+                                1,
+                                Math.floor(
+                                    Number(
+                                        boost.amount
+                                    ) || 1
+                                )
+                            )
+                    })
+                )
+                : [],
+
+        perk:
+            side?.perk
+                ? {
+                    ...side.perk
+                }
+                : null
+
+    };
+
+}
+
+
+function createTravelingMerchantDeals(
+    random = Math.random
+){
+
+    const shuffled =
+        [
+            ...TRAVELING_MERCHANT_DEAL_TEMPLATES
+        ];
+
+
+    for(
+        let index =
+            shuffled.length - 1;
+        index > 0;
+        index--
+    ){
+
+        const swapIndex =
+            Math.floor(
+                safeMerchantRandom(random) *
+                (index + 1)
+            );
+
+
+        [
+            shuffled[index],
+            shuffled[swapIndex]
+        ] = [
+            shuffled[swapIndex],
+            shuffled[index]
+        ];
+
+    }
+
+
+    return shuffled
+        .slice(
+            0,
+            Math.min(
+                TRAVELING_MERCHANT_DEALS_PER_VISIT,
+                shuffled.length
+            )
+        )
+        .map((template, index) => {
+
+            const variant =
+                pickMerchantOption(
+                    template.variants,
+                    random
+                );
+
+
+            const maxStock =
+                Number(
+                    pickMerchantOption(
+                        template.stockOptions,
+                        random
+                    )
+                );
+
+
+            return {
+                id: template.id,
+                name: template.name,
+                displayOrder:
+                    index + 1,
+                maxStock,
+                cost:
+                    cloneMerchantSide(
+                        variant.cost
+                    ),
+                reward:
+                    cloneMerchantSide(
+                        variant.reward
+                    )
+            };
+
+        });
+
+}
+
+
+function rollTravelingMerchantAppearance(
+    random = Math.random
+){
+
+    return (
+        safeMerchantRandom(random) <
+        TRAVELING_MERCHANT_CHANCE
+    );
+
+}
+
+
 
 
 
@@ -616,6 +1389,42 @@ await db.query(`
 
 `);
 
+
+// Positive XP earned after this update is recorded here so the bot can
+// build rolling weekly and monthly leaderboards. Spending or losing XP does
+// not erase XP that was legitimately earned during the selected period.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS leaderboard_xp_activity (
+
+        id BIGSERIAL PRIMARY KEY,
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        amount BIGINT NOT NULL,
+
+        timestamp BIGINT NOT NULL
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    leaderboard_xp_activity_period_idx
+
+    ON leaderboard_xp_activity(
+        guildID,
+        timestamp,
+        userID
+    )
+
+`);
+
 await db.query(`
 
     CREATE TABLE IF NOT EXISTS luck_boosts (
@@ -754,6 +1563,131 @@ await db.query(`
 
 await db.query(`
 
+    CREATE TABLE IF NOT EXISTS
+    traveling_merchant_state (
+
+        id SMALLINT PRIMARY KEY,
+
+        active BOOLEAN NOT NULL
+            DEFAULT FALSE,
+
+        cycleID BIGINT NOT NULL
+            DEFAULT 0,
+
+        startedAt BIGINT NOT NULL
+            DEFAULT 0,
+
+        endsAt BIGINT NOT NULL
+            DEFAULT 0,
+
+        nextRestockAt BIGINT NOT NULL
+            DEFAULT 0
+
+    )
+
+`);
+
+
+await db.query(`
+
+    INSERT INTO traveling_merchant_state
+    (
+        id,
+        active,
+        cycleID,
+        startedAt,
+        endsAt
+    )
+
+    VALUES
+    (1,FALSE,0,0,0)
+
+    ON CONFLICT(id)
+    DO NOTHING
+
+`);
+
+
+await db.query(`
+
+    ALTER TABLE traveling_merchant_state
+
+    ADD COLUMN IF NOT EXISTS
+    nextRestockAt BIGINT NOT NULL DEFAULT 0
+
+`);
+
+
+// Existing visits created before 30-minute merchant restocks were
+// added get their first faster restock no later than 30 minutes after
+// this version starts. New visits set this value during the shop roll.
+await db.query(`
+
+    UPDATE traveling_merchant_state
+
+    SET nextRestockAt =
+        CASE
+            WHEN active = TRUE
+            AND endsAt > $1
+            THEN LEAST(
+                endsAt,
+                $1 + $2
+            )
+            ELSE endsAt
+        END
+
+    WHERE nextRestockAt <= 0
+
+`, [
+    Date.now(),
+    TRAVELING_MERCHANT_REFRESH_TIME
+]);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS
+    traveling_merchant_stock (
+
+        cycleID BIGINT NOT NULL,
+
+        dealID TEXT NOT NULL,
+
+        displayOrder INTEGER NOT NULL,
+
+        deal JSONB NOT NULL,
+
+        amount INTEGER NOT NULL
+            DEFAULT 0,
+
+        maxAmount INTEGER NOT NULL
+            DEFAULT 0,
+
+        PRIMARY KEY(
+            cycleID,
+            dealID
+        )
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    traveling_merchant_stock_order_idx
+
+    ON traveling_merchant_stock(
+        cycleID,
+        displayOrder
+    )
+
+`);
+
+
+await db.query(`
+
     CREATE TABLE IF NOT EXISTS quest_cycles (
 
         guildID TEXT NOT NULL,
@@ -798,11 +1732,57 @@ await db.query(`
 
         guaranteedImpossible INTEGER NOT NULL DEFAULT 0,
 
+        guaranteed250k INTEGER NOT NULL DEFAULT 0,
+
+        guaranteed500k INTEGER NOT NULL DEFAULT 0,
+
+        guaranteed1m INTEGER NOT NULL DEFAULT 0,
+
+        guaranteed10m INTEGER NOT NULL DEFAULT 0,
+
+        guaranteed15m INTEGER NOT NULL DEFAULT 0,
+
+        guaranteed25m INTEGER NOT NULL DEFAULT 0,
+
+        nextRollBurst10 INTEGER NOT NULL DEFAULT 0,
+
+        nextRollBurst20 INTEGER NOT NULL DEFAULT 0,
+
+        nextRollBurst50 INTEGER NOT NULL DEFAULT 0,
+
         tripleRollUntil BIGINT NOT NULL DEFAULT 0,
+
+        multiRollUntil BIGINT NOT NULL DEFAULT 0,
+
+        multiRollCount INTEGER NOT NULL DEFAULT 1,
 
         rollWindowEndsAt BIGINT NOT NULL DEFAULT 0,
 
         rollWindowUses INTEGER NOT NULL DEFAULT 0,
+
+        chatXP2Until BIGINT NOT NULL DEFAULT 0,
+
+        chatXP10Until BIGINT NOT NULL DEFAULT 0,
+
+        shopDiscount50Until BIGINT NOT NULL DEFAULT 0,
+
+        shopDiscount90Until BIGINT NOT NULL DEFAULT 0,
+
+        guaranteedCriticalsRemaining INTEGER NOT NULL DEFAULT 0,
+
+        socialTripleUntil BIGINT NOT NULL DEFAULT 0,
+
+        merchantPermanentChatXPMultiplier
+            INTEGER NOT NULL DEFAULT 1,
+
+        merchantPermanentRollCount
+            INTEGER NOT NULL DEFAULT 1,
+
+        merchantTimedRollCount
+            INTEGER NOT NULL DEFAULT 1,
+
+        merchantTimedRollUntil
+            BIGINT NOT NULL DEFAULT 0,
 
         PRIMARY KEY(
             guildID,
@@ -810,6 +1790,37 @@ await db.query(`
         )
 
     )
+
+`);
+
+
+// Existing Railway databases already have quest_effects, so every new
+// reward field is added safely without touching saved user progress.
+await db.query(`
+
+    ALTER TABLE quest_effects
+
+    ADD COLUMN IF NOT EXISTS guaranteed250k INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS guaranteed500k INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS guaranteed1m INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS guaranteed10m INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS guaranteed15m INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS guaranteed25m INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextRollBurst10 INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextRollBurst20 INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextRollBurst50 INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS multiRollUntil BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS multiRollCount INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS chatXP2Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP10Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS shopDiscount50Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS shopDiscount90Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS guaranteedCriticalsRemaining INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS socialTripleUntil BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS merchantPermanentChatXPMultiplier INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS merchantPermanentRollCount INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS merchantTimedRollCount INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS merchantTimedRollUntil BIGINT NOT NULL DEFAULT 0
 
 `);
 
@@ -941,6 +1952,20 @@ await db.query(`
     )
 
 `);
+
+
+// Weekly/monthly rankings only need the most recent 30 days. Keep two extra
+// days as a safety margin so this table stays small even on active servers.
+await db.query(`
+
+    DELETE FROM leaderboard_xp_activity
+
+    WHERE timestamp < $1
+
+`, [
+    Date.now() -
+    32 * 24 * 60 * 60 * 1000
+]);
 
 
 await db.query(`
@@ -1234,24 +2259,49 @@ async function addXP(
 
 await db.query(`
 
-UPDATE users
+WITH updated_user AS (
 
-SET
+    UPDATE users
 
-xp = GREATEST(0, xp + $3),
+    SET
 
-messages = messages + 1
+    xp = GREATEST(0, xp + $3),
+
+    messages = messages + 1
 
 
-WHERE guildID=$1
+    WHERE guildID=$1
 
-AND userID=$2
+    AND userID=$2
+
+    RETURNING guildID, userID
+
+)
+
+INSERT INTO leaderboard_xp_activity
+(
+    guildID,
+    userID,
+    amount,
+    timestamp
+)
+
+SELECT
+    guildID,
+    userID,
+    $3,
+    $4
+
+FROM updated_user
+
+WHERE $3 > 0
 
 `,
 [
     guildID,
     userID,
-    amount
+    amount,
+    Date.now()
 ]);
 
 
@@ -1282,20 +2332,45 @@ async function giveXP(
 
     await db.query(`
 
-    UPDATE users
+    WITH updated_user AS (
 
-    SET xp = xp + $3
+        UPDATE users
+
+        SET xp = xp + $3
 
 
-    WHERE guildID=$1
-    AND userID=$2
+        WHERE guildID=$1
+        AND userID=$2
+
+        RETURNING guildID, userID
+
+    )
+
+    INSERT INTO leaderboard_xp_activity
+    (
+        guildID,
+        userID,
+        amount,
+        timestamp
+    )
+
+    SELECT
+        guildID,
+        userID,
+        $3,
+        $4
+
+    FROM updated_user
+
+    WHERE $3 > 0
 
 
     `,
     [
         guildID,
         userID,
-        amount
+        amount,
+        Date.now()
     ]);
 
 }
@@ -1413,6 +2488,111 @@ async function getLeaderboard(
         [
             guildID,
             limit
+        ]);
+
+
+    return result.rows;
+
+}
+
+
+
+
+async function getPeriodLeaderboard(
+    guildID,
+    period,
+    limit = 10
+){
+
+
+    const durations = {
+
+        weekly:
+            7 * 24 * 60 * 60 * 1000,
+
+        monthly:
+            30 * 24 * 60 * 60 * 1000
+
+    };
+
+
+    const duration =
+        durations[
+            String(period).toLowerCase()
+        ];
+
+
+    if(!duration){
+
+        throw new Error(
+            `Unknown leaderboard period: ${period}`
+        );
+
+    }
+
+
+    const safeLimit =
+        Math.max(
+            1,
+            Math.min(
+                Number(limit) || 10,
+                25
+            )
+        );
+
+
+    const result =
+        await db.query(`
+
+            SELECT
+
+                activity.userID,
+
+                SUM(activity.amount)::BIGINT
+                    AS "periodXP",
+
+                users.xp,
+
+                users.level
+
+            FROM leaderboard_xp_activity
+                AS activity
+
+            INNER JOIN users
+
+                ON users.guildID =
+                    activity.guildID
+
+                AND users.userID =
+                    activity.userID
+
+            WHERE activity.guildID=$1
+
+            AND activity.timestamp >= $2
+
+            GROUP BY
+
+                activity.userID,
+
+                users.xp,
+
+                users.level
+
+            ORDER BY
+
+                SUM(activity.amount) DESC,
+
+                users.xp DESC,
+
+                activity.userID ASC
+
+            LIMIT $3
+
+
+        `, [
+            guildID,
+            Date.now() - duration,
+            safeLimit
         ]);
 
 
@@ -2726,6 +3906,294 @@ async function clearXPBoostProgress(
 // GLOBAL MERCHANT SHOP
 // =====================================================
 
+async function replaceTravelingMerchantStock(
+    client,
+    cycleID
+){
+
+    await client.query(`
+
+        DELETE FROM
+        traveling_merchant_stock
+
+    `);
+
+
+    const deals =
+        createTravelingMerchantDeals();
+
+
+    for(const deal of deals){
+
+        await client.query(`
+
+            INSERT INTO
+            traveling_merchant_stock
+            (
+                cycleID,
+                dealID,
+                displayOrder,
+                deal,
+                amount,
+                maxAmount
+            )
+
+            VALUES
+            ($1,$2,$3,$4::jsonb,$5,$5)
+
+        `, [
+            cycleID,
+            deal.id,
+            deal.displayOrder,
+            JSON.stringify(deal),
+            deal.maxStock
+        ]);
+
+    }
+
+
+    return deals;
+
+}
+
+
+async function refreshTravelingMerchant(
+    client,
+    startedAt,
+    endsAt
+){
+
+    const active =
+        rollTravelingMerchantAppearance();
+
+
+    const numericStartedAt =
+        Number(startedAt);
+
+
+    const numericEndsAt =
+        Number(endsAt);
+
+
+    const nextRestockAt =
+        active
+            ? Math.min(
+                numericEndsAt,
+                numericStartedAt +
+                    TRAVELING_MERCHANT_REFRESH_TIME
+            )
+            : numericEndsAt;
+
+
+    // The cycle ID changes on every 30-minute inventory rotation.
+    // A click from an older panel can therefore never buy a new deal
+    // that happens to reuse the same deal ID.
+    const cycleID =
+        active
+            ? nextRestockAt
+            : numericEndsAt;
+
+
+    if(active){
+
+        await replaceTravelingMerchantStock(
+            client,
+            cycleID
+        );
+
+    }
+    else{
+
+        await client.query(`
+
+            DELETE FROM
+            traveling_merchant_stock
+
+        `);
+
+    }
+
+
+    await client.query(`
+
+        UPDATE traveling_merchant_state
+
+        SET
+            active=$1,
+            cycleID=$2,
+            startedAt=$3,
+            endsAt=$4,
+            nextRestockAt=$5
+
+        WHERE id=1
+
+    `, [
+        active,
+        cycleID,
+        numericStartedAt,
+        numericEndsAt,
+        nextRestockAt
+    ]);
+
+
+    return {
+        active,
+        cycleID,
+        startedAt:
+            numericStartedAt,
+        endsAt:
+            numericEndsAt,
+        nextRestockAt
+    };
+
+}
+
+
+async function lockAndRefreshTravelingMerchant(
+    client,
+    shopState
+){
+
+    const stateResult =
+        await client.query(`
+
+            SELECT
+                active,
+                cycleID,
+                startedAt,
+                endsAt,
+                nextRestockAt
+
+            FROM traveling_merchant_state
+
+            WHERE id=1
+
+            FOR UPDATE
+
+        `);
+
+
+    const row =
+        stateResult.rows[0] || {};
+
+
+    const now =
+        Date.now();
+
+
+    const endsAt =
+        Number(
+            row.endsat || 0
+        );
+
+
+    let nextRestockAt =
+        Number(
+            row.nextrestockat || 0
+        );
+
+
+    let cycleID =
+        Number(
+            row.cycleid || 0
+        );
+
+
+    const active =
+        Boolean(row.active)
+        &&
+        endsAt > now;
+
+
+    let refreshed =
+        false;
+
+
+    if(active && nextRestockAt <= now){
+
+        if(nextRestockAt <= 0){
+
+            nextRestockAt =
+                now +
+                TRAVELING_MERCHANT_REFRESH_TIME;
+
+        }
+        else{
+
+            const missedRestocks =
+                Math.floor(
+                    (
+                        now - nextRestockAt
+                    ) /
+                    TRAVELING_MERCHANT_REFRESH_TIME
+                ) + 1;
+
+
+            nextRestockAt +=
+                missedRestocks *
+                TRAVELING_MERCHANT_REFRESH_TIME;
+
+        }
+
+
+        nextRestockAt =
+            Math.min(
+                endsAt,
+                nextRestockAt
+            );
+
+
+        cycleID =
+            nextRestockAt;
+
+
+        await replaceTravelingMerchantStock(
+            client,
+            cycleID
+        );
+
+
+        await client.query(`
+
+            UPDATE traveling_merchant_state
+
+            SET
+                cycleID=$1,
+                nextRestockAt=$2
+
+            WHERE id=1
+
+        `, [
+            cycleID,
+            nextRestockAt
+        ]);
+
+
+        refreshed =
+            true;
+
+    }
+
+
+    return {
+        active,
+        cycleID,
+        startedAt:
+            Number(
+                row.startedat || 0
+            ),
+        endsAt,
+        nextRestockAt,
+        nextRefreshAt:
+            active
+                ? nextRestockAt
+                : shopState.nextRefreshAt,
+        refreshed
+    };
+
+}
+
+
 async function lockAndRefreshShop(client){
 
     const stateResult =
@@ -2755,6 +4223,10 @@ async function lockAndRefreshShop(client){
 
     let refreshed =
         false;
+
+
+    let merchantActive =
+        null;
 
 
     if(nextRefreshAt <= now){
@@ -2809,6 +4281,18 @@ async function lockAndRefreshShop(client){
         }
 
 
+        const merchantState =
+            await refreshTravelingMerchant(
+                client,
+                now,
+                nextRefreshAt
+            );
+
+
+        merchantActive =
+            merchantState.active;
+
+
         await client.query(`
 
             UPDATE shop_state
@@ -2830,7 +4314,8 @@ async function lockAndRefreshShop(client){
 
     return {
         nextRefreshAt,
-        refreshed
+        refreshed,
+        merchantActive
     };
 
 }
@@ -2968,7 +4453,7 @@ async function purchaseGlobalShopItem(
             );
 
 
-        const currentPrice =
+        const basePrice =
             Number(
                 stockResult.rows[0]?.price
             ) || item.price;
@@ -2986,6 +4471,71 @@ async function purchaseGlobalShopItem(
             };
 
         }
+
+
+        await client.query(`
+
+            INSERT INTO quest_effects
+            (
+                guildID,
+                userID
+            )
+
+            VALUES($1,$2)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            guildID,
+            userID
+        ]);
+
+
+        const discountResult =
+            await client.query(`
+
+                SELECT
+                    shopDiscount50Until,
+                    shopDiscount90Until
+
+                FROM quest_effects
+
+                WHERE guildID=$1
+                AND userID=$2
+
+                FOR UPDATE
+
+            `, [
+                guildID,
+                userID
+            ]);
+
+
+        const discountRow =
+            discountResult.rows[0] || {};
+
+
+        const discountPercent =
+            Number(
+                discountRow.shopdiscount90until || 0
+            ) > Date.now()
+                ? 90
+                : Number(
+                    discountRow.shopdiscount50until || 0
+                ) > Date.now()
+                    ? 50
+                    : 0;
+
+
+        const currentPrice =
+            Math.max(
+                1,
+                Math.ceil(
+                    basePrice *
+                    (100 - discountPercent) /
+                    100
+                )
+            );
 
 
         await client.query(`
@@ -3038,6 +4588,8 @@ async function purchaseGlobalShopItem(
                 success: false,
                 status: "not-enough-xp",
                 price: currentPrice,
+                basePrice,
+                discountPercent,
                 balance: currentXP,
                 missing:
                     currentPrice - currentXP,
@@ -3173,6 +4725,8 @@ async function purchaseGlobalShopItem(
             status: "purchased",
             item,
             price: currentPrice,
+            basePrice,
+            discountPercent,
             balance:
                 Number(
                     updatedUser.rows[0]?.xp || 0
@@ -3188,6 +4742,1221 @@ async function purchaseGlobalShopItem(
                 ),
             nextRefreshAt:
                 state.nextRefreshAt
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+function parseTravelingMerchantDeal(value){
+
+    if(
+        value &&
+        typeof value === "object"
+    ){
+        return value;
+    }
+
+
+    try{
+        return JSON.parse(value);
+    }
+    catch{
+        return null;
+    }
+
+}
+
+
+function normalizeTravelingMerchantBoosts(
+    boosts
+){
+
+    const combined =
+        new Map();
+
+
+    for(
+        const rawBoost of
+        Array.isArray(boosts)
+            ? boosts
+            : []
+    ){
+
+        const boostType =
+            String(
+                rawBoost?.boostType || ""
+            ).toLowerCase();
+
+
+        const tier =
+            String(
+                rawBoost?.tier || ""
+            ).toLowerCase();
+
+
+        const amount =
+            Math.max(
+                0,
+                Math.floor(
+                    Number(
+                        rawBoost?.amount
+                    ) || 0
+                )
+            );
+
+
+        if(
+            ![
+                "xp",
+                "luck"
+            ].includes(boostType)
+            ||
+            !tier
+            ||
+            amount <= 0
+        ){
+            continue;
+        }
+
+
+        const key =
+            `${boostType}:${tier}`;
+
+
+        const current =
+            combined.get(key) || {
+                boostType,
+                tier,
+                amount: 0
+            };
+
+
+        current.amount +=
+            amount;
+
+
+        combined.set(
+            key,
+            current
+        );
+
+    }
+
+
+    return [
+        ...combined.values()
+    ];
+
+}
+
+
+function normalizeTravelingMerchantPerk(
+    rawPerk
+){
+
+    if(
+        !rawPerk ||
+        typeof rawPerk !== "object"
+    ){
+        return null;
+    }
+
+
+    const type =
+        String(
+            rawPerk.type || ""
+        ).toLowerCase();
+
+
+    if(type === "chat_xp_permanent"){
+
+        return {
+            type,
+            multiplier:
+                Math.max(
+                    2,
+                    Math.floor(
+                        Number(
+                            rawPerk.multiplier
+                        ) || 2
+                    )
+                )
+        };
+
+    }
+
+
+    if(type === "multi_roll_permanent"){
+
+        return {
+            type,
+            rollCount:
+                Math.max(
+                    2,
+                    Math.floor(
+                        Number(
+                            rawPerk.rollCount
+                        ) || 3
+                    )
+                )
+        };
+
+    }
+
+
+    if(type === "multi_roll_timed"){
+
+        return {
+            type,
+            rollCount:
+                Math.max(
+                    2,
+                    Math.floor(
+                        Number(
+                            rawPerk.rollCount
+                        ) || 3
+                    )
+                ),
+            durationMs:
+                Math.max(
+                    MERCHANT_HOUR,
+                    Math.floor(
+                        Number(
+                            rawPerk.durationMs
+                        ) ||
+                        24 * MERCHANT_HOUR
+                    )
+                )
+        };
+
+    }
+
+
+    return null;
+
+}
+
+
+function getTravelingMerchantRollPerk(
+    effects,
+    now = Date.now()
+){
+
+    const permanentRollCount =
+        Math.max(
+            1,
+            Number(
+                effects
+                    ?.merchantpermanentrollcount
+            ) || 1
+        );
+
+
+    const timedUntil =
+        Number(
+            effects
+                ?.merchanttimedrolluntil || 0
+        );
+
+
+    const timedRollCount =
+        timedUntil > now
+            ? Math.max(
+                1,
+                Number(
+                    effects
+                        ?.merchanttimedrollcount
+                ) || 1
+            )
+            : 1;
+
+
+    return {
+        rollCount:
+            Math.max(
+                permanentRollCount,
+                timedRollCount
+            ),
+        permanentRollCount,
+        timedRollCount,
+        activeUntil:
+            timedUntil > now
+                ? timedUntil
+                : 0
+    };
+
+}
+
+
+function resolveChatXPMultiplier(
+    effects,
+    now = Date.now()
+){
+
+    const permanentMultiplier =
+        Math.max(
+            1,
+            Number(
+                effects
+                    ?.merchantpermanentchatxpmultiplier
+            ) || 1
+        );
+
+
+    if(
+        Number(
+            effects?.chatxp10until || 0
+        ) > now
+    ){
+        return Math.max(
+            10,
+            permanentMultiplier
+        );
+    }
+
+
+    if(
+        Number(
+            effects?.chatxp2until || 0
+        ) > now
+    ){
+        return Math.max(
+            2,
+            permanentMultiplier
+        );
+    }
+
+
+    return permanentMultiplier;
+
+}
+
+
+function normalizeTravelingMerchantDeal(
+    rawDeal
+){
+
+    const parsed =
+        parseTravelingMerchantDeal(
+            rawDeal
+        );
+
+
+    if(!parsed){
+        return null;
+    }
+
+
+    return {
+
+        id:
+            String(
+                parsed.id || ""
+            ).toLowerCase(),
+
+        name:
+            String(
+                parsed.name ||
+                "Traveling Merchant Deal"
+            ),
+
+        displayOrder:
+            Math.max(
+                1,
+                Number(
+                    parsed.displayOrder
+                ) || 1
+            ),
+
+        cost: {
+            xp:
+                Math.max(
+                    0,
+                    Math.floor(
+                        Number(
+                            parsed.cost?.xp
+                        ) || 0
+                    )
+                ),
+            boosts:
+                normalizeTravelingMerchantBoosts(
+                    parsed.cost?.boosts
+                ),
+            perk: null
+        },
+
+        reward: {
+            xp:
+                Math.max(
+                    0,
+                    Math.floor(
+                        Number(
+                            parsed.reward?.xp
+                        ) || 0
+                    )
+                ),
+            boosts:
+                normalizeTravelingMerchantBoosts(
+                    parsed.reward?.boosts
+                ),
+            perk:
+                normalizeTravelingMerchantPerk(
+                    parsed.reward?.perk
+                )
+        }
+
+    };
+
+}
+
+
+async function getTravelingMerchant(){
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        const shopState =
+            await lockAndRefreshShop(
+                client
+            );
+
+
+        const merchantState =
+            await lockAndRefreshTravelingMerchant(
+                client,
+                shopState
+            );
+
+
+        const cycleID =
+            Number(
+                merchantState.cycleID || 0
+            );
+
+
+        const endsAt =
+            Number(
+                merchantState.endsAt || 0
+            );
+
+
+        const active =
+            Boolean(
+                merchantState.active
+            );
+
+
+        let dealRows = [];
+
+
+        if(active){
+
+            const stockResult =
+                await client.query(`
+
+                    SELECT
+                        dealID,
+                        displayOrder,
+                        deal,
+                        amount,
+                        maxAmount
+
+                    FROM traveling_merchant_stock
+
+                    WHERE cycleID=$1
+
+                    ORDER BY displayOrder ASC
+
+                `, [
+                    cycleID
+                ]);
+
+
+            dealRows =
+                stockResult.rows;
+
+        }
+
+
+        await client.query("COMMIT");
+
+
+        return {
+            active,
+            cycleID,
+            startedAt:
+                Number(
+                    merchantState.startedAt || 0
+                ),
+            endsAt,
+            nextRestockAt:
+                Number(
+                    merchantState.nextRestockAt || 0
+                ),
+            nextRefreshAt:
+                merchantState.nextRefreshAt,
+            refreshed:
+                Boolean(
+                    shopState.refreshed
+                    ||
+                    merchantState.refreshed
+                ),
+            deals:
+                dealRows.map(row => ({
+                    ...(
+                        parseTravelingMerchantDeal(
+                            row.deal
+                        ) || {}
+                    ),
+                    id:
+                        String(
+                            row.dealid
+                        ).toLowerCase(),
+                    displayOrder:
+                        Number(
+                            row.displayorder
+                        ),
+                    amount:
+                        Number(
+                            row.amount
+                        ),
+                    maxAmount:
+                        Number(
+                            row.maxamount
+                        )
+                }))
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+async function purchaseTravelingMerchantDeal(
+    guildID,
+    userID,
+    dealID,
+    expectedCycleID = null
+){
+
+    const normalizedDealID =
+        String(
+            dealID || ""
+        )
+            .trim()
+            .toLowerCase();
+
+
+    if(!normalizedDealID){
+
+        return {
+            success: false,
+            status: "invalid-deal"
+        };
+
+    }
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        const shopState =
+            await lockAndRefreshShop(
+                client
+            );
+
+
+        const merchantState =
+            await lockAndRefreshTravelingMerchant(
+                client,
+                shopState
+            );
+
+
+        const cycleID =
+            Number(
+                merchantState.cycleID || 0
+            );
+
+
+        if(
+            !merchantState.active
+        ){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "merchant-away",
+                nextRefreshAt:
+                    merchantState.nextRefreshAt
+            };
+
+        }
+
+
+        if(
+            expectedCycleID !== null
+            &&
+            Number(expectedCycleID) !==
+                cycleID
+        ){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "merchant-refreshed",
+                cycleID,
+                nextRefreshAt:
+                    merchantState.nextRefreshAt
+            };
+
+        }
+
+
+        const stockResult =
+            await client.query(`
+
+                SELECT
+                    deal,
+                    amount,
+                    maxAmount,
+                    displayOrder
+
+                FROM traveling_merchant_stock
+
+                WHERE cycleID=$1
+                AND dealID=$2
+
+                FOR UPDATE
+
+            `, [
+                cycleID,
+                normalizedDealID
+            ]);
+
+
+        const stockRow =
+            stockResult.rows[0];
+
+
+        if(!stockRow){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "invalid-deal"
+            };
+
+        }
+
+
+        if(
+            Number(
+                stockRow.amount || 0
+            ) <= 0
+        ){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "sold-out",
+                remainingStock: 0
+            };
+
+        }
+
+
+        const deal =
+            normalizeTravelingMerchantDeal(
+                stockRow.deal
+            );
+
+
+        if(
+            !deal
+            ||
+            deal.id !== normalizedDealID
+        ){
+
+            throw new Error(
+                `Traveling Merchant deal ${normalizedDealID} is invalid.`
+            );
+
+        }
+
+
+        await client.query(`
+
+            INSERT INTO users
+            (
+                guildID,
+                userID
+            )
+
+            VALUES($1,$2)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            guildID,
+            userID
+        ]);
+
+
+        const userResult =
+            await client.query(`
+
+                SELECT xp
+
+                FROM users
+
+                WHERE guildID=$1
+                AND userID=$2
+
+                FOR UPDATE
+
+            `, [
+                guildID,
+                userID
+            ]);
+
+
+        const currentXP =
+            Number(
+                userResult.rows[0]?.xp || 0
+            );
+
+
+        if(currentXP < deal.cost.xp){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "not-enough-xp",
+                required:
+                    deal.cost.xp,
+                available:
+                    currentXP,
+                missing:
+                    deal.cost.xp -
+                    currentXP
+            };
+
+        }
+
+
+        const lockedInventory =
+            [];
+
+
+        for(
+            const boostCost of
+            deal.cost.boosts
+        ){
+
+            const inventoryResult =
+                await client.query(`
+
+                    SELECT amount
+
+                    FROM boost_inventory
+
+                    WHERE guildID=$1
+                    AND userID=$2
+                    AND boostType=$3
+                    AND tier=$4
+
+                    FOR UPDATE
+
+                `, [
+                    guildID,
+                    userID,
+                    boostCost.boostType,
+                    boostCost.tier
+                ]);
+
+
+            const available =
+                Number(
+                    inventoryResult
+                        .rows[0]?.amount || 0
+                );
+
+
+            if(available < boostCost.amount){
+
+                await client.query("COMMIT");
+
+                return {
+                    success: false,
+                    status:
+                        "not-enough-boosts",
+                    boost:
+                        boostCost,
+                    required:
+                        boostCost.amount,
+                    available,
+                    missing:
+                        boostCost.amount -
+                        available
+                };
+
+            }
+
+
+            lockedInventory.push({
+                ...boostCost,
+                available
+            });
+
+        }
+
+
+        await client.query(`
+
+            INSERT INTO quest_effects
+            (
+                guildID,
+                userID
+            )
+
+            VALUES($1,$2)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            guildID,
+            userID
+        ]);
+
+
+        const effectResult =
+            await client.query(`
+
+                SELECT
+                    merchantPermanentChatXPMultiplier,
+                    merchantPermanentRollCount
+
+                FROM quest_effects
+
+                WHERE guildID=$1
+                AND userID=$2
+
+                FOR UPDATE
+
+            `, [
+                guildID,
+                userID
+            ]);
+
+
+        const effects =
+            effectResult.rows[0] || {};
+
+
+        const perk =
+            deal.reward.perk;
+
+
+        const alreadyOwned =
+            (
+                perk?.type ===
+                    "chat_xp_permanent"
+                &&
+                Number(
+                    effects
+                        .merchantpermanentchatxpmultiplier || 1
+                ) >= perk.multiplier
+            )
+            ||
+            (
+                perk?.type ===
+                    "multi_roll_permanent"
+                &&
+                Number(
+                    effects
+                        .merchantpermanentrollcount || 1
+                ) >= perk.rollCount
+            );
+
+
+        if(alreadyOwned){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "already-owned",
+                perk
+            };
+
+        }
+
+
+        for(
+            const boostCost of
+            lockedInventory
+        ){
+
+            await client.query(`
+
+                UPDATE boost_inventory
+
+                SET amount =
+                    amount - $5
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND boostType=$3
+                AND tier=$4
+
+            `, [
+                guildID,
+                userID,
+                boostCost.boostType,
+                boostCost.tier,
+                boostCost.amount
+            ]);
+
+
+            await client.query(`
+
+                DELETE FROM boost_inventory
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND boostType=$3
+                AND tier=$4
+                AND amount <= 0
+
+            `, [
+                guildID,
+                userID,
+                boostCost.boostType,
+                boostCost.tier
+            ]);
+
+        }
+
+
+        const updatedUser =
+            await client.query(`
+
+                UPDATE users
+
+                SET xp =
+                    xp - $3 + $4
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND xp >= $3
+
+                RETURNING xp
+
+            `, [
+                guildID,
+                userID,
+                deal.cost.xp,
+                deal.reward.xp
+            ]);
+
+
+        if(updatedUser.rowCount === 0){
+
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                status: "not-enough-xp",
+                required:
+                    deal.cost.xp,
+                available:
+                    currentXP
+            };
+
+        }
+
+
+        for(
+            const boostReward of
+            deal.reward.boosts
+        ){
+
+            await client.query(`
+
+                INSERT INTO boost_inventory
+                (
+                    guildID,
+                    userID,
+                    boostType,
+                    tier,
+                    amount
+                )
+
+                VALUES
+                ($1,$2,$3,$4,$5)
+
+                ON CONFLICT(
+                    guildID,
+                    userID,
+                    boostType,
+                    tier
+                )
+
+                DO UPDATE SET
+                    amount =
+                        boost_inventory.amount +
+                        EXCLUDED.amount
+
+            `, [
+                guildID,
+                userID,
+                boostReward.boostType,
+                boostReward.tier,
+                boostReward.amount
+            ]);
+
+        }
+
+
+        if(
+            perk?.type ===
+            "chat_xp_permanent"
+        ){
+
+            await client.query(`
+
+                UPDATE quest_effects
+
+                SET
+                    merchantPermanentChatXPMultiplier =
+                        GREATEST(
+                            merchantPermanentChatXPMultiplier,
+                            $3
+                        )
+
+                WHERE guildID=$1
+                AND userID=$2
+
+            `, [
+                guildID,
+                userID,
+                perk.multiplier
+            ]);
+
+        }
+        else if(
+            perk?.type ===
+            "multi_roll_permanent"
+        ){
+
+            await client.query(`
+
+                UPDATE quest_effects
+
+                SET
+                    merchantPermanentRollCount =
+                        GREATEST(
+                            merchantPermanentRollCount,
+                            $3
+                        ),
+
+                    rollWindowEndsAt=0,
+                    rollWindowUses=0
+
+                WHERE guildID=$1
+                AND userID=$2
+
+            `, [
+                guildID,
+                userID,
+                perk.rollCount
+            ]);
+
+        }
+        else if(
+            perk?.type ===
+            "multi_roll_timed"
+        ){
+
+            const now =
+                Date.now();
+
+
+            await client.query(`
+
+                UPDATE quest_effects
+
+                SET
+                    merchantTimedRollCount =
+                        CASE
+                            WHEN
+                                merchantTimedRollUntil >
+                                $3
+                            THEN
+                                GREATEST(
+                                    merchantTimedRollCount,
+                                    $4
+                                )
+                            ELSE $4
+                        END,
+
+                    merchantTimedRollUntil =
+                        GREATEST(
+                            merchantTimedRollUntil,
+                            $3
+                        ) + $5,
+
+                    rollWindowEndsAt=0,
+                    rollWindowUses=0
+
+                WHERE guildID=$1
+                AND userID=$2
+
+            `, [
+                guildID,
+                userID,
+                now,
+                perk.rollCount,
+                perk.durationMs
+            ]);
+
+        }
+
+
+        const updatedStock =
+            await client.query(`
+
+                UPDATE traveling_merchant_stock
+
+                SET amount =
+                    amount - 1
+
+                WHERE cycleID=$1
+                AND dealID=$2
+                AND amount > 0
+
+                RETURNING amount
+
+            `, [
+                cycleID,
+                normalizedDealID
+            ]);
+
+
+        if(updatedStock.rowCount === 0){
+
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                status: "sold-out",
+                remainingStock: 0
+            };
+
+        }
+
+
+        const totalStockResult =
+            await client.query(`
+
+                SELECT
+                    COALESCE(
+                        SUM(amount),
+                        0
+                    ) AS total
+
+                FROM traveling_merchant_stock
+
+                WHERE cycleID=$1
+
+            `, [
+                cycleID
+            ]);
+
+
+        const entireMerchantSoldOut =
+            Number(
+                totalStockResult
+                    .rows[0]?.total || 0
+            ) <= 0;
+
+
+        await client.query("COMMIT");
+
+
+        userCache.delete(
+            `${guildID}:${userID}`
+        );
+
+
+        return {
+            success: true,
+            status: "purchased",
+            cycleID,
+            deal,
+            balance:
+                Number(
+                    updatedUser.rows[0]?.xp || 0
+                ),
+            rewardXP:
+                deal.reward.xp,
+            costXP:
+                deal.cost.xp,
+            xpChange:
+                deal.reward.xp -
+                deal.cost.xp,
+            remainingStock:
+                Number(
+                    updatedStock
+                        .rows[0]?.amount || 0
+                ),
+            entireMerchantSoldOut,
+            nextRefreshAt:
+                merchantState.nextRefreshAt
         };
 
     }
@@ -3712,15 +6481,39 @@ async function claimQuestCycleRewards(
 
                 await client.query(`
 
-                    UPDATE users
+                    WITH updated_user AS (
 
-                    SET xp = GREATEST(
-                        0,
-                        xp + $3
+                        UPDATE users
+
+                        SET xp = GREATEST(
+                            0,
+                            xp + $3
+                        )
+
+                        WHERE guildID=$1
+                        AND userID=$2
+
+                        RETURNING guildID, userID
+
                     )
 
-                    WHERE guildID=$1
-                    AND userID=$2
+                    INSERT INTO leaderboard_xp_activity
+                    (
+                        guildID,
+                        userID,
+                        amount,
+                        timestamp
+                    )
+
+                    SELECT
+                        guildID,
+                        userID,
+                        $3,
+                        $4
+
+                    FROM updated_user
+
+                    WHERE $3 > 0
 
                 `, [
                     guildID,
@@ -3728,7 +6521,8 @@ async function claimQuestCycleRewards(
                     Math.max(
                         0,
                         Number(reward.amount) || 0
-                    )
+                    ),
+                    now
                 ]);
 
             }
@@ -3854,6 +6648,262 @@ async function claimQuestCycleRewards(
                 ]);
 
             }
+            else if(reward.type === "guaranteed_roll_minimum"){
+
+                const minimumColumns = {
+                    250000: "guaranteed250k",
+                    500000: "guaranteed500k",
+                    1000000: "guaranteed1m",
+                    10000000: "guaranteed10m",
+                    15000000: "guaranteed15m",
+                    25000000: "guaranteed25m"
+                };
+
+
+                const column =
+                    minimumColumns[
+                        Number(reward.minXP)
+                    ];
+
+
+                if(column){
+
+                    await client.query(`
+
+                        UPDATE quest_effects
+
+                        SET ${column} = ${column} + $3
+
+                        WHERE guildID=$1
+                        AND userID=$2
+
+                    `, [
+                        guildID,
+                        userID,
+                        Math.max(
+                            1,
+                            Number(reward.amount) || 1
+                        )
+                    ]);
+
+                }
+
+            }
+            else if(reward.type === "next_roll_burst"){
+
+                const burstColumns = {
+                    10: "nextRollBurst10",
+                    20: "nextRollBurst20",
+                    50: "nextRollBurst50"
+                };
+
+
+                const column =
+                    burstColumns[
+                        Number(reward.rollCount)
+                    ];
+
+
+                if(column){
+
+                    await client.query(`
+
+                        UPDATE quest_effects
+
+                        SET ${column} = ${column} + $3
+
+                        WHERE guildID=$1
+                        AND userID=$2
+
+                    `, [
+                        guildID,
+                        userID,
+                        Math.max(
+                            1,
+                            Number(reward.amount) || 1
+                        )
+                    ]);
+
+                }
+
+            }
+            else if(reward.type === "multi_roll"){
+
+                const durationMs =
+                    Math.max(
+                        1,
+                        Number(reward.durationMs) ||
+                        24 * 60 * 60 * 1000
+                    );
+
+
+                const rollCount =
+                    Math.max(
+                        2,
+                        Number(reward.rollCount) || 3
+                    );
+
+
+                await client.query(`
+
+                    UPDATE quest_effects
+
+                    SET
+                        multiRollCount =
+                            CASE
+                                WHEN multiRollUntil > $3
+                                    THEN GREATEST(multiRollCount, $4)
+                                ELSE $4
+                            END,
+
+                        multiRollUntil =
+                            GREATEST(
+                                multiRollUntil,
+                                $3
+                            ) + $5,
+
+                        rollWindowEndsAt = 0,
+                        rollWindowUses = 0
+
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                `, [
+                    guildID,
+                    userID,
+                    now,
+                    rollCount,
+                    durationMs
+                ]);
+
+            }
+            else if(reward.type === "chat_xp_multiplier"){
+
+                const multiplier =
+                    Number(reward.multiplier) >= 10
+                        ? 10
+                        : 2;
+
+
+                const column =
+                    multiplier === 10
+                        ? "chatXP10Until"
+                        : "chatXP2Until";
+
+
+                await client.query(`
+
+                    UPDATE quest_effects
+
+                    SET ${column} =
+                        GREATEST(
+                            ${column},
+                            $3
+                        ) + $4
+
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                `, [
+                    guildID,
+                    userID,
+                    now,
+                    Math.max(
+                        1,
+                        Number(reward.durationMs) ||
+                        24 * 60 * 60 * 1000
+                    )
+                ]);
+
+            }
+            else if(reward.type === "shop_discount"){
+
+                const discount =
+                    Number(reward.discountPercent) >= 90
+                        ? 90
+                        : 50;
+
+
+                const column =
+                    discount === 90
+                        ? "shopDiscount90Until"
+                        : "shopDiscount50Until";
+
+
+                await client.query(`
+
+                    UPDATE quest_effects
+
+                    SET ${column} =
+                        GREATEST(
+                            ${column},
+                            $3
+                        ) + $4
+
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                `, [
+                    guildID,
+                    userID,
+                    now,
+                    Math.max(
+                        1,
+                        Number(reward.durationMs) ||
+                        24 * 60 * 60 * 1000
+                    )
+                ]);
+
+            }
+            else if(reward.type === "guaranteed_criticals"){
+
+                await client.query(`
+
+                    UPDATE quest_effects
+
+                    SET guaranteedCriticalsRemaining =
+                        guaranteedCriticalsRemaining + $3
+
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                `, [
+                    guildID,
+                    userID,
+                    Math.max(
+                        1,
+                        Number(reward.amount) || 1
+                    )
+                ]);
+
+            }
+            else if(reward.type === "social_command_triple"){
+
+                await client.query(`
+
+                    UPDATE quest_effects
+
+                    SET socialTripleUntil =
+                        GREATEST(
+                            socialTripleUntil,
+                            $3
+                        ) + $4
+
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                `, [
+                    guildID,
+                    userID,
+                    now,
+                    Math.max(
+                        1,
+                        Number(reward.durationMs) ||
+                        24 * 60 * 60 * 1000
+                    )
+                ]);
+
+            }
 
         }
 
@@ -3955,6 +7005,136 @@ async function getQuestEffects(
 }
 
 
+async function getQuestChatXPMultiplier(
+    guildID,
+    userID
+){
+
+    const effects =
+        await getQuestEffects(
+            guildID,
+            userID
+        );
+
+
+    return resolveChatXPMultiplier(
+        effects
+    );
+
+}
+
+
+async function getQuestShopDiscount(
+    guildID,
+    userID
+){
+
+    const effects =
+        await getQuestEffects(
+            guildID,
+            userID
+        );
+
+
+    const now =
+        Date.now();
+
+
+    if(
+        Number(
+            effects?.shopdiscount90until || 0
+        ) > now
+    ){
+
+        return 90;
+
+    }
+
+
+    if(
+        Number(
+            effects?.shopdiscount50until || 0
+        ) > now
+    ){
+
+        return 50;
+
+    }
+
+
+    return 0;
+
+}
+
+
+async function consumeQuestGuaranteedCritical(
+    guildID,
+    userID
+){
+
+    const result =
+        await db.query(`
+
+            UPDATE quest_effects
+
+            SET guaranteedCriticalsRemaining =
+                guaranteedCriticalsRemaining - 1
+
+            WHERE guildID=$1
+            AND userID=$2
+            AND guaranteedCriticalsRemaining > 0
+
+            RETURNING guaranteedCriticalsRemaining
+
+        `, [
+            guildID,
+            userID
+        ]);
+
+
+    if(result.rowCount === 0){
+
+        return {
+            forced: false,
+            remaining: 0
+        };
+
+    }
+
+
+    return {
+        forced: true,
+        remaining:
+            Number(
+                result.rows[0]
+                    ?.guaranteedcriticalsremaining || 0
+            )
+    };
+
+}
+
+
+async function getQuestSocialCommandRepeatCount(
+    guildID,
+    userID
+){
+
+    const effects =
+        await getQuestEffects(
+            guildID,
+            userID
+        );
+
+
+    return Number(
+        effects?.socialtripleuntil || 0
+    ) > Date.now()
+        ? 3
+        : 1;
+
+}
+
+
 async function consumeGuaranteedQuestRoll(
     guildID,
     userID
@@ -4013,7 +7193,75 @@ async function consumeGuaranteedQuestRoll(
             null;
 
 
-        if(
+        const minimumRewards = [
+            {
+                field: "guaranteed25m",
+                rowField: "guaranteed25m",
+                minXP: 25000000
+            },
+            {
+                field: "guaranteed15m",
+                rowField: "guaranteed15m",
+                minXP: 15000000
+            },
+            {
+                field: "guaranteed10m",
+                rowField: "guaranteed10m",
+                minXP: 10000000
+            },
+            {
+                field: "guaranteed1m",
+                rowField: "guaranteed1m",
+                minXP: 1000000
+            },
+            {
+                field: "guaranteed500k",
+                rowField: "guaranteed500k",
+                minXP: 500000
+            },
+            {
+                field: "guaranteed250k",
+                rowField: "guaranteed250k",
+                minXP: 250000
+            }
+        ];
+
+
+        const minimumReward =
+            minimumRewards.find(
+                entry =>
+                    Number(
+                        row[entry.rowField] || 0
+                    ) > 0
+            );
+
+
+        if(minimumReward){
+
+            rollType = {
+                type: "minimum",
+                minXP:
+                    minimumReward.minXP
+            };
+
+
+            await client.query(`
+
+                UPDATE quest_effects
+
+                SET ${minimumReward.field} =
+                    ${minimumReward.field} - 1
+
+                WHERE guildID=$1
+                AND userID=$2
+
+            `, [
+                guildID,
+                userID
+            ]);
+
+        }
+        else if(
             Number(
                 row.guaranteedimpossible || 0
             ) > 0
@@ -4155,11 +7403,110 @@ async function useQuestRollCooldown(
             effectResult.rows[0];
 
 
+        const burstOptions = [
+            {
+                rowField: "nextrollburst50",
+                column: "nextRollBurst50",
+                rollCount: 50
+            },
+            {
+                rowField: "nextrollburst20",
+                column: "nextRollBurst20",
+                rollCount: 20
+            },
+            {
+                rowField: "nextrollburst10",
+                column: "nextRollBurst10",
+                rollCount: 10
+            }
+        ];
+
+
+        const burst =
+            burstOptions.find(
+                entry =>
+                    Number(
+                        effect[entry.rowField] || 0
+                    ) > 0
+            ) || null;
+
+
+        let timedRollCount = 1;
+        let activeUntil = 0;
+
+
         if(
             Number(
                 effect.triplerolluntil || 0
             ) > now
         ){
+
+            timedRollCount = 3;
+            activeUntil =
+                Number(
+                    effect.triplerolluntil
+                );
+
+        }
+
+
+        if(
+            Number(
+                effect.multirolluntil || 0
+            ) > now
+        ){
+
+            timedRollCount =
+                Math.max(
+                    timedRollCount,
+                    Math.max(
+                        2,
+                        Number(
+                            effect.multirollcount
+                        ) || 3
+                    )
+                );
+
+            activeUntil =
+                Math.max(
+                    activeUntil,
+                    Number(
+                        effect.multirolluntil
+                    )
+                );
+
+        }
+
+
+        const merchantRollPerk =
+            getTravelingMerchantRollPerk(
+                effect,
+                now
+            );
+
+
+        timedRollCount =
+            Math.max(
+                timedRollCount,
+                merchantRollPerk.rollCount
+            );
+
+
+        activeUntil =
+            Math.max(
+                activeUntil,
+                merchantRollPerk.activeUntil
+            );
+
+
+        const rollCount =
+            Math.max(
+                timedRollCount,
+                burst?.rollCount || 1
+            );
+
+
+        if(rollCount > 1){
 
             const windowEndsAt =
                 Number(
@@ -4167,11 +7514,6 @@ async function useQuestRollCooldown(
                 );
 
 
-            // Triple Roll now means ONE !roll command performs
-            // all 3 rolls automatically.
-            //
-            // While that command's normal cooldown window is
-            // active, another !roll command is blocked.
             if(windowEndsAt > now){
 
                 await client.query("COMMIT");
@@ -4184,14 +7526,14 @@ async function useQuestRollCooldown(
                             0,
                             windowEndsAt - now
                         ),
+                    multiRoll: true,
                     tripleRoll: true,
-                    rollCount: 3,
+                    rollCount,
                     cooldownEndsAt:
                         windowEndsAt,
-                    activeUntil:
-                        Number(
-                            effect.triplerolluntil
-                        )
+                    activeUntil,
+                    oneShotBurst:
+                        Boolean(burst)
                 };
 
             }
@@ -4201,22 +7543,49 @@ async function useQuestRollCooldown(
                 now + safeCooldown;
 
 
-            await client.query(`
+            if(burst){
 
-                UPDATE quest_effects
+                await client.query(`
 
-                SET
-                    rollWindowEndsAt=$3,
-                    rollWindowUses=3
+                    UPDATE quest_effects
 
-                WHERE guildID=$1
-                AND userID=$2
+                    SET
+                        rollWindowEndsAt=$3,
+                        rollWindowUses=$4,
+                        ${burst.column}=${burst.column}-1
 
-            `, [
-                guildID,
-                userID,
-                nextWindowEndsAt
-            ]);
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                `, [
+                    guildID,
+                    userID,
+                    nextWindowEndsAt,
+                    rollCount
+                ]);
+
+            }
+            else{
+
+                await client.query(`
+
+                    UPDATE quest_effects
+
+                    SET
+                        rollWindowEndsAt=$3,
+                        rollWindowUses=$4
+
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                `, [
+                    guildID,
+                    userID,
+                    nextWindowEndsAt,
+                    rollCount
+                ]);
+
+            }
 
 
             await client.query("COMMIT");
@@ -4225,14 +7594,14 @@ async function useQuestRollCooldown(
             return {
                 allowed: true,
                 remaining: 0,
+                multiRoll: true,
                 tripleRoll: true,
-                rollCount: 3,
+                rollCount,
                 cooldownEndsAt:
                     nextWindowEndsAt,
-                activeUntil:
-                    Number(
-                        effect.triplerolluntil
-                    )
+                activeUntil,
+                oneShotBurst:
+                    Boolean(burst)
             };
 
         }
@@ -4275,6 +7644,7 @@ async function useQuestRollCooldown(
             return {
                 allowed: false,
                 remaining,
+                multiRoll: false,
                 tripleRoll: false,
                 rollCount: 1,
                 cooldownEndsAt:
@@ -4320,6 +7690,7 @@ async function useQuestRollCooldown(
         return {
             allowed: true,
             remaining: 0,
+            multiRoll: false,
             tripleRoll: false,
             rollCount: 1,
             cooldownEndsAt:
@@ -6433,6 +9804,26 @@ module.exports = {
 
     purchaseGlobalShopItem,
 
+    TRAVELING_MERCHANT_CHANCE,
+
+    TRAVELING_MERCHANT_DEALS_PER_VISIT,
+
+    TRAVELING_MERCHANT_REFRESH_TIME,
+
+    TRAVELING_MERCHANT_DEAL_TEMPLATES,
+
+    createTravelingMerchantDeals,
+
+    rollTravelingMerchantAppearance,
+
+    getTravelingMerchantRollPerk,
+
+    resolveChatXPMultiplier,
+
+    getTravelingMerchant,
+
+    purchaseTravelingMerchantDeal,
+
     initDatabase,
 
     getUser,
@@ -6450,6 +9841,8 @@ module.exports = {
     setLevel,
 
     getLeaderboard,
+
+    getPeriodLeaderboard,
 
     addBoostActivity,
 
@@ -6520,6 +9913,14 @@ module.exports = {
     claimQuestCycleRewards,
 
     getQuestEffects,
+
+    getQuestChatXPMultiplier,
+
+    getQuestShopDiscount,
+
+    consumeQuestGuaranteedCritical,
+
+    getQuestSocialCommandRepeatCount,
 
     consumeGuaranteedQuestRoll,
 
