@@ -1708,6 +1708,8 @@ await db.query(`
 
         rewardedAt BIGINT,
 
+        resetCount INTEGER NOT NULL DEFAULT 0,
+
         PRIMARY KEY(
             guildID,
             userID,
@@ -1716,6 +1718,16 @@ await db.query(`
         )
 
     )
+
+`);
+
+
+await db.query(`
+
+    ALTER TABLE quest_cycles
+
+    ADD COLUMN IF NOT EXISTS
+    resetCount INTEGER NOT NULL DEFAULT 0
 
 `);
 
@@ -5981,6 +5993,27 @@ async function purchaseTravelingMerchantDeal(
 // QUEST SYSTEM
 // =====================================================
 
+const QUEST_RESET_CONFIG =
+    Object.freeze({
+
+        daily:
+            Object.freeze({
+                price:
+                    10000000,
+                maxResets:
+                    3
+            }),
+
+        weekly:
+            Object.freeze({
+                price:
+                    50000000,
+                maxResets:
+                    2
+            })
+
+    });
+
 async function getQuestCycle(
     guildID,
     userID,
@@ -6141,6 +6174,366 @@ async function replaceQuestCycleData(
 
 
     return result.rows[0] || null;
+
+}
+
+
+async function resetQuestCycleWithXP(
+    guildID,
+    userID,
+    cycleType,
+    cycleKey,
+    quests,
+    rewards
+){
+
+    const normalizedCycleType =
+        String(
+            cycleType || ""
+        ).toLowerCase();
+
+
+    const config =
+        QUEST_RESET_CONFIG[
+            normalizedCycleType
+        ];
+
+
+    if(!config){
+
+        return {
+            success: false,
+            status: "invalid-cycle-type"
+        };
+
+    }
+
+
+    if(
+        !Array.isArray(quests)
+        ||
+        quests.length === 0
+        ||
+        !Array.isArray(rewards)
+        ||
+        rewards.length === 0
+    ){
+
+        return {
+            success: false,
+            status: "invalid-reset-data"
+        };
+
+    }
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        // Lock the quest cycle first, matching the lock order used by
+        // progress updates and reward claims. This serializes reset clicks
+        // and prevents two requests from spending the same reset slot.
+        const cycleResult =
+            await client.query(`
+
+                SELECT *
+
+                FROM quest_cycles
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND cycleType=$3
+                AND cycleKey=$4
+
+                FOR UPDATE
+
+            `, [
+                guildID,
+                userID,
+                normalizedCycleType,
+                cycleKey
+            ]);
+
+
+        const cycle =
+            cycleResult.rows[0];
+
+
+        if(!cycle){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "missing-cycle"
+            };
+
+        }
+
+
+        const expiresAt =
+            Number(
+                cycle.expiresat || 0
+            );
+
+
+        if(expiresAt <= Date.now()){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "cycle-expired",
+                nextResetAt:
+                    expiresAt
+            };
+
+        }
+
+
+        const resetCount =
+            Math.max(
+                0,
+                Number(
+                    cycle.resetcount || 0
+                )
+            );
+
+
+        if(resetCount >= config.maxResets){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "reset-limit-reached",
+                cycleType:
+                    normalizedCycleType,
+                price:
+                    config.price,
+                maxResets:
+                    config.maxResets,
+                resetCount,
+                remainingResets: 0,
+                nextResetAt:
+                    expiresAt
+            };
+
+        }
+
+
+        await client.query(`
+
+            INSERT INTO users
+            (
+                guildID,
+                userID
+            )
+
+            VALUES($1,$2)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            guildID,
+            userID
+        ]);
+
+
+        const userResult =
+            await client.query(`
+
+                SELECT xp
+
+                FROM users
+
+                WHERE guildID=$1
+                AND userID=$2
+
+                FOR UPDATE
+
+            `, [
+                guildID,
+                userID
+            ]);
+
+
+        const balance =
+            Number(
+                userResult.rows[0]?.xp || 0
+            );
+
+
+        if(balance < config.price){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "not-enough-xp",
+                cycleType:
+                    normalizedCycleType,
+                price:
+                    config.price,
+                balance,
+                missing:
+                    config.price -
+                    balance,
+                maxResets:
+                    config.maxResets,
+                resetCount,
+                remainingResets:
+                    config.maxResets -
+                    resetCount,
+                nextResetAt:
+                    expiresAt
+            };
+
+        }
+
+
+        const updatedUser =
+            await client.query(`
+
+                UPDATE users
+
+                SET xp = xp - $3
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND xp >= $3
+
+                RETURNING xp
+
+            `, [
+                guildID,
+                userID,
+                config.price
+            ]);
+
+
+        if(updatedUser.rowCount === 0){
+
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                status: "not-enough-xp",
+                cycleType:
+                    normalizedCycleType,
+                price:
+                    config.price,
+                balance,
+                missing:
+                    Math.max(
+                        0,
+                        config.price -
+                        balance
+                    )
+            };
+
+        }
+
+
+        const updatedCycle =
+            await client.query(`
+
+                UPDATE quest_cycles
+
+                SET
+                    quests=$5::jsonb,
+                    rewards=$6::jsonb,
+                    rewarded=FALSE,
+                    rewardedAt=NULL,
+                    resetCount=resetCount + 1
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND cycleType=$3
+                AND cycleKey=$4
+
+                RETURNING *
+
+            `, [
+                guildID,
+                userID,
+                normalizedCycleType,
+                cycleKey,
+                JSON.stringify(quests),
+                JSON.stringify(rewards)
+            ]);
+
+
+        if(updatedCycle.rowCount === 0){
+
+            await client.query("ROLLBACK");
+
+            return {
+                success: false,
+                status: "missing-cycle"
+            };
+
+        }
+
+
+        await client.query("COMMIT");
+
+
+        userCache.delete(
+            `${guildID}:${userID}`
+        );
+
+
+        const nextResetCount =
+            resetCount + 1;
+
+
+        return {
+            success: true,
+            status: "reset",
+            cycleType:
+                normalizedCycleType,
+            price:
+                config.price,
+            balance:
+                Number(
+                    updatedUser.rows[0]?.xp || 0
+                ),
+            maxResets:
+                config.maxResets,
+            resetCount:
+                nextResetCount,
+            remainingResets:
+                Math.max(
+                    0,
+                    config.maxResets -
+                    nextResetCount
+                ),
+            nextResetAt:
+                expiresAt,
+            cycle:
+                updatedCycle.rows[0]
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
 
 }
 
@@ -9900,6 +10293,8 @@ module.exports = {
 
     clearXPBoostProgress,
 
+    QUEST_RESET_CONFIG,
+
     getQuestCycle,
 
     createQuestCycle,
@@ -9907,6 +10302,8 @@ module.exports = {
     getActiveQuestCycles,
 
     replaceQuestCycleData,
+
+    resetQuestCycleWithXP,
 
     updateQuestCycleProgress,
 
