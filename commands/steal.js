@@ -145,7 +145,7 @@ async function syncAndTrackLevel(
 // EXECUTE COMMAND
 // ==========================
 
-async function execute(message){
+async function execute(message, options = {}){
 
 
     if(!message.guild){
@@ -162,17 +162,102 @@ async function execute(message){
         message.author.id;
 
 
+    if(!options.questRepeatChild){
+
+        const targetInput =
+            message.content
+                .trim()
+                .split(/\s+/)[1];
+
+
+        const normalizedTargetID =
+            String(targetInput || "")
+                .replace(/[^0-9]/g, "");
+
+
+        const repeatTargetLooksValid =
+            BOT_NAMES.includes(
+                String(targetInput || "").toLowerCase()
+            )
+            ||
+            /^\d{17,20}$/.test(
+                normalizedTargetID
+            );
+
+
+        const repeatCount =
+            targetInput
+            &&
+            repeatTargetLooksValid
+            &&
+            normalizedTargetID !== userID
+                ? await quests.getSocialCommandRepeatCount(
+                    guildID,
+                    userID
+                )
+                : 1;
+
+
+        if(repeatCount > 1){
+
+            const remaining =
+                await database.getCommandCooldownRemaining(
+                    guildID,
+                    userID,
+                    "steal"
+                );
+
+
+            if(remaining > 0){
+
+                return execute(
+                    message,
+                    {
+                        questRepeatChild: true
+                    }
+                );
+
+            }
+
+
+            for(
+                let repeatIndex = 0;
+                repeatIndex < repeatCount;
+                repeatIndex++
+            ){
+
+                await execute(
+                    message,
+                    {
+                        questRepeatChild: true,
+                        skipCooldown:
+                            repeatIndex > 0
+                    }
+                );
+
+            }
+
+
+            return;
+
+        }
+
+    }
+
+
 
     // ==========================
     // COOLDOWN CHECK
     // ==========================
 
 const remaining =
-    await database.getCommandCooldownRemaining(
-        guildID,
-        userID,
-        "steal"
-    );
+    options.skipCooldown
+        ? 0
+        : await database.getCommandCooldownRemaining(
+            guildID,
+            userID,
+            "steal"
+        );
 
 
 if(remaining > 0){
