@@ -1,9 +1,17 @@
 const {
-    EmbedBuilder
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ComponentType,
+    MessageFlags
 } = require("discord.js");
 
 const quests =
     require("../systems/quests");
+
+const leveling =
+    require("../systems/leveling");
 
 
 function progressBar(
@@ -89,9 +97,22 @@ function formatRewards(rewards){
 }
 
 
+function getResetCount(cycle){
+
+    return Math.max(
+        0,
+        Number(
+            cycle?.resetcount || 0
+        )
+    );
+
+}
+
+
 function formatCycle(
     cycle,
-    cycleName
+    cycleName,
+    cycleType
 ){
 
     const questText =
@@ -113,12 +134,295 @@ function formatCycle(
         );
 
 
+    const resetConfig =
+        quests.QUEST_RESET_CONFIG[
+            cycleType
+        ];
+
+
     return (
         `${questText}\n\n` +
         `**${cycleName} Rewards**\n` +
         `${formatRewards(cycle.rewards)}` +
         `${rewardStatus}\n\n` +
-        `Resets <t:${resetTimestamp}:R>`
+        `Paid resets used: **${getResetCount(cycle)}/${resetConfig.maxResets}**\n` +
+        `Naturally resets <t:${resetTimestamp}:R>`
+    );
+
+}
+
+
+function formatResetOptions(dashboard){
+
+    const dailyConfig =
+        quests.QUEST_RESET_CONFIG.daily;
+
+
+    const weeklyConfig =
+        quests.QUEST_RESET_CONFIG.weekly;
+
+
+    const dailyUsed =
+        getResetCount(
+            dashboard.daily
+        );
+
+
+    const weeklyUsed =
+        getResetCount(
+            dashboard.weekly
+        );
+
+
+    return (
+        `🔄 **Daily:** ${dailyConfig.price.toLocaleString()} XP • ` +
+        `**${Math.max(0, dailyConfig.maxResets - dailyUsed)}** reset(s) remaining today\n` +
+        `🔁 **Weekly:** ${weeklyConfig.price.toLocaleString()} XP • ` +
+        (
+            dashboard.weeklyLocked
+                ? `Locked until Level ${quests.QUEST_UNLOCK_LEVEL}`
+                : `**${Math.max(0, weeklyConfig.maxResets - weeklyUsed)}** reset(s) remaining this week`
+        ) +
+        "\n\nA paid reset replaces that section's **quests, progress, and unclaimed reward list**. Rewards you already claimed are not removed."
+    );
+
+}
+
+
+function createResetButtons(
+    dashboard,
+    disableAll = false
+){
+
+    const dailyConfig =
+        quests.QUEST_RESET_CONFIG.daily;
+
+
+    const weeklyConfig =
+        quests.QUEST_RESET_CONFIG.weekly;
+
+
+    const dailyUsed =
+        getResetCount(
+            dashboard.daily
+        );
+
+
+    const weeklyUsed =
+        getResetCount(
+            dashboard.weekly
+        );
+
+
+    return [
+        new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(
+                        "quests_reset:daily"
+                    )
+                    .setLabel(
+                        `Reset Daily - ${dailyConfig.price.toLocaleString()} XP (${dailyUsed}/${dailyConfig.maxResets})`
+                    )
+                    .setEmoji("🔄")
+                    .setStyle(
+                        ButtonStyle.Danger
+                    )
+                    .setDisabled(
+                        disableAll
+                        ||
+                        dailyUsed >=
+                            dailyConfig.maxResets
+                    ),
+                new ButtonBuilder()
+                    .setCustomId(
+                        "quests_reset:weekly"
+                    )
+                    .setLabel(
+                        `Reset Weekly - ${weeklyConfig.price.toLocaleString()} XP (${weeklyUsed}/${weeklyConfig.maxResets})`
+                    )
+                    .setEmoji("🔁")
+                    .setStyle(
+                        ButtonStyle.Danger
+                    )
+                    .setDisabled(
+                        disableAll
+                        ||
+                        dashboard.weeklyLocked
+                        ||
+                        !dashboard.weekly
+                        ||
+                        weeklyUsed >=
+                            weeklyConfig.maxResets
+                    )
+            )
+    ];
+
+}
+
+
+async function buildQuestPanel(
+    guildID,
+    user,
+    disableAll = false
+){
+
+    const dashboard =
+        await quests.getDashboard(
+            guildID,
+            user.id
+        );
+
+
+    const embed =
+        new EmbedBuilder()
+            .setColor("#7A5CFF")
+            .setAuthor({
+                name:
+                    `${user.username}'s Quests`,
+                iconURL:
+                    user.displayAvatarURL()
+            })
+            .setDescription(
+                "Complete every quest in a section to receive all of its rewards automatically. Use the separate reset buttons only when you want to replace a section."
+            )
+            .addFields(
+                {
+                    name: "Daily Quests",
+                    value:
+                        formatCycle(
+                            dashboard.daily,
+                            "Daily",
+                            "daily"
+                        ),
+                    inline: false
+                },
+                {
+                    name: "Weekly Quests",
+                    value:
+                        dashboard.weeklyLocked
+                            ? `**Get to Level ${quests.QUEST_UNLOCK_LEVEL} to unlock Weekly quests**`
+                            : formatCycle(
+                                dashboard.weekly,
+                                "Weekly",
+                                "weekly"
+                            ),
+                    inline: false
+                },
+                {
+                    name: "Paid Quest Resets",
+                    value:
+                        formatResetOptions(
+                            dashboard
+                        ),
+                    inline: false
+                }
+            )
+            .setFooter({
+                text:
+                    dashboard.weeklyLocked
+                        ? "Daily resets renew at 00:00 UTC. Weekly quests unlock at Level 100."
+                        : "Daily reset uses renew each day; weekly reset uses renew each Monday at 00:00 UTC."
+            })
+            .setTimestamp();
+
+
+    return {
+        embeds: [
+            embed
+        ],
+        components:
+            createResetButtons(
+                dashboard,
+                disableAll
+            ),
+        allowedMentions: {
+            parse: [],
+            repliedUser: false
+        }
+    };
+
+}
+
+
+function getResetResultMessage(
+    result,
+    cycleType
+){
+
+    const cycleName =
+        cycleType === "daily"
+            ? "Daily"
+            : "Weekly";
+
+
+    if(result.success){
+
+        return (
+            `✅ **${cycleName} quests and rewards were reset.**\n` +
+            `Cost: **${Number(result.price).toLocaleString()} XP**\n` +
+            `XP balance: **${Number(result.balance).toLocaleString()} XP**\n` +
+            `Resets used: **${result.resetCount}/${result.maxResets}**\n` +
+            `Resets remaining: **${result.remainingResets}**`
+        );
+
+    }
+
+
+    if(result.status === "not-enough-xp"){
+
+        return (
+            `❌ You need **${Number(result.price).toLocaleString()} XP** to reset your ${cycleName.toLowerCase()} quests.\n` +
+            `Current balance: **${Number(result.balance).toLocaleString()} XP**\n` +
+            `Missing: **${Number(result.missing).toLocaleString()} XP**`
+        );
+
+    }
+
+
+    if(result.status === "reset-limit-reached"){
+
+        const nextResetTimestamp =
+            Math.floor(
+                Number(result.nextResetAt) /
+                1000
+            );
+
+
+        return (
+            `❌ You already used all **${result.maxResets} ${cycleName.toLowerCase()} resets** for this cycle.\n` +
+            `They renew <t:${nextResetTimestamp}:R>.`
+        );
+
+    }
+
+
+    if(result.status === "weekly-locked"){
+
+        return (
+            `🔒 Weekly quests and resets unlock at **Level ${result.unlockLevel}**. ` +
+            `Your current level is **${result.level}**.`
+        );
+
+    }
+
+
+    if(
+        result.status === "cycle-expired"
+        ||
+        result.status === "missing-cycle"
+    ){
+
+        return (
+            `🔄 Your ${cycleName.toLowerCase()} quest cycle changed while you were clicking. ` +
+            "The panel has been refreshed; try again if you still want to reset it."
+        );
+
+    }
+
+
+    return (
+        `❌ Your ${cycleName.toLowerCase()} quests could not be reset.`
     );
 
 }
@@ -127,91 +431,184 @@ function formatCycle(
 async function execute(message){
 
     if(!message.guild){
-
         return;
-
     }
 
 
-    const dashboard =
-        await quests.getDashboard(
-            message.guild.id,
-            message.author.id
+    const panelOwnerID =
+        message.author.id;
+
+
+    const questMessage =
+        await message.reply(
+            await buildQuestPanel(
+                message.guild.id,
+                message.author
+            )
         );
 
 
-    const embed =
-        new EmbedBuilder()
+    const collector =
+        questMessage.createMessageComponentCollector({
+            componentType:
+                ComponentType.Button
+        });
 
-            .setColor(
-                "#7A5CFF"
-            )
 
-            .setAuthor({
-                name:
-                    `${message.author.username}'s Quests`,
+    collector.on(
+        "collect",
+        async interaction => {
 
-                iconURL:
-                    message.author.displayAvatarURL()
-            })
+            const [
+                action,
+                cycleType
+            ] = interaction.customId.split(":");
 
-            .setDescription(
-                "Complete every quest in a section to receive all of its rewards automatically."
-            )
 
-            .addFields(
+            if(action !== "quests_reset"){
+                return;
+            }
 
-                {
-                    name:
-                        "Daily Quests",
 
-                    value:
-                        formatCycle(
-                            dashboard.daily,
-                            "Daily"
-                        ),
+            if(interaction.user.id !== panelOwnerID){
 
-                    inline:
-                        false
-                },
+                return interaction.reply({
+                    content:
+                        "This quest panel belongs to someone else. Use **!quests** to open your own reset buttons.",
+                    flags:
+                        MessageFlags.Ephemeral
+                });
 
-                {
-                    name:
-                        "Weekly Quests",
+            }
 
-                    value:
-                        dashboard.weeklyLocked
-                            ? "**Get to Level 100 to unlock Weekly quests**"
-                            : formatCycle(
-                                dashboard.weekly,
-                                "Weekly"
-                            ),
 
-                    inline:
-                        false
+            try{
+
+                await interaction.deferReply({
+                    flags:
+                        MessageFlags.Ephemeral
+                });
+
+
+                const result =
+                    await quests.resetQuestCycle(
+                        interaction.guild.id,
+                        interaction.user.id,
+                        cycleType
+                    );
+
+
+                if(result.success){
+
+                    try{
+
+                        const levelResult =
+                            await leveling.syncLevelAndAnnounce(
+                                interaction.client,
+                                interaction.guild.id,
+                                interaction.user.id
+                            );
+
+
+                        await quests.recordLevelChange(
+                            interaction,
+                            levelResult,
+                            interaction.user.id
+                        );
+
+                    }
+                    catch(error){
+
+                        console.error(
+                            "Quest reset level sync failed:",
+                            error
+                        );
+
+                    }
+
                 }
 
-            )
 
-            .setFooter({
-                text:
-                    dashboard.weeklyLocked
-                        ? "Daily quests reset at 00:00 UTC. Weekly quests unlock at Level 100."
-                        : "Daily and weekly quests reset globally at 00:00 UTC."
-            })
+                try{
 
-            .setTimestamp();
+                    const updatedPanel =
+                        await buildQuestPanel(
+                            interaction.guild.id,
+                            message.author
+                        );
 
 
-    return message.reply({
-        embeds: [
-            embed
-        ]
-    });
+                    await questMessage.edit(
+                        updatedPanel
+                    );
+
+                }
+                catch(error){
+
+                    console.error(
+                        "Could not refresh the quest panel:",
+                        error
+                    );
+
+                }
+
+
+                await interaction.editReply({
+                    content:
+                        getResetResultMessage(
+                            result,
+                            cycleType
+                        )
+                });
+
+            }
+            catch(error){
+
+                console.error(
+                    "Quest reset failed:",
+                    error
+                );
+
+
+                const content =
+                    "The quest reset ran into an error. Reopen **!quests** before trying again so you can check whether it completed.";
+
+
+                if(
+                    interaction.deferred
+                    ||
+                    interaction.replied
+                ){
+
+                    await interaction.editReply({
+                        content
+                    }).catch(() => {});
+
+                }
+                else{
+
+                    await interaction.reply({
+                        content,
+                        flags:
+                            MessageFlags.Ephemeral
+                    }).catch(() => {});
+
+                }
+
+            }
+
+        }
+    );
+
+
+    return questMessage;
 
 }
 
 
 module.exports = {
-    execute
+    execute,
+    buildQuestPanel,
+    createResetButtons,
+    getResetResultMessage
 };
