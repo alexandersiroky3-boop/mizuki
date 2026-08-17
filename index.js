@@ -29,6 +29,8 @@ const giveXPCommand = require("./commands/givexp");
 const commandsCommand = require("./commands/commands");
 const boostCommand = require("./commands/showboost");
 const shopCommand = require("./commands/shop");
+const merchantCommand =
+    require("./commands/merchant");
 const questsCommand = require("./commands/quests");
 const setLevelCommand =
 require("./commands/setlevel");
@@ -862,7 +864,16 @@ async message => {
 
 
 
-        if(message.content === "!rank"){
+        if(
+            [
+                "!rank",
+                "!leaderboard"
+            ].includes(
+                message.content
+                    .trim()
+                    .toLowerCase()
+            )
+        ){
 
             return rankCommand.execute(
                 message
@@ -908,7 +919,20 @@ if(
         message
     );
 
-        }
+}
+
+
+if(
+    /^!merchant(?:\s|$)/i.test(
+        message.content.trim()
+    )
+){
+
+    return merchantCommand.execute(
+        message
+    );
+
+}
 
 
         const normalizedCommand =
@@ -1112,15 +1136,28 @@ if(result.critical){
 
 
 
+    // Critical streaks 20+.
+    if(result.criticalStreak >= 20){
+
+        message.reply(
+
+            `🧊🥶 **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!** 🥶🧊`
+
+        ).catch(() => {});
+
+    }
+
+
+
     // Critical streaks 2–5.
-    if(
+    else if(
         result.criticalStreak >= 2 &&
         result.criticalStreak <= 5
     ){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
 
         ).catch(() => {});
 
@@ -1149,7 +1186,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
 
     ).catch(() => {});
 
@@ -1220,13 +1257,22 @@ let prefix = "";
 
 if(result.critical){
 
-    prefix =
-        "💥".repeat(
-            Math.min(
-                result.criticalStreak,
-                5
-            )
-        ) + " ";
+    if(result.criticalStreak >= 20){
+
+        prefix = "🧊🥶 ";
+
+    }
+    else{
+
+        prefix =
+            "💥".repeat(
+                Math.min(
+                    result.criticalStreak,
+                    5
+                )
+            ) + " ";
+
+    }
 
 }
 
