@@ -307,7 +307,11 @@ function buildRollCooldownExtra(
         );
 
 
-    if(rollAccess?.tripleRoll){
+    if(
+        rollAccess?.multiRoll
+        ||
+        rollAccess?.tripleRoll
+    ){
 
         const rollNumber =
             Math.max(
@@ -327,22 +331,27 @@ function buildRollCooldownExtra(
             );
 
 
-        const tripleText =
-            `\n\n🎰 **TRIPLE ROLL ${rollNumber}/${rollCount}**`;
+        const multiText =
+            `\n\n🎰 **MULTI ROLL ${rollNumber}/${rollCount}**` +
+            (
+                rollAccess?.oneShotBurst
+                    ? " • one-time quest reward"
+                    : ""
+            );
 
 
         // Only the final automatic roll needs to repeat the
         // cooldown timestamp.
         if(!rollAccess?.showCooldown){
 
-            return tripleText;
+            return multiText;
 
         }
 
 
         return (
-            tripleText +
-            `\n⏱️ **Next Triple Roll:** ` +
+            multiText +
+            `\n⏱️ **Next Multi Roll:** ` +
             `<t:${readyAt}:R> • <t:${readyAt}:T>`
         );
 
@@ -474,8 +483,12 @@ if(!rollAccess.allowed){
 
 
     const messageText =
-        rollAccess.tripleRoll
-            ? `🎰 Your Triple Roll is on cooldown. Try again <t:${readyAt}:R> • <t:${readyAt}:T>.`
+        (
+            rollAccess.multiRoll
+            ||
+            rollAccess.tripleRoll
+        )
+            ? `🎰 Your Multi Roll is on cooldown. Try again <t:${readyAt}:R> • <t:${readyAt}:T>.`
             : `🎲 You can roll again <t:${readyAt}:R> • <t:${readyAt}:T>.`;
 
 
@@ -488,10 +501,10 @@ if(!rollAccess.allowed){
 
 
 // ======================
-// QUEST TRIPLE ROLL
+// QUEST MULTI ROLL
 // ======================
 //
-// One typed !roll command now performs three complete,
+// One typed !roll command now performs the rewarded number of complete,
 // independent rolls automatically. Each roll still uses:
 // - its own XP result
 // - its own Luck calculation
@@ -501,7 +514,11 @@ if(!rollAccess.allowed){
 //
 // The cooldown was already consumed once above.
 if(
-    rollAccess.tripleRoll
+    (
+        rollAccess.multiRoll
+        ||
+        rollAccess.tripleRoll
+    )
     &&
     !options.skipCooldown
 ){
@@ -596,6 +613,19 @@ else if(guaranteedRoll === "impossible"){
         ) + 500000;
 
 }
+else if(
+    guaranteedRoll?.type === "minimum"
+){
+
+    rolledXP =
+        Math.max(
+            rolledXP,
+            Number(
+                guaranteedRoll.minXP
+            ) || 0
+        );
+
+}
 
 
 // This is the Luck Boost used
@@ -642,8 +672,8 @@ await quests.recordEvent(
 
 
 // "Roll more than X XP" quests use ONE individual roll only.
-// Triple Roll calls this same single-roll path three times, so
-// three smaller rolls can never combine into one single-roll quest.
+// Multi Roll calls this same single-roll path once per result, so
+// smaller automatic rolls can never combine into one single-roll quest.
 await quests.recordEvent(
     message,
     "single_roll_xp",
@@ -728,7 +758,9 @@ const guaranteedRollExtra =
         ? "\nQuest reward used: guaranteed 25,000–75,000 XP roll."
         : guaranteedRoll === "impossible"
             ? "\nQuest reward used: guaranteed Impossible Roll."
-            : "";
+            : guaranteedRoll?.type === "minimum"
+                ? `\nQuest reward used: guaranteed ${Number(guaranteedRoll.minXP).toLocaleString()}+ XP roll.`
+                : "";
 
 
 const rollExtras =
