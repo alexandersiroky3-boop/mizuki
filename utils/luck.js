@@ -190,6 +190,91 @@ const LUCK_ROLE_IDS =
 
 
 // =====================================================
+// LEVEL-BASED !ROLL LUCK + COOLDOWNS
+// =====================================================
+//
+// These settings affect !roll only. They do not change:
+// - how long an activated Luck Boost role remains active
+// - message critical chance
+// - !hug / !kiss / !steal balancing
+//
+// Level 1-99 keeps the existing roll multiplier exactly.
+// Level 100+ gets a small roll-strength increase in exchange
+// for the longer cooldowns below.
+
+const MINUTE =
+    60 * 1000;
+
+
+const HOUR =
+    60 * MINUTE;
+
+
+const ROLL_LUCK_LEVEL_SETTINGS = {
+
+    below100: {
+
+        tier1: {
+            multiplier: 2,
+            cooldownMs: 1 * HOUR
+        },
+
+        tier2: {
+            multiplier: 10,
+            cooldownMs: 30 * MINUTE
+        },
+
+        tier3: {
+            multiplier: 20,
+            cooldownMs: 15 * MINUTE
+        },
+
+        max: {
+            multiplier: 50,
+            cooldownMs: 5 * MINUTE
+        },
+
+        omega: {
+            multiplier: 1000,
+            cooldownMs: 3 * MINUTE
+        }
+
+    },
+
+
+    level100Plus: {
+
+        tier1: {
+            multiplier: 2.5,
+            cooldownMs: 5 * HOUR
+        },
+
+        tier2: {
+            multiplier: 12,
+            cooldownMs: 2.5 * HOUR
+        },
+
+        tier3: {
+            multiplier: 24,
+            cooldownMs: 1 * HOUR
+        },
+
+        max: {
+            multiplier: 60,
+            cooldownMs: 15 * MINUTE
+        },
+
+        omega: {
+            multiplier: 1200,
+            cooldownMs: 5 * MINUTE
+        }
+
+    }
+
+};
+
+
+// =====================================================
 // EASY LUCK CUSTOMIZATION
 // =====================================================
 //
@@ -313,8 +398,8 @@ const COMMAND_LUCK_DROP_PERCENT = {
 };
 
 
-// The XP roll tables for Level 1-100 and
-// Level 101+ are now at the top of:
+// The XP roll tables for Level 1-99 and
+// Level 100+ are now at the top of:
 //
 // commands/roll.js
 //
@@ -325,7 +410,7 @@ const COMMAND_LUCK_DROP_PERCENT = {
 
 const OMEGA_ROLL_CHANCE_TABLES = {
 
-    // Levels 1-100.
+    // Levels 1-99.
     // Every range below 200,000 XP has exactly 0% chance.
     level1To100: [
 
@@ -350,12 +435,12 @@ const OMEGA_ROLL_CHANCE_TABLES = {
     ],
 
 
-    // Levels 101+.
+    // Levels 100+.
     // Every range below 200,000 XP has exactly 0% chance.
     level101Plus: [
 
         {
-            chancePercent: 25,
+            chancePercent: 23,
             min: 200000,
             max: 500000
         },
@@ -367,7 +452,7 @@ const OMEGA_ROLL_CHANCE_TABLES = {
         },
 
         {
-            chancePercent: 15,
+            chancePercent: 17,
             min: 2000000,
             max: 10000000
         }
@@ -458,6 +543,59 @@ function validateLuckSettings(){
 
     let totalRollDropPercent =
         0;
+
+
+    for(
+        const [levelGroup, tierSettings] of
+        Object.entries(
+            ROLL_LUCK_LEVEL_SETTINGS
+        )
+    ){
+
+        for(
+            const tier of
+            [
+                "tier1",
+                "tier2",
+                "tier3",
+                "max",
+                "omega"
+            ]
+        ){
+
+            const settings =
+                tierSettings[tier];
+
+
+            if(
+                !settings
+                ||
+                !Number.isFinite(
+                    Number(
+                        settings.multiplier
+                    )
+                )
+                ||
+                Number(settings.multiplier) <= 0
+                ||
+                !Number.isFinite(
+                    Number(
+                        settings.cooldownMs
+                    )
+                )
+                ||
+                Number(settings.cooldownMs) < 1000
+            ){
+
+                throw new Error(
+                    `Invalid ${levelGroup} ${tier} roll Luck settings.`
+                );
+
+            }
+
+        }
+
+    }
 
 
     for(const entry of LUCK_BOOST_DROP_TABLE){
@@ -867,6 +1005,136 @@ async function getActiveLuckBoost(member){
 }
 
 
+function getRollLuckProfile(
+    profile,
+    currentLevel
+){
+
+    const safeProfile =
+        profile ||
+        getNoLuckProfile();
+
+
+    const levelGroup =
+        Number(currentLevel) >= 100
+            ? "level100Plus"
+            : "below100";
+
+
+    const tier =
+        String(
+            safeProfile.tier || ""
+        ).toLowerCase();
+
+
+    const settings =
+        ROLL_LUCK_LEVEL_SETTINGS[
+            levelGroup
+        ][tier];
+
+
+    if(!settings){
+
+        return {
+
+            ...safeProfile,
+
+            rollLevelGroup:
+                levelGroup,
+
+            rollCooldownMs:
+                null,
+
+            rollWeightFactor:
+                1
+
+        };
+
+    }
+
+
+    const baseMultiplier =
+        Math.max(
+            1,
+            Number(
+                safeProfile.multiplier
+            ) || 1
+        );
+
+
+    const rollMultiplier =
+        Number(
+            settings.multiplier
+        );
+
+
+    return {
+
+        ...safeProfile,
+
+        baseMultiplier,
+
+        multiplier:
+            rollMultiplier,
+
+        rollLevelGroup:
+            levelGroup,
+
+        rollCooldownMs:
+            Number(
+                settings.cooldownMs
+            ),
+
+        // A value of 1 preserves the old roll chances exactly.
+        // Level 100+ gets only the small increase represented
+        // by its displayed roll multiplier.
+        rollWeightFactor:
+            Math.max(
+                1,
+                rollMultiplier /
+                    baseMultiplier
+            )
+
+    };
+
+}
+
+
+function getRollCooldown(
+    rollProfile,
+    fallbackCooldownMs = 30000
+){
+
+    const profileCooldown =
+        Number(
+            rollProfile?.rollCooldownMs
+        );
+
+
+    if(
+        rollProfile?.roleID
+        &&
+        Number.isFinite(
+            profileCooldown
+        )
+        &&
+        profileCooldown > 0
+    ){
+
+        return profileCooldown;
+
+    }
+
+
+    return Math.max(
+        1000,
+        Number(fallbackCooldownMs) ||
+            30000
+    );
+
+}
+
+
 // ==============================
 // LUCK WEIGHT SYSTEM
 // ==============================
@@ -1072,27 +1340,41 @@ function getAdjustedWeight(
         LUCK_WEIGHT_MODIFIERS[0];
 
 
+    let adjustedWeight =
+        Number(
+            outcome.chancePercent
+        ) || 0;
+
+
+    let level100PlusExponent =
+        0;
+
+
     if(outcome.type === "neutral"){
 
-        return (
-            outcome.chancePercent *
-            modifiers.neutral
-        );
+        adjustedWeight *=
+            modifiers.neutral;
+
+
+        level100PlusExponent =
+            -0.25;
 
     }
 
 
-    if(outcome.type === "negative"){
+    else if(outcome.type === "negative"){
 
-        return (
-            outcome.chancePercent *
-            modifiers.negative
-        );
+        adjustedWeight *=
+            modifiers.negative;
+
+
+        level100PlusExponent =
+            -0.50;
 
     }
 
 
-    if(outcome.type === "positive"){
+    else if(outcome.type === "positive"){
 
         const weightType =
             getPositiveWeightType(
@@ -1100,15 +1382,51 @@ function getAdjustedWeight(
             );
 
 
-        return (
-            outcome.chancePercent *
-            modifiers[weightType]
-        );
+        adjustedWeight *=
+            modifiers[weightType];
+
+
+        const positiveExponents = {
+
+            commonPositive:
+                0,
+
+            valuablePositive:
+                0.25,
+
+            rarePositive:
+                0.50,
+
+            jackpotPositive:
+                0.75
+
+        };
+
+
+        level100PlusExponent =
+            positiveExponents[
+                weightType
+            ] || 0;
 
     }
 
 
-    return outcome.chancePercent;
+    const rollWeightFactor =
+        Math.max(
+            1,
+            Number(
+                profile?.rollWeightFactor
+            ) || 1
+        );
+
+
+    return (
+        adjustedWeight *
+        Math.pow(
+            rollWeightFactor,
+            level100PlusExponent
+        )
+    );
 
 }
 
@@ -1185,7 +1503,8 @@ function rollFromWeightedTable(
 async function rollWithLuck(
     member,
     rollChanceTable,
-    levelTableName = "level1To100"
+    levelTableName = "level1To100",
+    preparedProfile = null
 ){
 
     if(
@@ -1202,8 +1521,16 @@ async function rollWithLuck(
 
 
     const profile =
-        await getActiveLuckBoost(
-            member
+        preparedProfile
+        ||
+        getRollLuckProfile(
+            await getActiveLuckBoost(
+                member
+            ),
+            levelTableName ===
+                "level101Plus"
+                ? 100
+                : 1
         );
 
 
@@ -2752,6 +3079,10 @@ module.exports = {
     getCriticalChanceBonus,
 
     getActiveLuckBoost,
+
+    getRollLuckProfile,
+
+    getRollCooldown,
 
     rollWithLuck,
 
