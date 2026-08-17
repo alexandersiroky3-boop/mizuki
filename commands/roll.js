@@ -46,7 +46,7 @@ const ROLL_SETTINGS = {
     chanceTables: {
 
         // ==========================
-        // LEVEL 1-100
+        // LEVEL 1-99
         // ==========================
 
         level1To100: [
@@ -132,7 +132,7 @@ const ROLL_SETTINGS = {
 
 
         // ==========================
-        // LEVEL 101+
+        // LEVEL 100+
         // ==========================
 
         level101Plus: [
@@ -394,6 +394,52 @@ async function execute(message, options = {}){
         message.author.id;
 
 
+    const user =
+        await database.getUser(
+            message.guild.id,
+            userID
+        );
+
+
+    const currentLevel =
+        xp.getLevel(
+            Number(user.xp)
+        );
+
+
+    // The new split is exactly Level 1-99 vs. Level 100+.
+    const levelTableName =
+        currentLevel >= 100
+            ? "level101Plus"
+            : "level1To100";
+
+
+    const rollChanceTable =
+        ROLL_SETTINGS.chanceTables[
+            levelTableName
+        ];
+
+
+    const activeLuckBoost =
+        await luck.getActiveLuckBoost(
+            message.member
+        );
+
+
+    const rollLuckProfile =
+        luck.getRollLuckProfile(
+            activeLuckBoost,
+            currentLevel
+        );
+
+
+    const currentRollCooldown =
+        luck.getRollCooldown(
+            rollLuckProfile,
+            ROLL_COOLDOWN
+        );
+
+
 
     // ======================
     // Cooldown
@@ -405,7 +451,7 @@ const rollAccess =
     await quests.useRollCooldown(
         message.guild.id,
         message.author.id,
-        ROLL_COOLDOWN
+        currentRollCooldown
     );
 
 
@@ -514,36 +560,12 @@ let wonMaxBoost =
     false;
 
 
-const user =
-    await database.getUser(
-        message.guild.id,
-        userID
-    );
-
-
-const currentLevel =
-    xp.getLevel(
-        Number(user.xp)
-    );
-
-
-const levelTableName =
-    currentLevel > 100
-        ? "level101Plus"
-        : "level1To100";
-
-
-const rollChanceTable =
-    ROLL_SETTINGS.chanceTables[
-        levelTableName
-    ];
-
-
 const luckResult =
     await luck.rollWithLuck(
         message.member,
         rollChanceTable,
-        levelTableName
+        levelTableName,
+        rollLuckProfile
     );
 
 
