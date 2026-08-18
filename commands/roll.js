@@ -351,7 +351,7 @@ function buildRollCooldownExtra(
 
         return (
             multiText +
-            `\n⏱️ **Next Multi Roll:** ` +
+            `\n⏱️ **Next Multi Roll (30s cooldown):** ` +
             `<t:${readyAt}:R> • <t:${readyAt}:T>`
         );
 
@@ -486,9 +486,9 @@ if(!rollAccess.allowed){
         (
             rollAccess.multiRoll
             ||
-            rollAccess.tripleRoll
-        )
-            ? `🎰 Your Multi Roll is on cooldown. Try again <t:${readyAt}:R> • <t:${readyAt}:T>.`
+        rollAccess.tripleRoll
+    )
+            ? `🎰 Your Multi Roll has a 30-second cooldown. Try again <t:${readyAt}:R> • <t:${readyAt}:T>.`
             : `🎲 You can roll again <t:${readyAt}:R> • <t:${readyAt}:T>.`;
 
 
