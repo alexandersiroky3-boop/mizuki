@@ -145,6 +145,14 @@ const userCache = new Map();
 const CACHE_TIME = 30000;
 
 
+// A Multi Roll reward may stay active for hours or permanently, but the
+// delay between complete Multi Roll batches is always exactly 30 seconds.
+// Keep this server-side so a caller cannot accidentally pass the reward's
+// duration (or any other long value) as the batch cooldown.
+const MULTI_ROLL_COOLDOWN_MS =
+    30 * 1000;
+
+
 // =====================================================
 // LEVEL 1-99 PROTECTION
 // =====================================================
@@ -1823,6 +1831,8 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS nextRollBurst50 INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS multiRollUntil BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS multiRollCount INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS rollWindowEndsAt BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS rollWindowUses INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP2Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP10Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS shopDiscount50Until BIGINT NOT NULL DEFAULT 0,
@@ -1835,6 +1845,25 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS merchantTimedRollUntil BIGINT NOT NULL DEFAULT 0
 
 `);
+
+
+// Repair cooldowns written by older builds that accidentally used a timed
+// reward's remaining duration. A legitimate Multi Roll window can never be
+// more than 30 seconds in the future. The reward expiry fields themselves
+// are deliberately left alone.
+await db.query(`
+
+    UPDATE quest_effects
+
+    SET
+        rollWindowEndsAt = 0,
+        rollWindowUses = 0
+
+    WHERE rollWindowEndsAt > $1
+
+`, [
+    Date.now() + MULTI_ROLL_COOLDOWN_MS
+]);
 
 
 
@@ -7907,7 +7936,20 @@ async function useQuestRollCooldown(
                 );
 
 
-            if(windowEndsAt > now){
+            const windowRemaining =
+                windowEndsAt - now;
+
+
+            // Only trust a saved window when it fits inside the fixed
+            // 30-second Multi Roll cooldown. Longer values came from an
+            // older bug and are repaired by allowing this batch now, then
+            // replacing the bad timestamp below.
+            if(
+                windowRemaining > 0
+                &&
+                windowRemaining <=
+                    MULTI_ROLL_COOLDOWN_MS
+            ){
 
                 await client.query("COMMIT");
 
@@ -7915,10 +7957,7 @@ async function useQuestRollCooldown(
                 return {
                     allowed: false,
                     remaining:
-                        Math.max(
-                            0,
-                            windowEndsAt - now
-                        ),
+                        windowRemaining,
                     multiRoll: true,
                     tripleRoll: true,
                     rollCount,
@@ -7933,7 +7972,7 @@ async function useQuestRollCooldown(
 
 
             const nextWindowEndsAt =
-                now + safeCooldown;
+                now + MULTI_ROLL_COOLDOWN_MS;
 
 
             if(burst){
