@@ -6045,17 +6045,17 @@ const QUEST_RESET_CONFIG =
         daily:
             Object.freeze({
                 price:
-                    10000000,
+                    25000000,
                 maxResets:
-                    3
+                    1
             }),
 
         weekly:
             Object.freeze({
                 price:
-                    50000000,
+                    100000000,
                 maxResets:
-                    2
+                    1
             })
 
     });
