@@ -442,11 +442,10 @@ async function execute(message, options = {}){
         );
 
 
+    // Luck changes the roll odds, never the wait between rolls.
+    // Every normal or Multi Roll batch uses exactly 30 seconds.
     const currentRollCooldown =
-        luck.getRollCooldown(
-            rollLuckProfile,
-            ROLL_COOLDOWN
-        );
+        ROLL_COOLDOWN;
 
 
 
