@@ -36,7 +36,13 @@ const ELITE_REWARD_LEVEL =
 
 
 const QUEST_RULESET_VERSION =
-    6;
+    7;
+
+
+// Daily-only Luck Boost MAX quantities. Weekly Luck MAX rewards keep their
+// separate values and are deliberately not affected by this economy nerf.
+const DAILY_LUCK_MAX_AMOUNTS =
+    [1, 2, 3];
 
 
 const QUEST_RESET_CONFIG =
@@ -737,7 +743,9 @@ function generateDailyRewardsElite(){
             boostType: "luck",
             tier: "max",
             amount:
-                randomChoice([2, 4, 6]),
+                randomChoice(
+                    DAILY_LUCK_MAX_AMOUNTS
+                ),
             levelBand
         },
 
@@ -1538,9 +1546,49 @@ function migrateDailyRewardsForLevel(
 
         return allElite
             ? currentRewards.map(
-                reward => ({
-                    ...reward
-                })
+                reward => {
+
+                    const migrated = {
+                        ...reward
+                    };
+
+
+                    // Nerf only unclaimed daily Luck MAX rewards created by
+                    // the old 2x/4x/6x pool. This is idempotent, so the new
+                    // legal 1x/2x/3x quantities remain unchanged.
+                    if(
+                        migrated.type === "boost"
+                        &&
+                        String(
+                            migrated.boostType || ""
+                        ).toLowerCase() === "luck"
+                        &&
+                        String(
+                            migrated.tier || ""
+                        ).toLowerCase() === "max"
+                        &&
+                        Number(migrated.amount) > 3
+                    ){
+
+                        migrated.amount =
+                            Math.min(
+                                3,
+                                Math.max(
+                                    1,
+                                    Math.ceil(
+                                        Number(
+                                            migrated.amount
+                                        ) / 2
+                                    )
+                                )
+                            );
+
+                    }
+
+
+                    return migrated;
+
+                }
             )
             : generateDailyRewardsElite();
 
