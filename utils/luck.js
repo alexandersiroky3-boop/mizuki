@@ -190,7 +190,7 @@ const LUCK_ROLE_IDS =
 
 
 // =====================================================
-// LEVEL-BASED !ROLL LUCK + COOLDOWNS
+// LEVEL-BASED !ROLL LUCK
 // =====================================================
 //
 // These settings affect !roll only. They do not change:
@@ -199,15 +199,12 @@ const LUCK_ROLE_IDS =
 // - !hug / !kiss / !steal balancing
 //
 // Level 1-99 keeps the existing roll multiplier exactly.
-// Level 100+ gets a small roll-strength increase in exchange
-// for the longer cooldowns below.
+// Level 100+ keeps its small roll-strength increase.
+// Luck affects the roll odds only: every tier and level uses
+// the same fixed 30-second !roll cooldown.
 
-const MINUTE =
-    60 * 1000;
-
-
-const HOUR =
-    60 * MINUTE;
+const ROLL_COOLDOWN_MS =
+    30 * 1000;
 
 
 const ROLL_LUCK_LEVEL_SETTINGS = {
@@ -216,27 +213,27 @@ const ROLL_LUCK_LEVEL_SETTINGS = {
 
         tier1: {
             multiplier: 2,
-            cooldownMs: 1 * HOUR
+            cooldownMs: ROLL_COOLDOWN_MS
         },
 
         tier2: {
             multiplier: 10,
-            cooldownMs: 30 * MINUTE
+            cooldownMs: ROLL_COOLDOWN_MS
         },
 
         tier3: {
             multiplier: 20,
-            cooldownMs: 15 * MINUTE
+            cooldownMs: ROLL_COOLDOWN_MS
         },
 
         max: {
             multiplier: 50,
-            cooldownMs: 5 * MINUTE
+            cooldownMs: ROLL_COOLDOWN_MS
         },
 
         omega: {
             multiplier: 1000,
-            cooldownMs: 3 * MINUTE
+            cooldownMs: ROLL_COOLDOWN_MS
         }
 
     },
@@ -246,27 +243,27 @@ const ROLL_LUCK_LEVEL_SETTINGS = {
 
         tier1: {
             multiplier: 2.5,
-            cooldownMs: 5 * HOUR
+            cooldownMs: ROLL_COOLDOWN_MS
         },
 
         tier2: {
             multiplier: 12,
-            cooldownMs: 2.5 * HOUR
+            cooldownMs: ROLL_COOLDOWN_MS
         },
 
         tier3: {
             multiplier: 24,
-            cooldownMs: 1 * HOUR
+            cooldownMs: ROLL_COOLDOWN_MS
         },
 
         max: {
             multiplier: 60,
-            cooldownMs: 15 * MINUTE
+            cooldownMs: ROLL_COOLDOWN_MS
         },
 
         omega: {
             multiplier: 1200,
-            cooldownMs: 5 * MINUTE
+            cooldownMs: ROLL_COOLDOWN_MS
         }
 
     }
@@ -1101,36 +1098,13 @@ function getRollLuckProfile(
 
 
 function getRollCooldown(
-    rollProfile,
-    fallbackCooldownMs = 30000
+    _rollProfile,
+    _fallbackCooldownMs = ROLL_COOLDOWN_MS
 ){
 
-    const profileCooldown =
-        Number(
-            rollProfile?.rollCooldownMs
-        );
-
-
-    if(
-        rollProfile?.roleID
-        &&
-        Number.isFinite(
-            profileCooldown
-        )
-        &&
-        profileCooldown > 0
-    ){
-
-        return profileCooldown;
-
-    }
-
-
-    return Math.max(
-        1000,
-        Number(fallbackCooldownMs) ||
-            30000
-    );
+    // Do not let Luck tier, level, or a caller turn the fixed
+    // 30-second gameplay cooldown back into minutes or hours.
+    return ROLL_COOLDOWN_MS;
 
 }
 
