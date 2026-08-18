@@ -145,11 +145,10 @@ const userCache = new Map();
 const CACHE_TIME = 30000;
 
 
-// A Multi Roll reward may stay active for hours or permanently, but the
-// delay between complete Multi Roll batches is always exactly 30 seconds.
-// Keep this server-side so a caller cannot accidentally pass the reward's
-// duration (or any other long value) as the batch cooldown.
-const MULTI_ROLL_COOLDOWN_MS =
+// Every !roll uses exactly 30 seconds, including complete Multi Roll batches.
+// Keep this server-side so Luck tiers, reward durations, or callers cannot
+// accidentally turn the gameplay cooldown into minutes or hours.
+const ROLL_COOLDOWN_MS =
     30 * 1000;
 
 
@@ -1862,7 +1861,25 @@ await db.query(`
     WHERE rollWindowEndsAt > $1
 
 `, [
-    Date.now() + MULTI_ROLL_COOLDOWN_MS
+    Date.now() + ROLL_COOLDOWN_MS
+]);
+
+
+// Older builds saved Luck-based !roll cooldowns lasting from several minutes
+// to several hours. Clear only those invalid future roll timestamps so affected
+// users can roll immediately after this build starts. Other command cooldowns
+// are not touched.
+await db.query(`
+
+    UPDATE command_cooldowns
+
+    SET expiresAt = 0
+
+    WHERE commandName = 'roll'
+    AND expiresAt > $1
+
+`, [
+    Date.now() + ROLL_COOLDOWN_MS
 ]);
 
 
@@ -7762,7 +7779,7 @@ async function consumeGuaranteedQuestRoll(
 async function useQuestRollCooldown(
     guildID,
     userID,
-    cooldownMs
+    _requestedCooldownMs
 ){
 
     const client =
@@ -7778,11 +7795,10 @@ async function useQuestRollCooldown(
             Date.now();
 
 
+        // The database is the final source of truth. Even if an older command
+        // passes a 15-minute value, !roll remains fixed at 30 seconds.
         const safeCooldown =
-            Math.max(
-                1000,
-                Number(cooldownMs) || 30000
-            );
+            ROLL_COOLDOWN_MS;
 
 
         await client.query(`
@@ -7948,7 +7964,7 @@ async function useQuestRollCooldown(
                 windowRemaining > 0
                 &&
                 windowRemaining <=
-                    MULTI_ROLL_COOLDOWN_MS
+                    ROLL_COOLDOWN_MS
             ){
 
                 await client.query("COMMIT");
@@ -7972,7 +7988,7 @@ async function useQuestRollCooldown(
 
 
             const nextWindowEndsAt =
-                now + MULTI_ROLL_COOLDOWN_MS;
+                now + ROLL_COOLDOWN_MS;
 
 
             if(burst){
@@ -8068,7 +8084,14 @@ async function useQuestRollCooldown(
                 : 0;
 
 
-        if(remaining > 0){
+        // Honor only a legitimate 30-second window. A longer remaining value
+        // is stale data from the old Luck cooldown system; ignore it and let
+        // the upsert below replace it with a correct 30-second timestamp.
+        if(
+            remaining > 0
+            &&
+            remaining <= ROLL_COOLDOWN_MS
+        ){
 
             await client.query("COMMIT");
 
