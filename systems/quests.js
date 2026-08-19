@@ -1254,6 +1254,35 @@ function normalizeCycle(row){
 }
 
 
+function isQuestCycleCompleted(cycle){
+
+    const normalized =
+        normalizeCycle(cycle);
+
+
+    if(!normalized){
+
+        return false;
+
+    }
+
+
+    return (
+        normalized.rewarded
+        ||
+        (
+            normalized.quests.length > 0
+            &&
+            normalized.quests.every(
+                quest =>
+                    Boolean(quest?.completed)
+            )
+        )
+    );
+
+}
+
+
 function getQuestDefinition(
     cycleType,
     questType,
@@ -2744,6 +2773,29 @@ async function resetQuestCycle(
         );
 
 
+    // Paid resets are only for rerolling an unfinished quest set. Once every
+    // quest in the section is complete, its result is final until the normal
+    // daily/weekly renewal.
+    if(isQuestCycleCompleted(currentCycle)){
+
+        return {
+            success: false,
+            status: "quests-completed",
+            cycleType:
+                normalizedCycleType,
+            price:
+                config.price,
+            maxResets:
+                config.maxResets,
+            resetCount,
+            remainingResets: 0,
+            nextResetAt:
+                currentCycle.expiresat
+        };
+
+    }
+
+
     if(resetCount >= config.maxResets){
 
         return {
@@ -3417,6 +3469,8 @@ module.exports = {
     ELITE_REWARD_LEVEL,
 
     QUEST_RESET_CONFIG,
+
+    isQuestCycleCompleted,
 
     ensureUserQuests,
 
