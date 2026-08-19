@@ -174,16 +174,35 @@ function formatResetOptions(dashboard){
         );
 
 
+    const dailyCompleted =
+        quests.isQuestCycleCompleted(
+            dashboard.daily
+        );
+
+
+    const weeklyCompleted =
+        quests.isQuestCycleCompleted(
+            dashboard.weekly
+        );
+
+
     return (
         `🔄 **Daily:** ${dailyConfig.price.toLocaleString()} XP • ` +
-        `**${Math.max(0, dailyConfig.maxResets - dailyUsed)}** reset(s) remaining today\n` +
+        (
+            dailyCompleted
+                ? "**Completed — reset unavailable**"
+                : `**${Math.max(0, dailyConfig.maxResets - dailyUsed)}** reset(s) remaining today`
+        ) +
+        "\n" +
         `🔁 **Weekly:** ${weeklyConfig.price.toLocaleString()} XP • ` +
         (
             dashboard.weeklyLocked
                 ? `Locked until Level ${quests.QUEST_UNLOCK_LEVEL}`
-                : `**${Math.max(0, weeklyConfig.maxResets - weeklyUsed)}** reset(s) remaining this week`
+                : weeklyCompleted
+                    ? "**Completed — reset unavailable**"
+                    : `**${Math.max(0, weeklyConfig.maxResets - weeklyUsed)}** reset(s) remaining this week`
         ) +
-        "\n\nA paid reset replaces that section's **quests, progress, and unclaimed reward list**. Rewards you already claimed are not removed."
+        "\n\nA paid reset only rerolls an **unfinished** section. It replaces that section's quests and rewards and erases **all current progress**. A completed section cannot be reset."
     );
 
 }
@@ -214,6 +233,18 @@ function createResetButtons(
         );
 
 
+    const dailyCompleted =
+        quests.isQuestCycleCompleted(
+            dashboard.daily
+        );
+
+
+    const weeklyCompleted =
+        quests.isQuestCycleCompleted(
+            dashboard.weekly
+        );
+
+
     return [
         new ActionRowBuilder()
             .addComponents(
@@ -222,7 +253,9 @@ function createResetButtons(
                         "quests_reset:daily"
                     )
                     .setLabel(
-                        `Reset Daily - ${dailyConfig.price.toLocaleString()} XP (${dailyUsed}/${dailyConfig.maxResets})`
+                        dailyCompleted
+                            ? "Daily Completed - Reset Locked"
+                            : `Reset Daily - ${dailyConfig.price.toLocaleString()} XP (${dailyUsed}/${dailyConfig.maxResets})`
                     )
                     .setEmoji("🔄")
                     .setStyle(
@@ -230,6 +263,8 @@ function createResetButtons(
                     )
                     .setDisabled(
                         disableAll
+                        ||
+                        dailyCompleted
                         ||
                         dailyUsed >=
                             dailyConfig.maxResets
@@ -239,7 +274,9 @@ function createResetButtons(
                         "quests_reset:weekly"
                     )
                     .setLabel(
-                        `Reset Weekly - ${weeklyConfig.price.toLocaleString()} XP (${weeklyUsed}/${weeklyConfig.maxResets})`
+                        weeklyCompleted
+                            ? "Weekly Completed - Reset Locked"
+                            : `Reset Weekly - ${weeklyConfig.price.toLocaleString()} XP (${weeklyUsed}/${weeklyConfig.maxResets})`
                     )
                     .setEmoji("🔁")
                     .setStyle(
@@ -251,6 +288,8 @@ function createResetButtons(
                         dashboard.weeklyLocked
                         ||
                         !dashboard.weekly
+                        ||
+                        weeklyCompleted
                         ||
                         weeklyUsed >=
                             weeklyConfig.maxResets
@@ -359,11 +398,29 @@ function getResetResultMessage(
     if(result.success){
 
         return (
-            `✅ **${cycleName} quests and rewards were reset.**\n` +
+            `✅ **${cycleName} quests were rerolled and all previous progress was cleared.**\n` +
             `Cost: **${Number(result.price).toLocaleString()} XP**\n` +
             `XP balance: **${Number(result.balance).toLocaleString()} XP**\n` +
             `Resets used: **${result.resetCount}/${result.maxResets}**\n` +
             `Resets remaining: **${result.remainingResets}**`
+        );
+
+    }
+
+
+    if(result.status === "quests-completed"){
+
+        const nextResetTimestamp =
+            Math.floor(
+                Number(result.nextResetAt) /
+                1000
+            );
+
+
+        return (
+            `🏁 Your ${cycleName.toLowerCase()} quests are already **completed**. ` +
+            "Completed quest sections cannot be reset.\n" +
+            `New ${cycleName.toLowerCase()} quests arrive <t:${nextResetTimestamp}:R>.`
         );
 
     }
