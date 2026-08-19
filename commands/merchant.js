@@ -328,7 +328,7 @@ function buildMerchantPanel(merchant){
 
     return (
         "🧳 **THE TRAVELING MERCHANT HAS ARRIVED!**\n" +
-        "He leaves <t:" +
+        "His visit lasts **1 hour**. He leaves <t:" +
         leavesAt +
         ":R> • his deals restock <t:" +
         restocksAt +
@@ -360,7 +360,7 @@ async function sendNoMerchantMessage(
     return message.reply({
         content:
             "🛤️ **The Traveling Merchant is not visiting this shop cycle.**\n" +
-            "The next **15% arrival roll** happens when the shop restocks <t:" +
+            "The next **30% arrival roll** happens when the shop restocks <t:" +
             nextRefresh +
             ":R>.",
         allowedMentions: {
@@ -427,7 +427,7 @@ async function sendShopNotice(message){
             "🧳 **A Traveling Merchant is here this cycle!** " +
             "He leaves <t:" +
             leavesAt +
-            ":R>. Use **!shop** to view his **" +
+            ":R> after a **1-hour visit**. Use **!shop** to view his **" +
             merchant.deals.length +
             " deals**; they restock every **30 minutes**.",
         allowedMentions: {
