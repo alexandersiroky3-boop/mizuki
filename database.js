@@ -1347,6 +1347,16 @@ await db.query(`
 
 `);
 
+
+await db.query(`
+
+    ALTER TABLE users
+
+    ADD COLUMN IF NOT EXISTS
+    rollGuaranteeProgress INTEGER NOT NULL DEFAULT 0
+
+`);
+
 await db.query(`
 
     CREATE TABLE IF NOT EXISTS command_cooldowns (
@@ -8255,6 +8265,83 @@ async function useQuestRollCooldown(
 }
 
 
+// Atomically advances the persistent 100-roll guarantee. A stored value of
+// zero means the previous roll completed a milestone; the returned display
+// value is 100 for that result and starts back at 1 on the next roll.
+async function advanceRollGuarantee(
+    guildID,
+    userID,
+    threshold = 100
+){
+
+    const safeThreshold =
+        Math.max(
+            2,
+            Math.floor(
+                Number(threshold) || 100
+            )
+        );
+
+
+    const result =
+        await db.query(`
+
+            INSERT INTO users
+            (
+                guildID,
+                userID,
+                rollGuaranteeProgress
+            )
+
+            VALUES($1,$2,1)
+
+            ON CONFLICT(
+                guildID,
+                userID
+            )
+
+            DO UPDATE SET
+                rollGuaranteeProgress =
+                    MOD(
+                        GREATEST(
+                            0,
+                            users.rollGuaranteeProgress
+                        ) + 1,
+                        $3
+                    )
+
+            RETURNING rollGuaranteeProgress
+
+        `, [
+            guildID,
+            userID,
+            safeThreshold
+        ]);
+
+
+    const storedProgress =
+        Number(
+            result.rows[0]
+                ?.rollguaranteeprogress
+        ) || 0;
+
+
+    const guaranteed =
+        storedProgress === 0;
+
+
+    return {
+        threshold: safeThreshold,
+        guaranteed,
+        progress:
+            guaranteed
+                ? safeThreshold
+                : storedProgress
+    };
+
+}
+
+
 
 // =====================================================
 // TRADING SYSTEM
@@ -10470,6 +10557,8 @@ module.exports = {
     consumeGuaranteedQuestRoll,
 
     useQuestRollCooldown,
+
+    advanceRollGuarantee,
 
 
     TRADE_BASE_FEE,
