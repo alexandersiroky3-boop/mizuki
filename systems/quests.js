@@ -36,13 +36,38 @@ const ELITE_REWARD_LEVEL =
 
 
 const QUEST_RULESET_VERSION =
-    7;
+    8;
 
 
 // Daily-only Luck Boost MAX quantities. Weekly Luck MAX rewards keep their
 // separate values and are deliberately not affected by this economy nerf.
 const DAILY_LUCK_MAX_AMOUNTS =
     [1, 2, 3];
+
+
+// Easy-to-edit targets for the chat-only XP quest. Only XP awarded by
+// leveling.giveXP(message) counts; rolls, quest rewards, trades, and admin
+// XP do not advance this quest.
+const CHAT_XP_QUEST_TARGETS = {
+
+    daily: {
+        low: [2500, 7500, 15000],
+        high: [25000, 75000, 150000],
+        elite: [100000, 250000, 500000]
+    },
+
+    weekly: {
+        high: [250000, 750000, 1500000],
+        elite: [1000000, 2500000, 5000000]
+    }
+
+};
+
+
+// Luck Boost Omega is rolled independently from the normal elite weekly
+// extras. This is a real 5% chance, not an indirect shuffled-pool chance.
+const WEEKLY_ELITE_OMEGA_CHANCE =
+    0.05;
 
 
 const QUEST_RESET_CONFIG =
@@ -60,28 +85,37 @@ const DAILY_QUEST_POOL_LOW = [
     {
         type: "messages",
         icon: "💬",
-        targets: [25, 50, 100, 200],
+        targets: [50, 100, 200, 250],
         label: target => `Send ${target.toLocaleString()} messages`
+    },
+
+    {
+        type: "chat_xp",
+        icon: "💬✦",
+        targetsByLevelBand:
+            CHAT_XP_QUEST_TARGETS.daily,
+        label: target =>
+            `Earn ${target.toLocaleString()} XP by chatting.`
     },
 
     {
         type: "roll_xp",
         icon: "🎲",
-        targets: [5000, 10000, 50000],
+        targets: [10000, 50000, 100000],
         label: target => `Roll a total of ${target.toLocaleString()} XP`
     },
 
     {
         type: "earn_xp",
         icon: "✦",
-        targets: [20000, 50000, 100000],
+        targets: [50000, 100000, 200000],
         label: target => `Earn ${target.toLocaleString()} XP`
     },
 
     {
         type: "steal_xp",
         icon: "💰",
-        targets: [500, 1000, 2500],
+        targets: [5000, 10000, 20000],
         label: target => `Steal ${target.toLocaleString()} XP`
     },
 
@@ -102,21 +136,21 @@ const DAILY_QUEST_POOL_LOW = [
     {
         type: "kiss_received",
         icon: "💋",
-        targets: [3, 5, 10],
+        targets: [2, 3, 5],
         label: target => `Get kissed ${target} times`
     },
 
     {
         type: "roll_count",
         icon: "🎲",
-        targets: [10, 20, 50],
+        targets: [15, 25, 50],
         label: target => `Use !roll ${target} times`
     },
 
     {
         type: "critical_streak",
         icon: "💥",
-        targets: [2, 3],
+        targets: [2, 3, 5],
         mode: "max",
         label: target => `Reach a ${target}x critical streak`
     },
@@ -124,8 +158,9 @@ const DAILY_QUEST_POOL_LOW = [
     {
         type: "level_change",
         icon: "★",
-        targets: [1],
-        label: () => "Gain or lose a level"
+        targets: [2, 5, 10],
+        mode: "max",
+        label: target => `Gain ${target} levels.`
     },
 
     {
@@ -163,14 +198,23 @@ const DAILY_QUEST_POOL_HIGH = [
     {
         type: "messages",
         icon: "💬",
-        targets: [25, 50, 100, 200],
+        targets: [100, 200, 300],
         label: target => `Send ${target.toLocaleString()} messages`
+    },
+
+    {
+        type: "chat_xp",
+        icon: "💬✦",
+        targetsByLevelBand:
+            CHAT_XP_QUEST_TARGETS.daily,
+        label: target =>
+            `Earn ${target.toLocaleString()} XP by chatting.`
     },
 
     {
         type: "roll_xp",
         icon: "🎲",
-        targets: [500000, 1000000, 2500000],
+        targets: [1000000, 2500000, 5000000],
         label: target => `Roll a total of ${target.toLocaleString()} XP`
     },
 
@@ -178,7 +222,7 @@ const DAILY_QUEST_POOL_HIGH = [
         type: "single_roll_xp",
         icon: "🎯",
         // Stored as threshold + 1 so "more than" is literal.
-        targets: [25001, 50001, 100001],
+        targets: [50001, 100001, 200001],
         mode: "max",
         label: target =>
             `Roll more than ${(target - 1).toLocaleString()} XP in one roll`
@@ -187,14 +231,14 @@ const DAILY_QUEST_POOL_HIGH = [
     {
         type: "earn_xp",
         icon: "✦",
-        targets: [1000000, 2500000, 3000000],
+        targets: [5000000, 10000000, 25000000],
         label: target => `Earn ${target.toLocaleString()} XP`
     },
 
     {
         type: "steal_xp",
         icon: "💰",
-        targets: [25000, 50000, 100000],
+        targets: [50000, 100000, 200000],
         label: target => `Steal ${target.toLocaleString()} XP`
     },
 
@@ -222,14 +266,14 @@ const DAILY_QUEST_POOL_HIGH = [
     {
         type: "roll_count",
         icon: "🎲",
-        targets: [10, 20, 50],
+        targets: [20, 50, 100],
         label: target => `Use !roll ${target} times`
     },
 
     {
         type: "critical_streak",
         icon: "💥",
-        targets: [5, 10, 15],
+        targets: [15, 20, 25],
         mode: "max",
         label: target => `Reach a ${target}x critical streak`
     },
@@ -237,8 +281,9 @@ const DAILY_QUEST_POOL_HIGH = [
     {
         type: "level_change",
         icon: "★",
-        targets: [1],
-        label: () => "Gain or lose a level"
+        targets: [5, 10, 15],
+        mode: "max",
+        label: target => `Gain ${target} levels.`
     },
 
     {
@@ -279,6 +324,15 @@ const WEEKLY_QUEST_POOL_HIGH = [
     },
 
     {
+        type: "chat_xp",
+        icon: "💬✦",
+        targetsByLevelBand:
+            CHAT_XP_QUEST_TARGETS.weekly,
+        label: target =>
+            `Earn ${target.toLocaleString()} XP by chatting.`
+    },
+
+    {
         type: "roll_xp",
         icon: "🎲",
         targets: [1000000],
@@ -297,7 +351,7 @@ const WEEKLY_QUEST_POOL_HIGH = [
     {
         type: "earn_xp",
         icon: "✦",
-        targets: [25000000, 50000000, 100000000],
+        targets: [50000000, 100000000, 150000000],
         label: target => `Earn ${target.toLocaleString()} XP`
     },
 
@@ -311,21 +365,21 @@ const WEEKLY_QUEST_POOL_HIGH = [
     {
         type: "kiss_given",
         icon: "💋",
-        targets: [50, 100, 200],
+        targets: [50, 75, 100],
         label: target => `Kiss someone ${target} times`
     },
 
     {
         type: "kiss_received",
         icon: "💋",
-        targets: [25, 35, 50],
+        targets: [25, 35, 40],
         label: target => `Get kissed ${target} times`
     },
 
     {
         type: "roll_count",
         icon: "🎲",
-        targets: [500, 1000, 1500],
+        targets: [500, 1000, 1250],
         label: target => `Use !roll ${target.toLocaleString()} times`
     },
 
@@ -339,14 +393,14 @@ const WEEKLY_QUEST_POOL_HIGH = [
     {
         type: "successful_trade",
         icon: "🤝",
-        targets: [25, 50, 75],
+        targets: [25, 35, 50],
         label: target => `Successfully trade with someone ${target} times`
     },
 
     {
         type: "buy_luck_max",
         icon: "💸",
-        targets: [2, 3],
+        targets: [3, 5, 7],
         label: target => `Buy Luck Boost MAX ${target} times`
     },
 
@@ -367,7 +421,7 @@ const WEEKLY_QUEST_POOL_HIGH = [
 const LEGACY_WEEKLY_CRITICAL_STREAK = {
     type: "critical_streak",
     icon: "💥",
-    targets: [10, 15, 20],
+    targets: [25, 35, 40],
     mode: "max",
     label: target => `Reach a ${target}x critical streak`
 };
@@ -500,9 +554,17 @@ function makeQuest(
     levelBand
 ){
 
+    const availableTargets =
+        definition.targetsByLevelBand?.[
+            levelBand
+        ]
+        ||
+        definition.targets;
+
+
     const target =
         randomChoice(
-            definition.targets
+            availableTargets
         );
 
 
@@ -718,9 +780,9 @@ function generateDailyRewardsElite(){
         type: "xp",
         amount:
             randomChoice([
-                2500000,
-                7000000,
-                14000000
+                2000000,
+                3500000,
+                5000000
             ]),
         levelBand
     };
@@ -763,7 +825,7 @@ function generateDailyRewardsElite(){
             boostType: "luck",
             tier: "tier3",
             amount:
-                randomChoice([5, 10, 15]),
+                randomChoice([3, 5, 7]),
             levelBand
         },
 
@@ -969,7 +1031,7 @@ function generateWeeklyRewardsElite(){
                 boostType: "luck",
                 tier: "max",
                 amount:
-                    randomChoice([7, 10, 12]),
+                    randomChoice([5, 10, 12]),
                 levelBand
             },
 
@@ -1016,14 +1078,6 @@ function generateWeeklyRewardsElite(){
                 durationMs:
                     socialDuration,
                 levelBand
-            },
-
-            {
-                type: "boost",
-                boostType: "luck",
-                tier: "omega",
-                amount: 1,
-                levelBand
             }
 
         ]);
@@ -1036,6 +1090,19 @@ function generateWeeklyRewardsElite(){
     rewards.push(
         ...extras.slice(0, extraCount)
     );
+
+
+    if(Math.random() < WEEKLY_ELITE_OMEGA_CHANCE){
+
+        rewards.push({
+            type: "boost",
+            boostType: "luck",
+            tier: "omega",
+            amount: 1,
+            levelBand
+        });
+
+    }
 
 
     return rewards;
@@ -1582,6 +1649,27 @@ function migrateDailyRewardsForLevel(
                     };
 
 
+                    // Move active, unclaimed Level 150+ daily XP rewards
+                    // from the old 2.5m/7m/14m pool to 2m/3.5m/5m.
+                    if(migrated.type === "xp"){
+
+                        const dailyXPRewardMigration = {
+                            2500000: 2000000,
+                            7000000: 3500000,
+                            14000000: 5000000
+                        };
+
+
+                        migrated.amount =
+                            dailyXPRewardMigration[
+                                Number(migrated.amount)
+                            ]
+                            ||
+                            migrated.amount;
+
+                    }
+
+
                     // Nerf only unclaimed daily Luck MAX rewards created by
                     // the old 2x/4x/6x pool. This is idempotent, so the new
                     // legal 1x/2x/3x quantities remain unchanged.
@@ -1611,6 +1699,39 @@ function migrateDailyRewardsForLevel(
                                     )
                                 )
                             );
+
+                    }
+
+
+                    // Old Level 150+ daily Luck III rewards used 5/10/15.
+                    // 5 remains a legal new value; only the now-illegal
+                    // quantities need changing to the new 3/5/7 pool.
+                    if(
+                        migrated.type === "boost"
+                        &&
+                        String(
+                            migrated.boostType || ""
+                        ).toLowerCase() === "luck"
+                        &&
+                        String(
+                            migrated.tier || ""
+                        ).toLowerCase() === "tier3"
+                    ){
+
+                        const amount =
+                            Number(migrated.amount) || 0;
+
+
+                        if(amount === 10){
+
+                            migrated.amount = 5;
+
+                        }
+                        else if(amount === 15){
+
+                            migrated.amount = 7;
+
+                        }
 
                     }
 
@@ -1841,16 +1962,44 @@ function migrateWeeklyRewards(
         &&
         currentRewards.length >= 4
         &&
-        currentRewards.length <= 6;
+        currentRewards.length <= 7;
 
 
     if(eliteLevel){
 
         return allElite
             ? currentRewards.map(
-                reward => ({
-                    ...reward
-                })
+                reward => {
+
+                    const migrated = {
+                        ...reward
+                    };
+
+
+                    // Nerf active, unclaimed elite weekly Luck MAX rewards
+                    // from the removed 7x value to the new 5x value.
+                    if(
+                        migrated.type === "boost"
+                        &&
+                        String(
+                            migrated.boostType || ""
+                        ).toLowerCase() === "luck"
+                        &&
+                        String(
+                            migrated.tier || ""
+                        ).toLowerCase() === "max"
+                        &&
+                        Number(migrated.amount) === 7
+                    ){
+
+                        migrated.amount = 5;
+
+                    }
+
+
+                    return migrated;
+
+                }
             )
             : generateWeeklyRewardsElite();
 
