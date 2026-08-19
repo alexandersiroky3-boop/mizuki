@@ -6060,6 +6060,66 @@ const QUEST_RESET_CONFIG =
 
     });
 
+
+function getStoredQuestList(value){
+
+    if(Array.isArray(value)){
+
+        return value;
+
+    }
+
+
+    if(typeof value === "string"){
+
+        try{
+
+            const parsed =
+                JSON.parse(value);
+
+
+            return Array.isArray(parsed)
+                ? parsed
+                : [];
+
+        }
+        catch{
+
+            return [];
+
+        }
+
+    }
+
+
+    return [];
+
+}
+
+
+function isStoredQuestCycleCompleted(cycle){
+
+    const quests =
+        getStoredQuestList(
+            cycle?.quests
+        );
+
+
+    return (
+        Boolean(cycle?.rewarded)
+        ||
+        (
+            quests.length > 0
+            &&
+            quests.every(
+                quest =>
+                    Boolean(quest?.completed)
+            )
+        )
+    );
+
+}
+
 async function getQuestCycle(
     guildID,
     userID,
@@ -6350,6 +6410,32 @@ async function resetQuestCycleWithXP(
                     cycle.resetcount || 0
                 )
             );
+
+
+        // Completed quest sections are final until their natural renewal.
+        // Check this while the row is locked and before locking/deducting XP,
+        // so a completion racing with a reset can never be rerolled for more
+        // rewards.
+        if(isStoredQuestCycleCompleted(cycle)){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "quests-completed",
+                cycleType:
+                    normalizedCycleType,
+                price:
+                    config.price,
+                maxResets:
+                    config.maxResets,
+                resetCount,
+                remainingResets: 0,
+                nextResetAt:
+                    expiresAt
+            };
+
+        }
 
 
         if(resetCount >= config.maxResets){
