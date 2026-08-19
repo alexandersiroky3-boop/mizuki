@@ -288,6 +288,49 @@ const ROLL_COOLDOWN =
     1000;
 
 
+const ROLL_GUARANTEE_THRESHOLD =
+    100;
+
+
+const ROLL_GUARANTEE_MIN_XP =
+    500000;
+
+
+function buildRollGuaranteeFooter(
+    rollGuarantee
+){
+
+    const progress =
+        Math.max(
+            0,
+            Number(
+                rollGuarantee?.progress
+            ) || 0
+        );
+
+
+    const threshold =
+        Math.max(
+            1,
+            Number(
+                rollGuarantee?.threshold
+            ) || ROLL_GUARANTEE_THRESHOLD
+        );
+
+
+    return (
+        `\n\n🎯 **100-Roll Guarantee:** ${progress}/${threshold}`
+        +
+        (
+            rollGuarantee?.guaranteed
+                ? `\n🎁 **Milestone reached — this roll was guaranteed ${ROLL_GUARANTEE_MIN_XP.toLocaleString()}+ XP!**`
+                : ""
+        )
+    );
+
+}
+
+
 function buildRollCooldownExtra(
     rollAccess
 ){
@@ -627,6 +670,28 @@ else if(
 }
 
 
+// Each actual result advances the meter, including every individual result
+// in Multi Roll. The counter is stored in PostgreSQL, so restarts do not
+// erase progress and concurrent rolls cannot lose an increment.
+const rollGuarantee =
+    await database.advanceRollGuarantee(
+        message.guild.id,
+        userID,
+        ROLL_GUARANTEE_THRESHOLD
+    );
+
+
+if(rollGuarantee.guaranteed){
+
+    rolledXP =
+        Math.max(
+            rolledXP,
+            ROLL_GUARANTEE_MIN_XP
+        );
+
+}
+
+
 // This is the Luck Boost used
 // during the current roll.
 //
@@ -775,6 +840,12 @@ const rollExtras =
     );
 
 
+const rollGuaranteeFooter =
+    buildRollGuaranteeFooter(
+        rollGuarantee
+    );
+
+
 
 
 
@@ -853,7 +924,7 @@ ${message.author} rolled **+${rolledXP.toLocaleString()} XP!**${rollExtras}
 
 💖 **Mizuki secretly rewarded you with +${bonus.toLocaleString()} XP!**
 
-✨ **The universe itself acknowledged your existence.**`
+✨ **The universe itself acknowledged your existence.**${rollGuaranteeFooter}`
 
     );
 
@@ -926,7 +997,7 @@ await syncRollLevel(
 
 *"Hehe... maybe you're my lucky charm after all~"*
 
-💖 **Mizuki secretly rewarded you with +${bonus.toLocaleString()} XP!**`
+💖 **Mizuki secretly rewarded you with +${bonus.toLocaleString()} XP!**${rollGuaranteeFooter}`
 
     );
 
@@ -987,7 +1058,7 @@ await syncRollLevel(
 
 *She blushes, kisses both cheeks, then quietly flies away.*
 
-💖 **Mizuki secretly rewarded you with +${bonus.toLocaleString()} XP!**`
+💖 **Mizuki secretly rewarded you with +${bonus.toLocaleString()} XP!**${rollGuaranteeFooter}`
 
     );
 
@@ -1046,7 +1117,7 @@ await syncRollLevel(
 
 *She hugs you tightly, spins you around laughing, then kisses your forehead.*
 
-💖 **Mizuki secretly rewarded you with +${bonus.toLocaleString()} XP!**`
+💖 **Mizuki secretly rewarded you with +${bonus.toLocaleString()} XP!**${rollGuaranteeFooter}`
 
     );
 
@@ -1113,7 +1184,7 @@ await syncRollLevel(
 
 *"Don't stop now... I want to see how far you can go."*
 
-💖 **Mizuki secretly rewarded you with +${bonus} XP!**`
+💖 **Mizuki secretly rewarded you with +${bonus} XP!**${rollGuaranteeFooter}`
 
     );
 
@@ -1177,7 +1248,7 @@ return message.channel.send(
 
 *She gently kisses ${message.author}'s cheek before flying away.*
 
-💖 The kiss gave you **+${bonus} XP** as a bonus!`
+💖 The kiss gave you **+${bonus} XP** as a bonus!${rollGuaranteeFooter}`
 
 );
 
@@ -1204,7 +1275,7 @@ if(rolledXP >= 0){
 
     return message.channel.send(
 
-`🎲 ${message.author} rolled **+${rolledXP.toLocaleString()} XP! Lucky! 🍀**${rollExtras}`
+`🎲 ${message.author} rolled **+${rolledXP.toLocaleString()} XP! Lucky! 🍀**${rollExtras}${rollGuaranteeFooter}`
 
     );
 
@@ -1213,7 +1284,7 @@ if(rolledXP >= 0){
 
 return message.channel.send(
 
-`🎲 ${message.author} rolled **${rolledXP.toLocaleString()} XP!** Better luck next time... 💀${rollExtras}`
+`🎲 ${message.author} rolled **${rolledXP.toLocaleString()} XP!** Better luck next time... 💀${rollExtras}${rollGuaranteeFooter}`
 
 );
 
