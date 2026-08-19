@@ -642,17 +642,23 @@ const guaranteedRoll =
 if(guaranteedRoll === "daily_25k_75k"){
 
     rolledXP =
-        Math.floor(
-            Math.random() * 50001
-        ) + 25000;
+        Math.max(
+            rolledXP,
+            Math.floor(
+                Math.random() * 50001
+            ) + 25000
+        );
 
 }
 else if(guaranteedRoll === "impossible"){
 
     rolledXP =
-        Math.floor(
-            Math.random() * 1500001
-        ) + 500000;
+        Math.max(
+            rolledXP,
+            Math.floor(
+                Math.random() * 1500001
+            ) + 500000
+        );
 
 }
 else if(
@@ -827,6 +833,19 @@ const guaranteedRollExtra =
                 : "";
 
 
+const megaRollExtra =
+    luckResult.megaRoll
+        ? (
+            `\n💎 **MEGA LUCK ROLL!** ` +
+            `Your active Luck Boost hit its **${Number(
+                luckResult.megaRollChancePercent
+            ).toLocaleString("en-US", {
+                maximumFractionDigits: 6
+            })}%** chance for **10,000,001–50,000,000 XP**.`
+        )
+        : "";
+
+
 const rollExtras =
     luck.buildRollExtras(
         message,
@@ -835,6 +854,7 @@ const rollExtras =
         wonLuckBoost
     )
     + guaranteedRollExtra
+    + megaRollExtra
     + buildRollCooldownExtra(
         rollAccess
     );
