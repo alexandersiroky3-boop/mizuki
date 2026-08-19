@@ -1109,6 +1109,18 @@ await quests.recordEvent(
 );
 
 
+// Chat-only XP quest progress. Keep this separate from earn_xp so XP from
+// !roll, quest rewards, trades, and admin commands cannot complete it.
+await quests.recordEvent(
+    message,
+    "chat_xp",
+    Math.max(
+        0,
+        Number(result.earnedXP) || 0
+    )
+);
+
+
 if(result.critical){
 
     await quests.recordEvent(
@@ -1157,7 +1169,7 @@ if(result.critical){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
 
         ).catch(() => {});
 
@@ -1186,7 +1198,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
 
     ).catch(() => {});
 
