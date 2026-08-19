@@ -490,7 +490,7 @@ async function buildShopPanel(
 
         merchantStatus =
             "🛤️ Away this shop cycle. " +
-            `The next **15% arrival roll** is <t:${arrivalTimestamp}:R>.`;
+            `The next **30% arrival roll** is <t:${arrivalTimestamp}:R>.`;
 
     }
 
@@ -591,7 +591,7 @@ async function buildMerchantShopPanel(
 
         embed
             .setDescription(
-                "Select a numbered deal below. Stock is global, and each successful purchase uses one stock. His offers and stock rotate every **30 minutes**."
+                "Select a numbered deal below. Stock is global, and each successful purchase uses one stock. Each visit lasts **1 hour**; his offers and stock rotate every **30 minutes**."
             )
             .addFields(
                 ...merchant.deals.map(deal => ({
@@ -639,7 +639,7 @@ async function buildMerchantShopPanel(
 
         embed
             .setDescription(
-                "The merchant is not visiting during this main shop cycle. The next 15% arrival roll happens with the normal shop restock. Once he appears, his deals and stock rotate every **30 minutes**."
+                "The merchant is not visiting during this main shop cycle. The next 30% arrival roll happens with the normal shop restock. Once he appears, he stays for **1 hour**, and his deals and stock rotate every **30 minutes**."
             )
             .addFields({
                 name: "Next arrival roll",
