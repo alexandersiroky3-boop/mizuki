@@ -74,6 +74,19 @@ const QUEST_RESET_CONFIG =
     database.QUEST_RESET_CONFIG;
 
 
+function getQuestResetPrice(
+    cycleType,
+    level
+){
+
+    return database.getQuestResetPrice(
+        cycleType,
+        level
+    );
+
+}
+
+
 // =====================================================
 // LEVEL 1-99 DAILY QUESTS
 // =====================================================
@@ -2871,6 +2884,13 @@ async function resetQuestCycle(
         );
 
 
+    const price =
+        getQuestResetPrice(
+            normalizedCycleType,
+            dashboard.level
+        );
+
+
     if(
         normalizedCycleType === "weekly"
         &&
@@ -2887,7 +2907,7 @@ async function resetQuestCycle(
             unlockLevel:
                 QUEST_UNLOCK_LEVEL,
             price:
-                config.price,
+                price,
             maxResets:
                 config.maxResets
         };
@@ -2933,7 +2953,7 @@ async function resetQuestCycle(
             cycleType:
                 normalizedCycleType,
             price:
-                config.price,
+                price,
             maxResets:
                 config.maxResets,
             resetCount,
@@ -2953,7 +2973,7 @@ async function resetQuestCycle(
             cycleType:
                 normalizedCycleType,
             price:
-                config.price,
+                price,
             maxResets:
                 config.maxResets,
             resetCount,
@@ -2980,7 +3000,8 @@ async function resetQuestCycle(
             normalizedCycleType,
             currentCycle.cyclekey,
             nextData.quests,
-            nextData.rewards
+            nextData.rewards,
+            dashboard.level
         );
 
 
@@ -3618,6 +3639,8 @@ module.exports = {
     ELITE_REWARD_LEVEL,
 
     QUEST_RESET_CONFIG,
+
+    getQuestResetPrice,
 
     isQuestCycleCompleted,
 
