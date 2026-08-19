@@ -334,12 +334,13 @@ function getRandomShopPrice(item){
 // ==============================
 //
 // One appearance roll happens per real shop refresh while
-// shop_state is locked. A visit lasts for that complete shop cycle.
-// While the merchant is visiting, his six global deals and their
-// stock rotate independently every 30 minutes.
+// shop_state is locked. A successful visit lasts one hour (or until
+// the current shop cycle ends, whichever comes first). While the
+// merchant is visiting, his six global deals and their stock keep
+// rotating independently every 30 minutes.
 
 const TRAVELING_MERCHANT_CHANCE =
-    0.15;
+    0.30;
 
 
 const TRAVELING_MERCHANT_DEALS_PER_VISIT =
@@ -348,6 +349,10 @@ const TRAVELING_MERCHANT_DEALS_PER_VISIT =
 
 const TRAVELING_MERCHANT_REFRESH_TIME =
     30 * 60 * 1000;
+
+
+const TRAVELING_MERCHANT_VISIT_TIME =
+    60 * 60 * 1000;
 
 
 const MERCHANT_HOUR =
@@ -4043,14 +4048,24 @@ async function refreshTravelingMerchant(
         Number(endsAt);
 
 
-    const nextRestockAt =
+    const merchantEndsAt =
         active
             ? Math.min(
                 numericEndsAt,
                 numericStartedAt +
-                    TRAVELING_MERCHANT_REFRESH_TIME
+                    TRAVELING_MERCHANT_VISIT_TIME
             )
             : numericEndsAt;
+
+
+    const nextRestockAt =
+        active
+            ? Math.min(
+                merchantEndsAt,
+                numericStartedAt +
+                    TRAVELING_MERCHANT_REFRESH_TIME
+            )
+            : merchantEndsAt;
 
 
     // The cycle ID changes on every 30-minute inventory rotation.
@@ -4099,7 +4114,7 @@ async function refreshTravelingMerchant(
         active,
         cycleID,
         numericStartedAt,
-        numericEndsAt,
+        merchantEndsAt,
         nextRestockAt
     ]);
 
@@ -4110,7 +4125,7 @@ async function refreshTravelingMerchant(
         startedAt:
             numericStartedAt,
         endsAt:
-            numericEndsAt,
+            merchantEndsAt,
         nextRestockAt
     };
 
@@ -6049,11 +6064,21 @@ async function purchaseTravelingMerchantDeal(
 // QUEST SYSTEM
 // =====================================================
 
+const QUEST_RESET_LEVEL_THRESHOLD =
+    100;
+
+
 const QUEST_RESET_CONFIG =
     Object.freeze({
 
         daily:
             Object.freeze({
+                lowLevelPrice:
+                    50000,
+                highLevelPrice:
+                    25000000,
+                // Compatibility for older display code. New code must use
+                // getQuestResetPrice(cycleType, level).
                 price:
                     25000000,
                 maxResets:
@@ -6062,6 +6087,12 @@ const QUEST_RESET_CONFIG =
 
         weekly:
             Object.freeze({
+                lowLevelPrice:
+                    250000,
+                highLevelPrice:
+                    100000000,
+                // Compatibility for older display code. New code must use
+                // getQuestResetPrice(cycleType, level).
                 price:
                     100000000,
                 maxResets:
@@ -6069,6 +6100,46 @@ const QUEST_RESET_CONFIG =
             })
 
     });
+
+
+function getQuestResetPrice(
+    cycleType,
+    level
+){
+
+    const config =
+        QUEST_RESET_CONFIG[
+            String(
+                cycleType || ""
+            ).toLowerCase()
+        ];
+
+
+    if(!config){
+
+        return null;
+
+    }
+
+
+    const numericLevel =
+        Number(level);
+
+
+    // Unknown levels default to the higher price so an outdated internal
+    // caller can never accidentally grant the Level 1-99 discount.
+    const highLevel =
+        !Number.isFinite(numericLevel)
+        ||
+        numericLevel >=
+            QUEST_RESET_LEVEL_THRESHOLD;
+
+
+    return highLevel
+        ? Number(config.highLevelPrice)
+        : Number(config.lowLevelPrice);
+
+}
 
 
 function getStoredQuestList(value){
@@ -6300,7 +6371,8 @@ async function resetQuestCycleWithXP(
     cycleType,
     cycleKey,
     quests,
-    rewards
+    rewards,
+    userLevel = QUEST_RESET_LEVEL_THRESHOLD
 ){
 
     const normalizedCycleType =
@@ -6323,6 +6395,13 @@ async function resetQuestCycleWithXP(
         };
 
     }
+
+
+    const price =
+        getQuestResetPrice(
+            normalizedCycleType,
+            userLevel
+        );
 
 
     if(
@@ -6436,7 +6515,7 @@ async function resetQuestCycleWithXP(
                 cycleType:
                     normalizedCycleType,
                 price:
-                    config.price,
+                    price,
                 maxResets:
                     config.maxResets,
                 resetCount,
@@ -6458,7 +6537,7 @@ async function resetQuestCycleWithXP(
                 cycleType:
                     normalizedCycleType,
                 price:
-                    config.price,
+                    price,
                 maxResets:
                     config.maxResets,
                 resetCount,
@@ -6512,7 +6591,7 @@ async function resetQuestCycleWithXP(
             );
 
 
-        if(balance < config.price){
+        if(balance < price){
 
             await client.query("COMMIT");
 
@@ -6522,10 +6601,10 @@ async function resetQuestCycleWithXP(
                 cycleType:
                     normalizedCycleType,
                 price:
-                    config.price,
+                    price,
                 balance,
                 missing:
-                    config.price -
+                    price -
                     balance,
                 maxResets:
                     config.maxResets,
@@ -6556,7 +6635,7 @@ async function resetQuestCycleWithXP(
             `, [
                 guildID,
                 userID,
-                config.price
+                price
             ]);
 
 
@@ -6570,12 +6649,12 @@ async function resetQuestCycleWithXP(
                 cycleType:
                     normalizedCycleType,
                 price:
-                    config.price,
+                    price,
                 balance,
                 missing:
                     Math.max(
                         0,
-                        config.price -
+                        price -
                         balance
                     )
             };
@@ -6642,7 +6721,7 @@ async function resetQuestCycleWithXP(
             cycleType:
                 normalizedCycleType,
             price:
-                config.price,
+                price,
             balance:
                 Number(
                     updatedUser.rows[0]?.xp || 0
@@ -10438,6 +10517,8 @@ module.exports = {
 
     TRAVELING_MERCHANT_REFRESH_TIME,
 
+    TRAVELING_MERCHANT_VISIT_TIME,
+
     TRAVELING_MERCHANT_DEAL_TEMPLATES,
 
     createTravelingMerchantDeals,
@@ -10529,6 +10610,8 @@ module.exports = {
     clearXPBoostProgress,
 
     QUEST_RESET_CONFIG,
+
+    getQuestResetPrice,
 
     getQuestCycle,
 
