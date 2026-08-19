@@ -109,6 +109,19 @@ function getResetCount(cycle){
 }
 
 
+function getResetPrice(
+    cycleType,
+    dashboard
+){
+
+    return quests.getQuestResetPrice(
+        cycleType,
+        dashboard.level
+    );
+
+}
+
+
 function formatCycle(
     cycle,
     cycleName,
@@ -162,6 +175,20 @@ function formatResetOptions(dashboard){
         quests.QUEST_RESET_CONFIG.weekly;
 
 
+    const dailyPrice =
+        getResetPrice(
+            "daily",
+            dashboard
+        );
+
+
+    const weeklyPrice =
+        getResetPrice(
+            "weekly",
+            dashboard
+        );
+
+
     const dailyUsed =
         getResetCount(
             dashboard.daily
@@ -187,14 +214,14 @@ function formatResetOptions(dashboard){
 
 
     return (
-        `🔄 **Daily:** ${dailyConfig.price.toLocaleString()} XP • ` +
+        `🔄 **Daily:** ${dailyPrice.toLocaleString()} XP • ` +
         (
             dailyCompleted
                 ? "**Completed — reset unavailable**"
                 : `**${Math.max(0, dailyConfig.maxResets - dailyUsed)}** reset(s) remaining today`
         ) +
         "\n" +
-        `🔁 **Weekly:** ${weeklyConfig.price.toLocaleString()} XP • ` +
+        `🔁 **Weekly:** ${weeklyPrice.toLocaleString()} XP • ` +
         (
             dashboard.weeklyLocked
                 ? `Locked until Level ${quests.QUEST_UNLOCK_LEVEL}`
@@ -219,6 +246,20 @@ function createResetButtons(
 
     const weeklyConfig =
         quests.QUEST_RESET_CONFIG.weekly;
+
+
+    const dailyPrice =
+        getResetPrice(
+            "daily",
+            dashboard
+        );
+
+
+    const weeklyPrice =
+        getResetPrice(
+            "weekly",
+            dashboard
+        );
 
 
     const dailyUsed =
@@ -255,7 +296,7 @@ function createResetButtons(
                     .setLabel(
                         dailyCompleted
                             ? "Daily Completed - Reset Locked"
-                            : `Reset Daily - ${dailyConfig.price.toLocaleString()} XP (${dailyUsed}/${dailyConfig.maxResets})`
+                            : `Reset Daily - ${dailyPrice.toLocaleString()} XP (${dailyUsed}/${dailyConfig.maxResets})`
                     )
                     .setEmoji("🔄")
                     .setStyle(
@@ -276,7 +317,7 @@ function createResetButtons(
                     .setLabel(
                         weeklyCompleted
                             ? "Weekly Completed - Reset Locked"
-                            : `Reset Weekly - ${weeklyConfig.price.toLocaleString()} XP (${weeklyUsed}/${weeklyConfig.maxResets})`
+                            : `Reset Weekly - ${weeklyPrice.toLocaleString()} XP (${weeklyUsed}/${weeklyConfig.maxResets})`
                     )
                     .setEmoji("🔁")
                     .setStyle(
