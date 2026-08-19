@@ -302,12 +302,12 @@ const LUCK_BOOST_DROP_TABLE = [
 
     {
         tier: "max",
-        chancePercent: 0.75
+        chancePercent: 0.5
     },
 
     {
         tier: "tier3",
-        chancePercent: 0.75
+        chancePercent: 1
     },
 
     {
@@ -342,13 +342,13 @@ const COMMAND_LUCK_DROP_PERCENT = {
             20,
 
         tier3:
-            4,
-
-        max:
             5,
 
+        max:
+            1,
+
         omega:
-            0.01
+            0.5
 
     },
 
@@ -365,10 +365,10 @@ const COMMAND_LUCK_DROP_PERCENT = {
             1,
 
         max:
-            0.8,
+            0.75,
 
         omega:
-            0.01
+            0.05
 
     },
 
@@ -382,13 +382,13 @@ const COMMAND_LUCK_DROP_PERCENT = {
             12,
 
         tier3:
-            2.5,
+            3,
 
         max:
-            2,
+            1,
 
         omega:
-            0.01
+            0.3
 
     }
 
@@ -455,6 +455,52 @@ const OMEGA_ROLL_CHANCE_TABLES = {
         }
 
     ]
+
+};
+
+
+// =====================================================
+// LUCK-ONLY 10M-50M MEGA ROLLS
+// =====================================================
+//
+// These are exact, independent percentages. A Mega Roll is checked first;
+// when it misses, the normal level/Luck table is used exactly as before.
+// No active Luck Boost means a 0% chance at this special range.
+//
+// 0.0001 = 1 in 1,000,000 rolls
+// 0.001  = 1 in 100,000 rolls
+// 0.01   = 1 in 10,000 rolls
+// 0.05   = 1 in 2,000 rolls
+// 1      = 1 in 100 rolls
+const LUCK_MEGA_ROLL_SETTINGS = {
+
+    minXP:
+        10000001,
+
+    maxXP:
+        50000000,
+
+    chancePercent: {
+
+        // Levels 1-99
+        level1To100: {
+            tier1: 0.0001,
+            tier2: 0.0005,
+            tier3: 0.005,
+            max: 0.025,
+            omega: 1
+        },
+
+        // Levels 100+
+        level101Plus: {
+            tier1: 0.0002,
+            tier2: 0.001,
+            tier3: 0.01,
+            max: 0.05,
+            omega: 2
+        }
+
+    }
 
 };
 
@@ -650,6 +696,74 @@ function validateLuckSettings(){
             validatePercentage(
                 `Luck Boost Ω ${tableName}`,
                 outcome.chancePercent
+            );
+
+        }
+
+    }
+
+
+    if(
+        !Number.isFinite(
+            Number(
+                LUCK_MEGA_ROLL_SETTINGS.minXP
+            )
+        )
+        ||
+        !Number.isFinite(
+            Number(
+                LUCK_MEGA_ROLL_SETTINGS.maxXP
+            )
+        )
+        ||
+        Number(LUCK_MEGA_ROLL_SETTINGS.minXP) <= 10000000
+        ||
+        Number(LUCK_MEGA_ROLL_SETTINGS.maxXP) <
+            Number(LUCK_MEGA_ROLL_SETTINGS.minXP)
+    ){
+
+        throw new Error(
+            "Luck Mega Roll range must start above 10,000,000 XP and have a valid maximum."
+        );
+
+    }
+
+
+    for(
+        const [levelGroup, tierChances] of
+        Object.entries(
+            LUCK_MEGA_ROLL_SETTINGS.chancePercent
+        )
+    ){
+
+        for(
+            const tier of
+            [
+                "tier1",
+                "tier2",
+                "tier3",
+                "max",
+                "omega"
+            ]
+        ){
+
+            if(
+                !Object.prototype.hasOwnProperty.call(
+                    tierChances,
+                    tier
+                )
+            ){
+
+                throw new Error(
+                    `Missing ${levelGroup} ${tier} Luck Mega Roll chance.`
+                );
+
+            }
+
+
+            validatePercentage(
+                `${levelGroup} ${tier} Luck Mega Roll`,
+                tierChances[tier]
             );
 
         }
@@ -1473,6 +1587,80 @@ function rollFromWeightedTable(
 }
 
 
+function getLuckMegaRollChance(
+    profile,
+    levelTableName
+){
+
+    const tier =
+        String(
+            profile?.tier || ""
+        ).toLowerCase();
+
+
+    if(!tier){
+
+        return 0;
+
+    }
+
+
+    const tableName =
+        levelTableName === "level101Plus"
+            ? "level101Plus"
+            : "level1To100";
+
+
+    return Math.max(
+        0,
+        Number(
+            LUCK_MEGA_ROLL_SETTINGS
+                .chancePercent[tableName]
+                ?.[tier]
+        ) || 0
+    );
+
+}
+
+
+function tryLuckMegaRoll(
+    profile,
+    levelTableName
+){
+
+    const chancePercent =
+        getLuckMegaRollChance(
+            profile,
+            levelTableName
+        );
+
+
+    if(
+        chancePercent <= 0
+        ||
+        !percentChance(
+            chancePercent
+        )
+    ){
+
+        return null;
+
+    }
+
+
+    return {
+        rolledXP:
+            randomInteger(
+                LUCK_MEGA_ROLL_SETTINGS.minXP,
+                LUCK_MEGA_ROLL_SETTINGS.maxXP
+            ),
+
+        chancePercent
+    };
+
+}
+
+
 
 async function rollWithLuck(
     member,
@@ -1508,28 +1696,49 @@ async function rollWithLuck(
         );
 
 
+    const megaRoll =
+        tryLuckMegaRoll(
+            profile,
+            levelTableName
+        );
+
+
     const rolledXP =
-        profile.tier === "omega"
+        megaRoll
 
-            ? rollFromExactPercentTable(
-                OMEGA_ROLL_CHANCE_TABLES[
-                    levelTableName === "level101Plus"
-                        ? "level101Plus"
-                        : "level1To100"
-                ]
-            )
+            ? megaRoll.rolledXP
 
-            : rollFromWeightedTable(
-                rollChanceTable,
-                profile
-            );
+            : profile.tier === "omega"
+
+                ? rollFromExactPercentTable(
+                    OMEGA_ROLL_CHANCE_TABLES[
+                        levelTableName === "level101Plus"
+                            ? "level101Plus"
+                            : "level1To100"
+                    ]
+                )
+
+                : rollFromWeightedTable(
+                    rollChanceTable,
+                    profile
+                );
 
 
     return {
 
         rolledXP,
 
-        profile
+        profile,
+
+        megaRoll:
+            Boolean(megaRoll),
+
+        megaRollChancePercent:
+            megaRoll?.chancePercent ||
+            getLuckMegaRollChance(
+                profile,
+                levelTableName
+            )
 
     };
 
@@ -3050,6 +3259,8 @@ module.exports = {
 
     LUCK_ROLES,
 
+    LUCK_MEGA_ROLL_SETTINGS,
+
     getCriticalChanceBonus,
 
     getActiveLuckBoost,
@@ -3059,6 +3270,8 @@ module.exports = {
     getRollCooldown,
 
     rollWithLuck,
+
+    getLuckMegaRollChance,
 
     rollCommandOutcome,
 
