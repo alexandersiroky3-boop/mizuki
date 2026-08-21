@@ -15,12 +15,19 @@ const ROLL_COOLDOWN_MS =
     30_000;
 
 
+const ROLL_CLOCK_MARKDOWN =
+    "[⏱️](https://discord.com/assets/0936447be3e254dd.svg)";
+
+
+// Match both the old plain clock and the new linked clock so countdowns from
+// either format can still be edited safely while the bot is running.
 const ROLL_COUNTDOWN_PATTERN =
-    /⏱️ \*\*Try again in \d+ seconds?\.\.\.\*\*/;
+    /(?:\[⏱️\]\(https:\/\/discord\.com\/assets\/0936447be3e254dd\.svg\)|⏱️) \*\*Try again in \d+ seconds?\.\.\.\*\*/;
 
 
 const ROLL_READY_MESSAGE =
-    "✅ **You can roll now!**";
+    ROLL_CLOCK_MARKDOWN +
+    " **You can Roll now.**";
 
 
 const ROLL_EDIT_RETRY_DELAY_MS =
@@ -486,7 +493,8 @@ function buildRollCountdownLine(
 
 
     return (
-        "⏱️ **Try again in " +
+        ROLL_CLOCK_MARKDOWN +
+        " **Try again in " +
         safeSeconds +
         " " +
         secondLabel +
@@ -508,6 +516,20 @@ function replaceRollCountdown(
         buildRollCountdownLine(
             seconds
         )
+    );
+
+}
+
+
+function replaceRollCountdownWithReady(
+    content
+){
+
+    return String(
+        content
+    ).replace(
+        ROLL_COUNTDOWN_PATTERN,
+        ROLL_READY_MESSAGE
     );
 
 }
@@ -799,7 +821,9 @@ function startRollMessageCountdown(
             await sentMessage.edit({
                 content:
                     ready
-                        ? ROLL_READY_MESSAGE
+                        ? replaceRollCountdownWithReady(
+                            originalContent
+                        )
                         : replaceRollCountdown(
                             originalContent,
                             seconds
@@ -1878,6 +1902,8 @@ module.exports = {
     buildRollCountdownLine,
 
     replaceRollCountdown,
+
+    replaceRollCountdownWithReady,
 
     getRollCountdownEndsAt,
 
