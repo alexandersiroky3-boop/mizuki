@@ -9,10 +9,9 @@ const quests =
     require("../systems/quests");
 
 
-// Keep one immutable source of truth for !roll. Discord relative timestamps
-// use the viewer's device clock and can make a real 30-second cooldown appear
-// as 35 seconds, so sub-minute cooldown messages are rendered from this value
-// directly instead.
+// Keep one immutable source of truth for !roll. Live Discord timestamps are
+// anchored to the command message's Discord timestamp instead of Date.now(),
+// preventing a bot-host clock offset from turning 30 seconds into 35 seconds.
 const ROLL_COOLDOWN_MS =
     30_000;
 
@@ -335,8 +334,16 @@ function buildRollGuaranteeFooter(
 
 
 function buildRollCooldownExtra(
-    rollAccess
+    rollAccess,
+    commandCreatedTimestamp
 ){
+
+    const readyAt =
+        getLiveCooldownTimestamp(
+            commandCreatedTimestamp,
+            ROLL_COOLDOWN_MS
+        );
+
 
     if(
         rollAccess?.multiRoll
@@ -382,16 +389,18 @@ function buildRollCooldownExtra(
 
         return (
             multiText +
-            `\n⏱️ **Next Multi Roll:** fixed ` +
-            `**${ROLL_SETTINGS.cooldownSeconds}-second cooldown**.`
+            `\n⏱️ **Next Multi Roll:** ` +
+            `<t:${readyAt}:R> • <t:${readyAt}:T> ` +
+            `(**${ROLL_SETTINGS.cooldownSeconds}s cooldown**)`
         );
 
     }
 
 
     return (
-        `\n\n⏱️ **Next roll:** fixed ` +
-        `**${ROLL_SETTINGS.cooldownSeconds}-second cooldown**.`
+        `\n\n⏱️ **Next roll:** ` +
+        `<t:${readyAt}:R> • <t:${readyAt}:T> ` +
+        `(**${ROLL_SETTINGS.cooldownSeconds}s cooldown**)`
     );
 
 }
@@ -426,6 +435,44 @@ function getDisplayedCooldownSeconds(
                 remaining / 1000
             )
         )
+    );
+
+}
+
+
+function getLiveCooldownTimestamp(
+    commandCreatedTimestamp,
+    remainingMs
+){
+
+    const createdTimestamp =
+        Number(
+            commandCreatedTimestamp
+        );
+
+
+    const safeCreatedTimestamp =
+        Number.isFinite(createdTimestamp)
+        &&
+        createdTimestamp > 0
+            ? createdTimestamp
+            : Date.now();
+
+
+    const remainingSeconds =
+        getDisplayedCooldownSeconds(
+            remainingMs
+        );
+
+
+    // Start from Discord's own whole-second message timestamp. This keeps the
+    // live relative timer synchronized with Discord while also guaranteeing
+    // that the displayed duration can never begin above 30 seconds.
+    return (
+        Math.floor(
+            safeCreatedTimestamp / 1000
+        ) +
+        remainingSeconds
     );
 
 }
@@ -543,14 +590,21 @@ if(!rollAccess.allowed){
             : "seconds";
 
 
+    const readyAt =
+        getLiveCooldownTimestamp(
+            message.createdTimestamp,
+            rollAccess.remaining
+        );
+
+
     const messageText =
         (
             rollAccess.multiRoll
             ||
         rollAccess.tripleRoll
     )
-            ? `🎰 Multi Roll cooldown: **${seconds} ${secondLabel} remaining** (fixed 30-second maximum).`
-            : `🎲 Roll cooldown: **${seconds} ${secondLabel} remaining** (fixed 30-second maximum).`;
+            ? `🎰 Multi Roll cooldown: **${seconds} ${secondLabel} remaining** • try again <t:${readyAt}:R> • <t:${readyAt}:T>.`
+            : `🎲 Roll cooldown: **${seconds} ${secondLabel} remaining** • try again <t:${readyAt}:R> • <t:${readyAt}:T>.`;
 
 
     return message.reply(
@@ -875,7 +929,8 @@ const rollExtras =
     + guaranteedRollExtra
     + megaRollExtra
     + buildRollCooldownExtra(
-        rollAccess
+        rollAccess,
+        message.createdTimestamp
     );
 
 
@@ -1340,6 +1395,8 @@ module.exports = {
 
     buildRollCooldownExtra,
 
-    getDisplayedCooldownSeconds
+    getDisplayedCooldownSeconds,
+
+    getLiveCooldownTimestamp
 
 };
