@@ -9,11 +9,14 @@ const quests =
     require("../systems/quests");
 
 
-// Keep one immutable source of truth for !roll. Live Discord timestamps are
-// anchored to the command message's Discord timestamp instead of Date.now(),
-// preventing a bot-host clock offset from turning 30 seconds into 35 seconds.
+// Keep one immutable source of truth for !roll. The countdown is edited by
+// the bot once per second, so it never depends on Discord or device clocks.
 const ROLL_COOLDOWN_MS =
     30_000;
+
+
+const ROLL_COUNTDOWN_PATTERN =
+    /⏱️ \*\*Try again in \d+ seconds?\.\.\.\*\*/;
 
 
 // =====================================================
@@ -335,15 +338,9 @@ function buildRollGuaranteeFooter(
 
 function buildRollCooldownExtra(
     rollAccess,
-    commandCreatedTimestamp
+    remainingSeconds =
+        ROLL_SETTINGS.cooldownSeconds
 ){
-
-    const readyAt =
-        getLiveCooldownTimestamp(
-            commandCreatedTimestamp,
-            ROLL_COOLDOWN_MS
-        );
-
 
     if(
         rollAccess?.multiRoll
@@ -389,18 +386,20 @@ function buildRollCooldownExtra(
 
         return (
             multiText +
-            `\n⏱️ **Next Multi Roll:** ` +
-            `<t:${readyAt}:R> • <t:${readyAt}:T> ` +
-            `(**${ROLL_SETTINGS.cooldownSeconds}s cooldown**)`
+            "\n" +
+            buildRollCountdownLine(
+                remainingSeconds
+            )
         );
 
     }
 
 
     return (
-        `\n\n⏱️ **Next roll:** ` +
-        `<t:${readyAt}:R> • <t:${readyAt}:T> ` +
-        `(**${ROLL_SETTINGS.cooldownSeconds}s cooldown**)`
+        "\n\n" +
+        buildRollCountdownLine(
+            remainingSeconds
+        )
     );
 
 }
@@ -440,39 +439,341 @@ function getDisplayedCooldownSeconds(
 }
 
 
-function getLiveCooldownTimestamp(
-    commandCreatedTimestamp,
-    remainingMs
+function buildRollCountdownLine(
+    seconds
 ){
 
-    const createdTimestamp =
-        Number(
-            commandCreatedTimestamp
+    const safeSeconds =
+        Math.max(
+            0,
+            Math.min(
+                ROLL_SETTINGS.cooldownSeconds,
+                Math.floor(
+                    Number(
+                        seconds
+                    ) || 0
+                )
+            )
         );
 
 
-    const safeCreatedTimestamp =
-        Number.isFinite(createdTimestamp)
-        &&
-        createdTimestamp > 0
-            ? createdTimestamp
-            : Date.now();
+    const secondLabel =
+        safeSeconds === 1
+            ? "second"
+            : "seconds";
 
 
-    const remainingSeconds =
-        getDisplayedCooldownSeconds(
+    return (
+        "⏱️ **Try again in " +
+        safeSeconds +
+        " " +
+        secondLabel +
+        "...**"
+    );
+
+}
+
+
+function replaceRollCountdown(
+    content,
+    seconds
+){
+
+    return String(
+        content
+    ).replace(
+        ROLL_COUNTDOWN_PATTERN,
+        buildRollCountdownLine(
+            seconds
+        )
+    );
+
+}
+
+
+function getRollCountdownEndsAt(
+    rollAccess,
+    remainingMs
+){
+
+    const now =
+        Date.now();
+
+
+    const explicitRemaining =
+        Number(
             remainingMs
         );
 
 
-    // Start from Discord's own whole-second message timestamp. This keeps the
-    // live relative timer synchronized with Discord while also guaranteeing
-    // that the displayed duration can never begin above 30 seconds.
+    const storedRemaining =
+        Number(
+            rollAccess?.cooldownEndsAt
+        ) - now;
+
+
+    const requestedRemaining =
+        Number.isFinite(explicitRemaining)
+        &&
+        explicitRemaining >= 0
+            ? explicitRemaining
+            : (
+                Number.isFinite(storedRemaining)
+                &&
+                storedRemaining >= 0
+                    ? storedRemaining
+                    : ROLL_COOLDOWN_MS
+            );
+
+
+    const safeRemaining =
+        Math.max(
+            0,
+            Math.min(
+                ROLL_COOLDOWN_MS,
+                requestedRemaining
+            )
+        );
+
+
     return (
-        Math.floor(
-            safeCreatedTimestamp / 1000
-        ) +
-        remainingSeconds
+        now +
+        safeRemaining
+    );
+
+}
+
+
+function startRollMessageCountdown(
+    sentMessage,
+    originalContent,
+    cooldownEndsAt
+){
+
+    if(
+        !sentMessage
+        ||
+        typeof sentMessage.edit !== "function"
+        ||
+        !ROLL_COUNTDOWN_PATTERN.test(
+            String(
+                originalContent
+            )
+        )
+    ){
+
+        return null;
+
+    }
+
+
+    let lastSeconds =
+        getDisplayedCooldownSeconds(
+            cooldownEndsAt -
+            Date.now()
+        );
+
+
+    if(lastSeconds <= 0){
+
+        return null;
+
+    }
+
+
+    let editing =
+        false;
+
+
+    let timer =
+        null;
+
+
+    const stop = () => {
+
+        if(timer){
+
+            clearInterval(
+                timer
+            );
+
+            timer =
+                null;
+
+        }
+
+    };
+
+
+    const update = async() => {
+
+        if(editing){
+            return;
+        }
+
+
+        const seconds =
+            getDisplayedCooldownSeconds(
+                cooldownEndsAt -
+                Date.now()
+            );
+
+
+        if(seconds === lastSeconds){
+
+            if(seconds <= 0){
+                stop();
+            }
+
+            return;
+
+        }
+
+
+        lastSeconds =
+            seconds;
+
+
+        editing =
+            true;
+
+
+        try{
+
+            await sentMessage.edit({
+                content:
+                    replaceRollCountdown(
+                        originalContent,
+                        seconds
+                    ),
+                allowedMentions: {
+                    parse: []
+                }
+            });
+
+        }
+        catch(_error){
+
+            // Stop quietly if the result message was deleted or Discord
+            // rejects a future edit.
+            stop();
+
+        }
+        finally{
+
+            editing =
+                false;
+
+        }
+
+
+        if(seconds <= 0){
+            stop();
+        }
+
+    };
+
+
+    timer =
+        setInterval(
+            update,
+            1000
+        );
+
+
+    if(
+        typeof timer.unref ===
+        "function"
+    ){
+
+        timer.unref();
+
+    }
+
+
+    return timer;
+
+}
+
+
+async function sendMessageWithRollCountdown(
+    sendMessage,
+    content,
+    rollAccess,
+    remainingMs
+){
+
+    const cooldownEndsAt =
+        getRollCountdownEndsAt(
+            rollAccess,
+            remainingMs
+        );
+
+
+    const seconds =
+        getDisplayedCooldownSeconds(
+            cooldownEndsAt -
+            Date.now()
+        );
+
+
+    const initialContent =
+        replaceRollCountdown(
+            content,
+            seconds
+        );
+
+
+    const sentMessage =
+        await sendMessage(
+            initialContent
+        );
+
+
+    startRollMessageCountdown(
+        sentMessage,
+        initialContent,
+        cooldownEndsAt
+    );
+
+
+    return sentMessage;
+
+}
+
+
+function sendRollResultMessage(
+    message,
+    rollAccess,
+    content
+){
+
+    return sendMessageWithRollCountdown(
+        value =>
+            message.channel.send(
+                value
+            ),
+        content,
+        rollAccess
+    );
+
+}
+
+
+function sendRollCooldownReply(
+    message,
+    rollAccess,
+    content
+){
+
+    return sendMessageWithRollCountdown(
+        value =>
+            message.reply(
+                value
+            ),
+        content,
+        rollAccess,
+        rollAccess?.remaining
     );
 
 }
@@ -584,30 +885,15 @@ if(!rollAccess.allowed){
         );
 
 
-    const secondLabel =
-        seconds === 1
-            ? "second"
-            : "seconds";
-
-
-    const readyAt =
-        getLiveCooldownTimestamp(
-            message.createdTimestamp,
-            rollAccess.remaining
+    const messageText =
+        buildRollCountdownLine(
+            seconds
         );
 
 
-    const messageText =
-        (
-            rollAccess.multiRoll
-            ||
-        rollAccess.tripleRoll
-    )
-            ? `🎰 Multi Roll cooldown: **${seconds} ${secondLabel} remaining** • try again <t:${readyAt}:R> • <t:${readyAt}:T>.`
-            : `🎲 Roll cooldown: **${seconds} ${secondLabel} remaining** • try again <t:${readyAt}:R> • <t:${readyAt}:T>.`;
-
-
-    return message.reply(
+    return sendRollCooldownReply(
+        message,
+        rollAccess,
         messageText
     );
 
@@ -929,8 +1215,7 @@ const rollExtras =
     + guaranteedRollExtra
     + megaRollExtra
     + buildRollCooldownExtra(
-        rollAccess,
-        message.createdTimestamp
+        rollAccess
     );
 
 
@@ -994,7 +1279,9 @@ await syncRollLevel(
     userID
 );
 
-    return message.channel.send(
+    return sendRollResultMessage(
+        message,
+        rollAccess,
 
 `🌠 **THE UNIVERSE FALLS SILENT.**
 
@@ -1077,7 +1364,9 @@ await syncRollLevel(
     userID
 );
 
-    return message.channel.send(
+    return sendRollResultMessage(
+        message,
+        rollAccess,
 
 `✨ ${message.author} rolled **+${rolledXP.toLocaleString()} XP!**${rollExtras}
 
@@ -1136,7 +1425,9 @@ await syncRollLevel(
     userID
 );
 
-    return message.channel.send(
+    return sendRollResultMessage(
+        message,
+        rollAccess,
 
 `🌌 ${message.author} rolled **+${rolledXP.toLocaleString()} XP!**${rollExtras}
 
@@ -1197,7 +1488,9 @@ await syncRollLevel(
     userID
 );
 
-    return message.channel.send(
+    return sendRollResultMessage(
+        message,
+        rollAccess,
 
 `🌟 ${message.author} rolled **+${rolledXP.toLocaleString()} XP!**${rollExtras}
 
@@ -1266,7 +1559,9 @@ await syncRollLevel(
     userID
 );
 
-    return message.channel.send(
+    return sendRollResultMessage(
+        message,
+        rollAccess,
 
 `🎲 ${message.author} rolled **+${rolledXP.toLocaleString()} XP!**${rollExtras}
 
@@ -1332,7 +1627,9 @@ await syncRollLevel(
 );
 
 
-return message.channel.send(
+return sendRollResultMessage(
+    message,
+    rollAccess,
 
 `🎲 ${message.author} rolled **+${rolledXP.toLocaleString()} XP!**${rollExtras}
 
@@ -1367,7 +1664,9 @@ await syncRollLevel(
 
 if(rolledXP >= 0){
 
-    return message.channel.send(
+    return sendRollResultMessage(
+        message,
+        rollAccess,
 
 `🎲 ${message.author} rolled **+${rolledXP.toLocaleString()} XP! Lucky! 🍀**${rollExtras}${rollGuaranteeFooter}`
 
@@ -1376,7 +1675,9 @@ if(rolledXP >= 0){
 }
 
 
-return message.channel.send(
+return sendRollResultMessage(
+    message,
+    rollAccess,
 
 `🎲 ${message.author} rolled **${rolledXP.toLocaleString()} XP!** Better luck next time... 💀${rollExtras}${rollGuaranteeFooter}`
 
@@ -1397,6 +1698,14 @@ module.exports = {
 
     getDisplayedCooldownSeconds,
 
-    getLiveCooldownTimestamp
+    buildRollCountdownLine,
+
+    replaceRollCountdown,
+
+    getRollCountdownEndsAt,
+
+    startRollMessageCountdown,
+
+    sendMessageWithRollCountdown
 
 };
