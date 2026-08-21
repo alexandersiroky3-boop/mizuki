@@ -19,6 +19,28 @@ const ROLL_COUNTDOWN_PATTERN =
     /⏱️ \*\*Try again in \d+ seconds?\.\.\.\*\*/;
 
 
+const ROLL_READY_MESSAGE =
+    "✅ **You can roll now!**";
+
+
+const ROLL_EDIT_RETRY_DELAY_MS =
+    1000;
+
+
+const ROLL_FINAL_EDIT_RETRY_WINDOW_MS =
+    30_000;
+
+
+const PERMANENT_ROLL_EDIT_ERROR_CODES =
+    new Set([
+        10003, // Unknown Channel
+        10008, // Unknown Message
+        50001, // Missing Access
+        50013, // Missing Permissions
+        50035  // Invalid Form Body
+    ]);
+
+
 // =====================================================
 // EASY ROLL CUSTOMIZATION
 // =====================================================
@@ -544,6 +566,89 @@ function getRollCountdownEndsAt(
 }
 
 
+function isPermanentRollEditError(error){
+
+    const code =
+        Number(
+            error?.code
+            ??
+            error?.rawError?.code
+            ??
+            error?.data?.code
+        );
+
+
+    const status =
+        Number(
+            error?.status
+            ??
+            error?.statusCode
+        );
+
+
+    return (
+        PERMANENT_ROLL_EDIT_ERROR_CODES.has(
+            code
+        )
+        ||
+        status === 403
+        ||
+        status === 404
+    );
+
+}
+
+
+function getRollCountdownScheduleDelay(
+    cooldownEndsAt,
+    now = Date.now()
+){
+
+    const remaining =
+        Number(cooldownEndsAt) -
+        Number(now);
+
+
+    if(
+        !Number.isFinite(remaining)
+        ||
+        remaining <= 0
+    ){
+
+        return 0;
+
+    }
+
+
+    const seconds =
+        Math.ceil(
+            remaining / 1000
+        );
+
+
+    const untilNextSecond =
+        remaining -
+        (
+            seconds - 1
+        ) * 1000;
+
+
+    // Run just after the next displayed-second boundary. Every later delay is
+    // recalculated from the absolute deadline, so lag makes the display jump
+    // to the correct number instead of permanently slowing the countdown.
+    return Math.max(
+        25,
+        Math.min(
+            1100,
+            Math.ceil(
+                untilNextSecond
+            ) + 25
+        )
+    );
+
+}
+
+
 function startRollMessageCountdown(
     sentMessage,
     originalContent,
@@ -567,33 +672,30 @@ function startRollMessageCountdown(
     }
 
 
-    let lastSeconds =
+    let lastRenderedState =
         getDisplayedCooldownSeconds(
             cooldownEndsAt -
             Date.now()
         );
 
 
-    if(lastSeconds <= 0){
-
-        return null;
-
-    }
-
-
-    let editing =
-        false;
-
-
     let timer =
         null;
 
 
+    let stopped =
+        false;
+
+
     const stop = () => {
+
+        stopped =
+            true;
+
 
         if(timer){
 
-            clearInterval(
+            clearTimeout(
                 timer
             );
 
@@ -605,93 +707,168 @@ function startRollMessageCountdown(
     };
 
 
-    const update = async() => {
+    let update;
 
-        if(editing){
+
+    const schedule = delay => {
+
+        if(stopped){
             return;
         }
+
+
+        if(timer){
+
+            clearTimeout(
+                timer
+            );
+
+        }
+
+
+        timer =
+            setTimeout(
+                update,
+                Math.max(
+                    0,
+                    Number(delay) || 0
+                )
+            );
+
+
+        if(
+            typeof timer.unref ===
+            "function"
+        ){
+
+            timer.unref();
+
+        }
+
+    };
+
+
+    update = async() => {
+
+        timer =
+            null;
+
+
+        if(stopped){
+            return;
+        }
+
+
+        const now =
+            Date.now();
 
 
         const seconds =
             getDisplayedCooldownSeconds(
                 cooldownEndsAt -
-                Date.now()
+                now
             );
 
 
-        if(seconds === lastSeconds){
+        const ready =
+            seconds <= 0;
 
-            if(seconds <= 0){
-                stop();
-            }
+
+        const nextState =
+            ready
+                ? "ready"
+                : seconds;
+
+
+        if(nextState === lastRenderedState){
+
+            schedule(
+                getRollCountdownScheduleDelay(
+                    cooldownEndsAt,
+                    now
+                )
+            );
 
             return;
 
         }
-
-
-        lastSeconds =
-            seconds;
-
-
-        editing =
-            true;
 
 
         try{
 
             await sentMessage.edit({
                 content:
-                    replaceRollCountdown(
-                        originalContent,
-                        seconds
-                    ),
+                    ready
+                        ? ROLL_READY_MESSAGE
+                        : replaceRollCountdown(
+                            originalContent,
+                            seconds
+                        ),
                 allowedMentions: {
                     parse: []
                 }
             });
 
+
+            lastRenderedState =
+                nextState;
+
+
+            if(ready){
+
+                stop();
+                return;
+
+            }
+
         }
-        catch(_error){
+        catch(error){
 
-            // Stop quietly if the result message was deleted or Discord
-            // rejects a future edit.
-            stop();
+            if(
+                isPermanentRollEditError(
+                    error
+                )
+                ||
+                Date.now() >
+                    cooldownEndsAt +
+                    ROLL_FINAL_EDIT_RETRY_WINDOW_MS
+            ){
 
+                stop();
+                return;
+
+            }
+
+
+            // Rate limits, temporary Discord failures, and network hiccups
+            // retry instead of permanently freezing the countdown.
+            schedule(
+                ROLL_EDIT_RETRY_DELAY_MS
+            );
+
+            return;
         }
-        finally{
-
-            editing =
-                false;
-
-        }
 
 
-        if(seconds <= 0){
-            stop();
-        }
+        schedule(
+            getRollCountdownScheduleDelay(
+                cooldownEndsAt
+            )
+        );
 
     };
 
 
-    timer =
-        setInterval(
-            update,
-            1000
-        );
+    schedule(
+        getRollCountdownScheduleDelay(
+            cooldownEndsAt
+        )
+    );
 
 
-    if(
-        typeof timer.unref ===
-        "function"
-    ){
-
-        timer.unref();
-
-    }
-
-
-    return timer;
+    return {
+        stop
+    };
 
 }
 
@@ -1704,8 +1881,14 @@ module.exports = {
 
     getRollCountdownEndsAt,
 
+    isPermanentRollEditError,
+
+    getRollCountdownScheduleDelay,
+
     startRollMessageCountdown,
 
-    sendMessageWithRollCountdown
+    sendMessageWithRollCountdown,
+
+    ROLL_READY_MESSAGE
 
 };
