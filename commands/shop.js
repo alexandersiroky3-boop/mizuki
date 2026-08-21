@@ -342,7 +342,12 @@ function createMerchantButtons(
                             `merchant_buy:${merchant.cycleID}:${deal.id}`
                         )
                         .setLabel(
-                            `Deal ${deal.displayOrder} - Stock ${deal.amount}/${deal.maxAmount}`
+                            `#${deal.displayOrder} • ${deal.name} • ` +
+                            (
+                                soldOut
+                                    ? "SOLD OUT"
+                                    : `${deal.amount}/${deal.maxAmount}`
+                            )
                         )
                         .setStyle(
                             soldOut
@@ -591,25 +596,22 @@ async function buildMerchantShopPanel(
 
         embed
             .setDescription(
+                "💡 **Left = you pay • Right = you receive**\n" +
                 "Select a numbered deal below. Stock is global, and each successful purchase uses one stock. Each visit lasts **1 hour**; his offers and stock rotate every **30 minutes**."
             )
             .addFields(
                 ...merchant.deals.map(deal => ({
                     name:
-                        `#${deal.displayOrder} • ${deal.name} • ` +
-                        (
-                            Number(deal.amount) > 0
-                                ? `Stock ${deal.amount}/${deal.maxAmount}`
-                                : "SOLD OUT"
+                        merchantCommand.formatDealTitle(
+                            deal
                         ),
                     value:
-                        "**You receive:** " +
-                        merchantCommand.formatSide(
-                            deal.reward
+                        merchantCommand.formatDealTrade(
+                            deal
                         ) +
-                        "\n**You pay:** " +
-                        merchantCommand.formatSide(
-                            deal.cost
+                        "\n" +
+                        merchantCommand.formatDealStock(
+                            deal
                         ),
                     inline: false
                 })),
