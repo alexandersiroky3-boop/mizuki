@@ -213,6 +213,22 @@ function formatSide(side){
     const parts = [];
 
 
+    for(
+        const boost of
+        Array.isArray(side?.boosts)
+            ? side.boosts
+            : []
+    ){
+
+        parts.push(
+            formatBoost(
+                boost
+            )
+        );
+
+    }
+
+
     if(
         Number(
             side?.xp || 0
@@ -225,22 +241,6 @@ function formatSide(side){
                 side.xp
             ) +
             " XP**"
-        );
-
-    }
-
-
-    for(
-        const boost of
-        Array.isArray(side?.boosts)
-            ? side.boosts
-            : []
-    ){
-
-        parts.push(
-            formatBoost(
-                boost
-            )
         );
 
     }
@@ -270,6 +270,84 @@ function formatSide(side){
 }
 
 
+function formatDealTitle(deal){
+
+    return (
+        "━━━━ DEAL #" +
+        formatNumber(
+            deal.displayOrder
+        ) +
+        " • " +
+        deal.name +
+        " ━━━━"
+    );
+
+}
+
+
+function formatDealTrade(deal){
+
+    return (
+        "💱 " +
+        formatSide(
+            deal.cost
+        ) +
+        "  **➔**  " +
+        formatSide(
+            deal.reward
+        )
+    );
+
+}
+
+
+function formatDealStock(deal){
+
+    if(
+        Number(
+            deal.amount
+        ) <= 0
+    ){
+
+        return "└─ ⛔ **SOLD OUT**";
+
+    }
+
+
+    return (
+        "└─ 📦 Stock: **" +
+        formatNumber(
+            deal.amount
+        ) +
+        "/" +
+        formatNumber(
+            deal.maxAmount
+        ) +
+        " remaining**"
+    );
+
+}
+
+
+function formatDealBlock(deal){
+
+    return (
+        formatDealTitle(
+            deal
+        ) +
+        "\n" +
+        formatDealTrade(
+            deal
+        ) +
+        "\n" +
+        formatDealStock(
+            deal
+        )
+    );
+
+}
+
+
 function buildMerchantPanel(merchant){
 
     const leavesAt =
@@ -289,41 +367,9 @@ function buildMerchantPanel(merchant){
 
 
     const dealLines =
-        merchant.deals.map(deal => {
-
-            const soldOut =
-                Number(deal.amount) <= 0;
-
-
-            return (
-                "**" +
-                deal.displayOrder +
-                " • " +
-                deal.name +
-                "**\n" +
-                "You receive: " +
-                formatSide(deal.reward) +
-                "\nYou pay: " +
-                formatSide(deal.cost) +
-                "\n" +
-                (
-                    soldOut
-                        ? "Stock: **SOLD OUT**"
-                        : (
-                            "Global stock: **" +
-                            formatNumber(
-                                deal.amount
-                            ) +
-                            "/" +
-                            formatNumber(
-                                deal.maxAmount
-                            ) +
-                            "**"
-                        )
-                )
-            );
-
-        });
+        merchant.deals.map(
+            formatDealBlock
+        );
 
 
     return (
@@ -336,6 +382,7 @@ function buildMerchantPanel(merchant){
         "Exact leave time: <t:" +
         leavesAt +
         ":T>.\n" +
+        "💡 **Left = you pay • Right = you receive**\n" +
         "Stock is shared by everyone, and one successful purchase uses one stock.\n\n" +
         dealLines.join("\n\n") +
         "\n\nOpen **!shop** to use the deal buttons, or buy with **!merchant buy <deal number>**."
@@ -808,6 +855,14 @@ module.exports = {
 
     formatSide,
 
-    formatPerk
+    formatPerk,
+
+    formatDealTitle,
+
+    formatDealTrade,
+
+    formatDealStock,
+
+    formatDealBlock
 
 };
