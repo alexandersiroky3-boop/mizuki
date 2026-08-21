@@ -9,6 +9,14 @@ const quests =
     require("../systems/quests");
 
 
+// Keep one immutable source of truth for !roll. Discord relative timestamps
+// use the viewer's device clock and can make a real 30-second cooldown appear
+// as 35 seconds, so sub-minute cooldown messages are rendered from this value
+// directly instead.
+const ROLL_COOLDOWN_MS =
+    30_000;
+
+
 // =====================================================
 // EASY ROLL CUSTOMIZATION
 // =====================================================
@@ -30,7 +38,7 @@ const quests =
 const ROLL_SETTINGS = {
 
     cooldownSeconds:
-        30,
+        ROLL_COOLDOWN_MS / 1000,
 
     // Chance to find XP Boost MAX from !roll.
     xpMaxBoostDropPercent: {
@@ -283,11 +291,6 @@ for(
 }
 
 
-const ROLL_COOLDOWN =
-    ROLL_SETTINGS.cooldownSeconds *
-    1000;
-
-
 const ROLL_GUARANTEE_THRESHOLD =
     100;
 
@@ -335,21 +338,6 @@ function buildRollCooldownExtra(
     rollAccess
 ){
 
-    const cooldownEndsAt =
-        Number(
-            rollAccess?.cooldownEndsAt
-        ) || (
-            Date.now() +
-            ROLL_COOLDOWN
-        );
-
-
-    const readyAt =
-        Math.floor(
-            cooldownEndsAt / 1000
-        );
-
-
     if(
         rollAccess?.multiRoll
         ||
@@ -384,7 +372,7 @@ function buildRollCooldownExtra(
 
 
         // Only the final automatic roll needs to repeat the
-        // cooldown timestamp.
+        // cooldown reminder.
         if(!rollAccess?.showCooldown){
 
             return multiText;
@@ -394,16 +382,50 @@ function buildRollCooldownExtra(
 
         return (
             multiText +
-            `\n⏱️ **Next Multi Roll (30s cooldown):** ` +
-            `<t:${readyAt}:R> • <t:${readyAt}:T>`
+            `\n⏱️ **Next Multi Roll:** fixed ` +
+            `**${ROLL_SETTINGS.cooldownSeconds}-second cooldown**.`
         );
 
     }
 
 
     return (
-        `\n\n⏱️ **Next roll:** ` +
-        `<t:${readyAt}:R> • <t:${readyAt}:T>`
+        `\n\n⏱️ **Next roll:** fixed ` +
+        `**${ROLL_SETTINGS.cooldownSeconds}-second cooldown**.`
+    );
+
+}
+
+
+function getDisplayedCooldownSeconds(
+    remainingMs
+){
+
+    const remaining =
+        Number(
+            remainingMs
+        );
+
+
+    if(
+        !Number.isFinite(remaining)
+        ||
+        remaining <= 0
+    ){
+
+        return 0;
+
+    }
+
+
+    return Math.min(
+        ROLL_SETTINGS.cooldownSeconds,
+        Math.max(
+            1,
+            Math.ceil(
+                remaining / 1000
+            )
+        )
     );
 
 }
@@ -488,7 +510,7 @@ async function execute(message, options = {}){
     // Luck changes the roll odds, never the wait between rolls.
     // Every normal or Multi Roll batch uses exactly 30 seconds.
     const currentRollCooldown =
-        ROLL_COOLDOWN;
+        ROLL_COOLDOWN_MS;
 
 
 
@@ -510,18 +532,15 @@ if(!rollAccess.allowed){
 
 
     const seconds =
-        Math.ceil(
-            rollAccess.remaining / 1000
+        getDisplayedCooldownSeconds(
+            rollAccess.remaining
         );
 
 
-    const readyAt =
-        Math.floor(
-            (
-                Date.now() +
-                rollAccess.remaining
-            ) / 1000
-        );
+    const secondLabel =
+        seconds === 1
+            ? "second"
+            : "seconds";
 
 
     const messageText =
@@ -530,8 +549,8 @@ if(!rollAccess.allowed){
             ||
         rollAccess.tripleRoll
     )
-            ? `🎰 Your Multi Roll has a 30-second cooldown. Try again <t:${readyAt}:R> • <t:${readyAt}:T>.`
-            : `🎲 You can roll again <t:${readyAt}:R> • <t:${readyAt}:T>.`;
+            ? `🎰 Multi Roll cooldown: **${seconds} ${secondLabel} remaining** (fixed 30-second maximum).`
+            : `🎲 Roll cooldown: **${seconds} ${secondLabel} remaining** (fixed 30-second maximum).`;
 
 
     return message.reply(
@@ -1315,6 +1334,12 @@ return message.channel.send(
 
 module.exports = {
 
-    execute
+    execute,
+
+    ROLL_COOLDOWN_MS,
+
+    buildRollCooldownExtra,
+
+    getDisplayedCooldownSeconds
 
 };
