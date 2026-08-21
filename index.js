@@ -558,6 +558,44 @@ client.on(
         }
 
 
+        let bannedRoleProtection;
+
+        try{
+
+            bannedRoleProtection =
+                await moderation.handleBannedRoleProtection(
+                    oldMember,
+                    newMember
+                );
+
+        }
+        catch(error){
+
+            console.error(
+                "Banned-role protection failed:",
+                error
+            );
+
+
+            // Do not let other automatic role systems act on a member while
+            // a protected Banned-role change could not be verified/reverted.
+            return;
+
+        }
+
+
+        if(bannedRoleProtection.reverted){
+            return;
+        }
+
+
+        // A banned member is intentionally excluded from every other role
+        // repair system until !unban or automatic expiry removes Banned.
+        if(newMember.roles.cache.has(moderation.BANNED_ROLE_ID)){
+            return;
+        }
+
+
         await levelRoles.handleProtectedRoleUpdate(
             oldMember,
             newMember
@@ -569,13 +607,6 @@ client.on(
             );
 
         });
-
-
-        // A temporarily banned member must keep only the Banned role;
-        // automatic XP/Luck boost role repair resumes after unban.
-        if(newMember.roles.cache.has(moderation.BANNED_ROLE_ID)){
-            return;
-        }
 
 
         await boosts.checkBoostRole(
@@ -1169,7 +1200,7 @@ if(result.critical){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
 
         ).catch(() => {});
 
@@ -1198,7 +1229,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
 
     ).catch(() => {});
 
