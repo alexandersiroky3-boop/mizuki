@@ -100,8 +100,7 @@ function buildXPInventoryLines(inventory){
 
 
         return (
-            `• <@&${profile.roleID}> — **x${amount.toLocaleString()}** ` +
-            `• **x${profile.multiplier} XP** • **+${profile.criticalChanceBonus}% crit**`
+            `• <@&${profile.roleID}> — **x${amount.toLocaleString()}**`
         );
 
     });
@@ -126,8 +125,7 @@ function buildLuckInventoryLines(inventory){
 
 
         return (
-            `• <@&${profile.roleID}> — **x${amount.toLocaleString()}** ` +
-            `• **x${profile.multiplier} luck**`
+            `• <@&${profile.roleID}> — **x${amount.toLocaleString()}**`
         );
 
     });
