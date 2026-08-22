@@ -86,6 +86,10 @@ const permabanCommand = require("./commands/permaban");
 const sendStaffRulesMSGCommand = require("./commands/sendstaffrulesmsg");
 
 
+const CRITICAL_50_PLUS_PREFIX =
+    ". ݁⋆✶ ˗ˏˋ 🐦‍🔥🔥💥 ˎˊ˗  ࣪ ✶⋆ ˖ ";
+
+
 // =====================================================
 // WELCOME + PRIVATE SERVER LOCK
 // =====================================================
@@ -1234,8 +1238,21 @@ if(result.critical){
 
     if(!criticalMessagesMuted){
 
-    // Critical streaks 20+.
-    if(result.criticalStreak >= 20){
+    // Critical streaks 50+ use the special 20x announcement.
+    if(result.criticalStreak >= 50){
+
+        message.reply(
+
+            `${CRITICAL_50_PLUS_PREFIX}**${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!**`
+
+        ).catch(() => {});
+
+    }
+
+
+
+    // Critical streaks 20-49.
+    else if(result.criticalStreak >= 20){
 
         message.reply(
 
@@ -1362,7 +1379,12 @@ let prefix = "";
 
 if(result.critical){
 
-    if(result.criticalStreak >= 20){
+    if(result.criticalStreak >= 50){
+
+        prefix = CRITICAL_50_PLUS_PREFIX;
+
+    }
+    else if(result.criticalStreak >= 20){
 
         prefix = "🧊🥶 ";
 
