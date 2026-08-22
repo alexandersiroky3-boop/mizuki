@@ -3,7 +3,6 @@ const {
     ButtonBuilder,
     ButtonStyle,
     ComponentType,
-    EmbedBuilder,
     MessageFlags
 } = require("discord.js");
 
@@ -16,21 +15,10 @@ const PANEL_DURATION_MS =
     2 * 60 * 1000;
 
 
-const EMBED_COLORS = {
-    default:
-        0x7C5CFC,
-    success:
-        0x57F287,
-    expired:
-        0x747F8D
-};
-
-
-const XP_TIER_ORDER =
+const XP_TIERS =
     [
         "tier1",
         "tier2",
-        "tier3",
         "max",
         "infinity"
     ];
@@ -44,20 +32,6 @@ const LUCK_TIERS =
         "max",
         "omega"
     ];
-
-
-// Only render tiers that the installed boost system actually supports.
-// This prevents !boost from crashing when tiers are added, removed, or
-// renamed in systems/boosts.js.
-function getAvailableXPTiers(){
-
-    return XP_TIER_ORDER.filter(
-        tier => Boolean(
-            boosts.BOOST_PROFILES?.[tier]
-        )
-    );
-
-}
 
 
 function inventoryMap(rows){
@@ -111,7 +85,7 @@ function formatActiveBoost(profile){
 
 function buildXPInventoryLines(inventory){
 
-    return getAvailableXPTiers().map(tier => {
+    return XP_TIERS.map(tier => {
 
         const profile =
             boosts.BOOST_PROFILES[tier];
@@ -126,7 +100,8 @@ function buildXPInventoryLines(inventory){
 
 
         return (
-            `<@&${profile.roleID}>　**×${amount.toLocaleString()}**`
+            `• <@&${profile.roleID}> — **x${amount.toLocaleString()}** ` +
+            `• **x${profile.multiplier} XP** • **+${profile.criticalChanceBonus}% crit**`
         );
 
     });
@@ -151,7 +126,8 @@ function buildLuckInventoryLines(inventory){
 
 
         return (
-            `<@&${profile.roleID}>　**×${amount.toLocaleString()}**`
+            `• <@&${profile.roleID}> — **x${amount.toLocaleString()}** ` +
+            `• **x${profile.multiplier} luck**`
         );
 
     });
@@ -164,18 +140,11 @@ function buildButtons(
     disabled = false
 ){
 
-    const rows = [];
-
-
     const xpRow =
         new ActionRowBuilder();
 
 
-    const availableXPTiers =
-        getAvailableXPTiers();
-
-
-    for(const tier of availableXPTiers){
+    for(const tier of XP_TIERS){
 
         const profile =
             boosts.BOOST_PROFILES[tier];
@@ -207,11 +176,6 @@ function buildButtons(
                 )
         );
 
-    }
-
-
-    if(availableXPTiers.length > 0){
-        rows.push(xpRow);
     }
 
 
@@ -254,12 +218,10 @@ function buildButtons(
     }
 
 
-    if(LUCK_TIERS.length > 0){
-        rows.push(luckRow);
-    }
-
-
-    return rows;
+    return [
+        xpRow,
+        luckRow
+    ];
 
 }
 
@@ -297,127 +259,21 @@ async function buildBoostPanel(
         inventoryMap(rows);
 
 
-    const displayName =
-        member.displayName
-        || member.user?.globalName
-        || member.user?.username
-        || "Player";
-
-
-    const avatarURL =
-        typeof member.displayAvatarURL === "function"
-            ? member.displayAvatarURL({
-                size: 128
-            })
-            : typeof member.user?.displayAvatarURL === "function"
-                ? member.user.displayAvatarURL({
-                    size: 128
-                })
-                : null;
-
-
-    const author = {
-        name:
-            `${displayName}'s inventory`
-    };
-
-
-    if(avatarURL){
-        author.iconURL = avatarURL;
-    }
-
-
-    const description = [
-        disabled
-            ? "⏳ This panel has expired. Run `!boost` to open a new one."
-            : "Choose a stored boost below to activate it.",
-        notice || ""
-    ]
-        .filter(Boolean)
-        .join("\n\n");
-
-
-    const embed =
-        new EmbedBuilder()
-            .setColor(
-                disabled
-                    ? EMBED_COLORS.expired
-                    : notice
-                        ? EMBED_COLORS.success
-                        : EMBED_COLORS.default
-            )
-            .setAuthor(
-                author
-            )
-            .setTitle(
-                "⚡ Boost Inventory"
-            )
-            .setDescription(
-                description
-            )
-            .addFields(
-                {
-                    name:
-                        "⚡ Active XP",
-                    value:
-                        formatActiveBoost(
-                            activeXP
-                        ),
-                    inline:
-                        true
-                },
-                {
-                    name:
-                        "🍀 Active Luck",
-                    value:
-                        formatActiveBoost(
-                            activeLuck
-                        ),
-                    inline:
-                        true
-                },
-                {
-                    name:
-                        "💬 Hourly XP",
-                    value:
-                        `**${Number(hourlyXP || 0).toLocaleString()}**`,
-                    inline:
-                        true
-                },
-                {
-                    name:
-                        "⚔️ XP Boosts",
-                    value:
-                        buildXPInventoryLines(
-                            inventory
-                        ).join("\n")
-                        || "No XP Boost tiers are currently available.",
-                    inline:
-                        true
-                },
-                {
-                    name:
-                        "🌿 Luck Boosts",
-                    value:
-                        buildLuckInventoryLines(
-                            inventory
-                        ).join("\n"),
-                    inline:
-                        true
-                }
-            )
-            .setFooter({
-                text:
-                    disabled
-                        ? "Buttons disabled • Your inventory is safe"
-                        : "Only you can use these buttons • Expires in 2 minutes"
-            });
+    const content =
+        "## ⚡ Boost Inventory\n" +
+        `**Hourly chat XP:** ${Number(hourlyXP).toLocaleString()} *(tracking only)*\n` +
+        `**Active XP Boost:** ${formatActiveBoost(activeXP)}\n` +
+        `**Active Luck Boost:** ${formatActiveBoost(activeLuck)}\n\n` +
+        "### XP Boosts\n" +
+        `${buildXPInventoryLines(inventory).join("\n")}\n\n` +
+        "### Luck Boosts\n" +
+        `${buildLuckInventoryLines(inventory).join("\n")}` +
+        (notice ? `\n\n${notice}` : "") +
+        (disabled ? "\n\n*Run `!boost` again to activate another boost.*" : "");
 
 
     return {
-        embeds: [
-            embed
-        ],
+        content,
         components:
             buildButtons(
                 inventory,
