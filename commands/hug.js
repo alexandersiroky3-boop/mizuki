@@ -198,7 +198,8 @@ async function execute(message, options = {}){
             repeatTarget.id !== userID
                 ? await quests.getSocialCommandRepeatCount(
                     guildID,
-                    userID
+                    userID,
+                    "hug"
                 )
                 : 1;
 
@@ -225,9 +226,17 @@ async function execute(message, options = {}){
             }
 
 
+            const appliedRepeatCount =
+                await quests.consumeSocialCommandRepeat(
+                    guildID,
+                    userID,
+                    "hug"
+                );
+
+
             for(
                 let repeatIndex = 0;
-                repeatIndex < repeatCount;
+                repeatIndex < appliedRepeatCount;
                 repeatIndex++
             ){
 
