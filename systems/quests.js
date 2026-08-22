@@ -36,7 +36,14 @@ const ELITE_REWARD_LEVEL =
 
 
 const QUEST_RULESET_VERSION =
-    9;
+    10;
+
+
+// Stored on every newly generated weekly reward. Active, unclaimed weekly
+// cycles from older builds are rerolled once so users see the new economy
+// immediately without losing any quest progress.
+const WEEKLY_REWARD_RULESET_VERSION =
+    2;
 
 
 // Daily-only Luck Boost MAX quantities. Weekly Luck MAX rewards keep their
@@ -874,9 +881,9 @@ function generateWeeklyRewardsHigh(){
             type: "xp",
             amount:
                 randomChoice([
+                    7500000,
                     15000000,
-                    30000000,
-                    50000000
+                    25000000
                 ]),
             levelBand: "high"
         }
@@ -891,7 +898,7 @@ function generateWeeklyRewardsHigh(){
                 boostType: "luck",
                 tier: "max",
                 amount:
-                    randomChoice([2, 5]),
+                    randomChoice([2, 3]),
                 levelBand: "high"
             },
 
@@ -900,21 +907,69 @@ function generateWeeklyRewardsHigh(){
                 boostType: "luck",
                 tier: "tier3",
                 amount:
-                    randomChoice([10, 20]),
+                    randomChoice([3, 5, 8]),
                 levelBand: "high"
             },
 
             {
-                type: "guaranteed_roll",
-                rollType: "impossible",
+                type: "multi_roll",
+                rollCount: 3,
+                durationMs:
+                    24 * 60 * 60 * 1000,
+                levelBand: "high"
+            },
+
+            {
+                type: "chat_xp_multiplier",
+                multiplier:
+                    randomChoice([2, 3]),
+                durationMs:
+                    24 * 60 * 60 * 1000,
+                levelBand: "high"
+            },
+
+            {
+                type: "boost",
+                boostType: "xp",
+                tier: "tier2",
+                amount:
+                    randomChoice([3, 5, 7]),
+                levelBand: "high"
+            },
+
+            {
+                type: "boost",
+                boostType: "xp",
+                tier: "max",
+                amount:
+                    randomChoice([2, 3]),
+                levelBand: "high"
+            },
+
+            {
+                type: "shop_discount",
+                discountPercent: 30,
+                durationMs:
+                    24 * 60 * 60 * 1000,
+                levelBand: "high"
+            },
+
+            {
+                type: "guaranteed_roll_minimum",
+                minXP:
+                    randomChoice([
+                        500000,
+                        1000000,
+                        2500000
+                    ]),
                 amount: 1,
                 levelBand: "high"
             },
 
             {
-                type: "triple_roll",
-                durationMs:
-                    24 * 60 * 60 * 1000,
+                type: "next_hug_triple",
+                repeatCount: 3,
+                amount: 1,
                 levelBand: "high"
             }
 
@@ -932,7 +987,13 @@ function generateWeeklyRewardsHigh(){
     );
 
 
-    return rewards;
+    return rewards.map(
+        reward => ({
+            ...reward,
+            weeklyRewardRulesetVersion:
+                WEEKLY_REWARD_RULESET_VERSION
+        })
+    );
 
 }
 
@@ -948,9 +1009,9 @@ function generateWeeklyRewardsElite(){
             type: "xp",
             amount:
                 randomChoice([
-                    30000000,
-                    45000000,
-                    67676767
+                    25000000,
+                    35000000,
+                    40000000
                 ]),
             levelBand
         }
@@ -972,7 +1033,7 @@ function generateWeeklyRewardsElite(){
             {
                 rollCount: 9,
                 durationMs:
-                    48 * 60 * 60 * 1000
+                    24 * 60 * 60 * 1000
             }
         ]);
 
@@ -993,7 +1054,7 @@ function generateWeeklyRewardsElite(){
                 boostType: "luck",
                 tier: "max",
                 amount:
-                    randomChoice([5, 10, 12]),
+                    randomChoice([4, 5, 7, 10]),
                 levelBand
             },
 
@@ -1001,9 +1062,9 @@ function generateWeeklyRewardsElite(){
                 type: "guaranteed_roll_minimum",
                 minXP:
                     randomChoice([
-                        10000000,
-                        15000000,
-                        25000000
+                        5000000,
+                        7500000,
+                        12500000
                     ]),
                 amount: 1,
                 levelBand
@@ -1020,17 +1081,34 @@ function generateWeeklyRewardsElite(){
 
             {
                 type: "chat_xp_multiplier",
-                multiplier: 10,
+                multiplier:
+                    randomChoice([5, 7, 10]),
                 durationMs:
-                    24 * 60 * 60 * 1000,
+                    randomChoice([
+                        12 * 60 * 60 * 1000,
+                        24 * 60 * 60 * 1000
+                    ]),
                 levelBand
             },
 
             {
                 type: "shop_discount",
-                discountPercent: 90,
+                discountPercent:
+                    randomChoice([50, 60, 75]),
                 durationMs:
-                    24 * 60 * 60 * 1000,
+                    randomChoice([
+                        24 * 60 * 60 * 1000,
+                        48 * 60 * 60 * 1000
+                    ]),
+                levelBand
+            },
+
+            {
+                type: "boost",
+                boostType: "xp",
+                tier: "max",
+                amount:
+                    randomChoice([6, 9, 12, 15]),
                 levelBand
             },
 
@@ -1080,7 +1158,13 @@ function generateWeeklyRewardsElite(){
     }
 
 
-    return rewards;
+    return rewards.map(
+        reward => ({
+            ...reward,
+            weeklyRewardRulesetVersion:
+                WEEKLY_REWARD_RULESET_VERSION
+        })
+    );
 
 }
 
@@ -1933,203 +2017,52 @@ function migrateWeeklyRewards(
                 String(
                     reward.levelBand || ""
                 ).toLowerCase() === "elite"
-        )
+        );
+
+
+    const allHigh =
+        currentRewards.length > 0
         &&
-        currentRewards.length >= 4
+        currentRewards.every(
+            reward =>
+                String(
+                    reward.levelBand || ""
+                ).toLowerCase() === "high"
+        );
+
+
+    const currentRewardRuleset =
+        currentRewards.length > 0
         &&
-        currentRewards.length <= 7;
+        currentRewards.every(
+            reward =>
+                Number(
+                    reward.weeklyRewardRulesetVersion
+                ) ===
+                WEEKLY_REWARD_RULESET_VERSION
+        );
 
 
     if(eliteLevel){
 
-        return allElite
-            ? currentRewards.map(
-                reward => {
-
-                    const migrated = {
-                        ...reward
-                    };
-
-
-                    // Nerf active, unclaimed elite weekly Luck MAX rewards
-                    // from the removed 7x value to the new 5x value.
-                    if(
-                        migrated.type === "boost"
-                        &&
-                        String(
-                            migrated.boostType || ""
-                        ).toLowerCase() === "luck"
-                        &&
-                        String(
-                            migrated.tier || ""
-                        ).toLowerCase() === "max"
-                        &&
-                        Number(migrated.amount) === 7
-                    ){
-
-                        migrated.amount = 5;
-
-                    }
-
-
-                    return migrated;
-
-                }
-            )
+        return (
+            allElite
+            &&
+            currentRewardRuleset
+        )
+            ? currentRewards
             : generateWeeklyRewardsElite();
 
     }
 
 
-    if(
-        currentRewards.some(
-            reward =>
-                String(
-                    reward.levelBand || ""
-                ).toLowerCase() === "elite"
-        )
-    ){
-
-        return generateWeeklyRewardsHigh();
-
-    }
-
-
-    return currentRewards.map(
-        reward => {
-
-            const migrated = {
-                ...reward
-            };
-
-
-            // -----------------------------
-            // WEEKLY XP
-            // -----------------------------
-            if(migrated.type === "xp"){
-
-                const amount =
-                    Math.max(
-                        0,
-                        Number(migrated.amount) || 0
-                    );
-
-
-                // Old weekly XP difficulty:
-                // 2m / 5m / 10m
-                //
-                // New weekly XP difficulty:
-                // 15m / 30m / 50m
-                if(amount <= 2000000){
-
-                    migrated.amount =
-                        15000000;
-
-                }
-                else if(amount <= 5000000){
-
-                    migrated.amount =
-                        30000000;
-
-                }
-                else if(
-                    ![
-                        15000000,
-                        30000000,
-                        50000000
-                    ].includes(amount)
-                ){
-
-                    migrated.amount =
-                        50000000;
-
-                }
-
-            }
-
-
-            // -----------------------------
-            // WEEKLY BOOSTS
-            // -----------------------------
-            else if(migrated.type === "boost"){
-
-                const boostType =
-                    String(
-                        migrated.boostType || ""
-                    ).toLowerCase();
-
-
-                const tier =
-                    String(
-                        migrated.tier || ""
-                    ).toLowerCase();
-
-
-                const amount =
-                    Math.max(
-                        0,
-                        Number(migrated.amount) || 0
-                    );
-
-
-                // Luck/XP MAX:
-                // old 2 / 3 / 5
-                // new 2 / 5
-                if(
-                    (
-                        boostType === "luck"
-                        ||
-                        boostType === "xp"
-                    )
-                    &&
-                    tier === "max"
-                ){
-
-                    migrated.amount =
-                        amount <= 2
-                            ? 2
-                            : 5;
-
-                }
-
-
-                // Luck/XP III:
-                // old 5 / 10
-                // new 10 / 20
-                else if(
-                    (
-                        boostType === "luck"
-                        ||
-                        boostType === "xp"
-                    )
-                    &&
-                    tier === "tier3"
-                ){
-
-                    migrated.amount =
-                        amount <= 5
-                            ? 10
-                            : 20;
-
-                }
-
-            }
-
-
-            // IMPORTANT:
-            // guaranteed_roll:impossible stays unchanged.
-            // triple_roll stays unchanged.
-            // Any other reward type stays unchanged.
-
-
-            migrated.levelBand =
-                "high";
-
-
-            return migrated;
-
-        }
-    );
+    return (
+        allHigh
+        &&
+        currentRewardRuleset
+    )
+        ? currentRewards
+        : generateWeeklyRewardsHigh();
 
 }
 
@@ -2156,18 +2089,50 @@ function removeRetiredXPBoostQuestRewards(
             }
 
 
-            // The sole quest-based XP Boost supply is one Infinity item from
-            // the independent 5% Level 150+ weekly reward roll.
-            return (
-                String(cycleType).toLowerCase() === "weekly"
-                &&
-                isEliteRewardLevel(level)
-                &&
+            if(
+                String(cycleType).toLowerCase() !== "weekly"
+            ){
+                return false;
+            }
+
+
+            const tier =
                 String(
                     reward.tier || ""
-                ).toLowerCase() === "infinity"
+                ).toLowerCase();
+
+
+            const amount =
+                Number(reward.amount);
+
+
+            if(isEliteRewardLevel(level)){
+
+                return (
+                    tier === "infinity"
+                    &&
+                    amount === 1
+                )
+                ||
+                (
+                    tier === "max"
+                    &&
+                    [6, 9, 12, 15].includes(amount)
+                );
+
+            }
+
+
+            return (
+                tier === "tier2"
                 &&
-                Number(reward.amount) === 1
+                [3, 5, 7].includes(amount)
+            )
+            ||
+            (
+                tier === "max"
+                &&
+                [2, 3].includes(amount)
             );
 
         }
@@ -3220,6 +3185,16 @@ function formatReward(reward){
     }
 
 
+    if(reward.type === "next_hug_triple"){
+
+        return (
+            "Your next valid `!hug` performs " +
+            `**${Number(reward.repeatCount) || 3} hugs at once**`
+        );
+
+    }
+
+
     return "Unknown reward";
 
 }
@@ -3633,12 +3608,29 @@ async function consumeGuaranteedCritical(
 
 async function getSocialCommandRepeatCount(
     guildID,
-    userID
+    userID,
+    commandName = null
 ){
 
     return database.getQuestSocialCommandRepeatCount(
         guildID,
-        userID
+        userID,
+        commandName
+    );
+
+}
+
+
+async function consumeSocialCommandRepeat(
+    guildID,
+    userID,
+    commandName
+){
+
+    return database.consumeQuestSocialCommandRepeat(
+        guildID,
+        userID,
+        commandName
     );
 
 }
@@ -3677,6 +3669,8 @@ module.exports = {
     consumeGuaranteedCritical,
 
     getSocialCommandRepeatCount,
+
+    consumeSocialCommandRepeat,
 
     formatReward
 
