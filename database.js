@@ -180,38 +180,6 @@ const SHOP_REFRESH_TIME =
 
 const SHOP_CATALOG = {
 
-    "xp:tier1": {
-        key: "xp:tier1",
-        boostType: "xp",
-        tier: "tier1",
-        price: 4999,
-        maxStock: 15
-    },
-
-    "xp:tier2": {
-        key: "xp:tier2",
-        boostType: "xp",
-        tier: "tier2",
-        price: 14999,
-        maxStock: 15
-    },
-
-    "xp:tier3": {
-        key: "xp:tier3",
-        boostType: "xp",
-        tier: "tier3",
-        price: 45999,
-        maxStock: 10
-    },
-
-    "xp:max": {
-        key: "xp:max",
-        boostType: "xp",
-        tier: "max",
-        price: 149999,
-        maxStock: 5
-    },
-
     "luck:tier1": {
         key: "luck:tier1",
         boostType: "luck",
@@ -250,30 +218,6 @@ const SHOP_CATALOG = {
 // Random prices are chosen ONCE per shop refresh and then stored
 // in PostgreSQL for the whole shop cycle.
 const SHOP_PRICE_OPTIONS = {
-
-    "xp:tier1": [
-        4999,
-        12999,
-        24999
-    ],
-
-    "xp:tier2": [
-        14999,
-        29999,
-        49999
-    ],
-
-    "xp:tier3": [
-        45999,
-        99999,
-        129999
-    ],
-
-    "xp:max": [
-        149999,
-        249999,
-        499999
-    ],
 
     "luck:tier1": [
         19999,
@@ -694,88 +638,6 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
     },
 
     {
-        id: "xp_max_for_luck_max",
-        name: "Bulk XP Boost MAX Crate",
-        stockOptions: [3],
-        variants: [
-            {
-                cost: merchantSide({
-                    boosts: [
-                        merchantBoost("luck", "max", 5)
-                    ]
-                }),
-                reward: merchantSide({
-                    boosts: [
-                        merchantBoost("xp", "max", 100)
-                    ]
-                })
-            },
-            {
-                cost: merchantSide({
-                    boosts: [
-                        merchantBoost("luck", "max", 10)
-                    ]
-                }),
-                reward: merchantSide({
-                    boosts: [
-                        merchantBoost("xp", "max", 300)
-                    ]
-                })
-            },
-            {
-                cost: merchantSide({
-                    boosts: [
-                        merchantBoost("luck", "max", 15)
-                    ]
-                }),
-                reward: merchantSide({
-                    boosts: [
-                        merchantBoost("xp", "max", 500)
-                    ]
-                })
-            }
-        ]
-    },
-
-    {
-        id: "xp_max_for_xp",
-        name: "Experience-Funded XP Boost Crate",
-        stockOptions: [5],
-        variants: [
-            {
-                cost: merchantSide({
-                    xp: 5000000
-                }),
-                reward: merchantSide({
-                    boosts: [
-                        merchantBoost("xp", "max", 50)
-                    ]
-                })
-            },
-            {
-                cost: merchantSide({
-                    xp: 10000000
-                }),
-                reward: merchantSide({
-                    boosts: [
-                        merchantBoost("xp", "max", 75)
-                    ]
-                })
-            },
-            {
-                cost: merchantSide({
-                    xp: 20000000
-                }),
-                reward: merchantSide({
-                    boosts: [
-                        merchantBoost("xp", "max", 100)
-                    ]
-                })
-            }
-        ]
-    },
-
-    {
         id: "timed_triple_roll",
         name: "Temporary Triple Roll License",
         stockOptions: [1, 2],
@@ -1013,14 +875,37 @@ function cloneMerchantSide(side){
 }
 
 
+function merchantTemplateCreatesXPBoosts(template){
+
+    return template.variants.some(
+        variant =>
+            Array.isArray(
+                variant?.reward?.boosts
+            )
+            &&
+            variant.reward.boosts.some(
+                boost =>
+                    String(
+                        boost?.boostType || ""
+                    ).toLowerCase() === "xp"
+            )
+    );
+
+}
+
+
 function createTravelingMerchantDeals(
     random = Math.random
 ){
 
     const shuffled =
-        [
-            ...TRAVELING_MERCHANT_DEAL_TEMPLATES
-        ];
+        TRAVELING_MERCHANT_DEAL_TEMPLATES
+            .filter(
+                template =>
+                    !merchantTemplateCreatesXPBoosts(
+                        template
+                    )
+            );
 
 
     for(
@@ -1122,8 +1007,8 @@ const TRADE_BOOST_FEES = {
 
     "xp:tier1": 100,
     "xp:tier2": 500,
-    "xp:tier3": 1500,
     "xp:max": 10000,
+    "xp:infinity": 100000,
 
     "luck:tier1": 500,
     "luck:tier2": 4000,
@@ -1447,6 +1332,7 @@ await db.query(`
 
 `);
 
+
 await db.query(`
 
     CREATE TABLE IF NOT EXISTS luck_boosts (
@@ -1497,15 +1383,17 @@ await db.query(`
 
 await db.query(`
 
-    CREATE TABLE IF NOT EXISTS xp_boost_progress (
+    CREATE TABLE IF NOT EXISTS user_message_preferences (
 
         guildID TEXT NOT NULL,
 
         userID TEXT NOT NULL,
 
-        role TEXT,
+        muteXPBoostMessages BOOLEAN NOT NULL
+            DEFAULT FALSE,
 
-        lastAwardXP BIGINT NOT NULL DEFAULT 0,
+        muteCriticalMessages BOOLEAN NOT NULL
+            DEFAULT FALSE,
 
         PRIMARY KEY(
             guildID,
@@ -1513,6 +1401,15 @@ await db.query(`
         )
 
     )
+
+`);
+
+
+// Hourly XP remains in boost_activity, but the removed threshold/tier-award
+// system and all of its saved progress are deleted permanently.
+await db.query(`
+
+    DROP TABLE IF EXISTS xp_boost_progress
 
 `);
 
@@ -1703,6 +1600,65 @@ await db.query(`
     ON traveling_merchant_stock(
         cycleID,
         displayOrder
+    )
+
+`);
+
+
+// =====================================================
+// XP BOOST REMAKE MIGRATION
+// =====================================================
+// Preserve Tier I, Tier II and MAX inventories (including large existing
+// stockpiles), but fully retire XP Boost III and every old shop/merchant
+// supply path. New XP Boosts now come only from the configured command/chat
+// drops and the explicit elite-weekly Infinity reward.
+await db.query(`
+
+    DELETE FROM boost_inventory
+
+    WHERE LOWER(boostType) = 'xp'
+    AND LOWER(tier) = 'tier3'
+
+`);
+
+
+await db.query(`
+
+    DELETE FROM boosts
+
+    WHERE role = '1526995123420922047'
+
+`);
+
+
+await db.query(`
+
+    DELETE FROM shop_stock
+
+    WHERE LOWER(boostType) = 'xp'
+
+`);
+
+
+await db.query(`
+
+    DELETE FROM traveling_merchant_stock
+
+    WHERE EXISTS (
+
+        SELECT 1
+
+        FROM jsonb_array_elements(
+            COALESCE(
+                deal -> 'reward' -> 'boosts',
+                '[]'::jsonb
+            )
+        ) AS rewardBoost
+
+        WHERE LOWER(
+            rewardBoost ->> 'boostType'
+        ) = 'xp'
+
     )
 
 `);
@@ -3038,7 +2994,7 @@ await client.query(`
 
 await client.query(`
 
-    DELETE FROM xp_boost_progress
+    DELETE FROM user_message_preferences
 
     WHERE guildID=$1
 
@@ -3879,10 +3835,61 @@ async function consumeBoostInventory(
 
 
 // =====================================================
-// XP BOOST INVENTORY PROGRESS
+// PERSONAL REPLY MUTE SETTINGS
 // =====================================================
 
-async function getXPBoostProgress(
+function normalizeMessageMuteType(type){
+
+    const normalized =
+        String(type || "")
+            .trim()
+            .toLowerCase();
+
+
+    if([
+        "xp",
+        "xp_boost",
+        "xp_boosts"
+    ].includes(normalized)){
+
+        return "xp_boost";
+
+    }
+
+
+    if([
+        "critical",
+        "criticals",
+        "crit"
+    ].includes(normalized)){
+
+        return "critical";
+
+    }
+
+
+    return null;
+
+}
+
+
+function normalizeMessageMuteRow(row){
+
+    return {
+        xpBoostMessages:
+            Boolean(
+                row?.mutexpboostmessages
+            ),
+        criticalMessages:
+            Boolean(
+                row?.mutecriticalmessages
+            )
+    };
+
+}
+
+
+async function getMessageMutePreferences(
     guildID,
     userID
 ){
@@ -3890,9 +3897,11 @@ async function getXPBoostProgress(
     const result =
         await db.query(`
 
-            SELECT *
+            SELECT
+                muteXPBoostMessages,
+                muteCriticalMessages
 
-            FROM xp_boost_progress
+            FROM user_message_preferences
 
             WHERE guildID=$1
             AND userID=$2
@@ -3903,72 +3912,104 @@ async function getXPBoostProgress(
         ]);
 
 
-    return result.rows[0];
+    return normalizeMessageMuteRow(
+        result.rows[0]
+    );
 
 }
 
 
-
-async function updateXPBoostProgress(
+async function isMessageTypeMuted(
     guildID,
     userID,
-    role,
-    lastAwardXP
+    type
 ){
 
-    await db.query(`
+    const normalizedType =
+        normalizeMessageMuteType(
+            type
+        );
 
-        INSERT INTO xp_boost_progress
-        (
-            guildID,
-            userID,
-            role,
-            lastAwardXP
-        )
 
-        VALUES
-        ($1,$2,$3,$4)
+    if(!normalizedType){
+        return false;
+    }
 
-        ON CONFLICT(
+
+    const preferences =
+        await getMessageMutePreferences(
             guildID,
             userID
-        )
+        );
 
-        DO UPDATE SET
 
-            role=$3,
-            lastAwardXP=$4
-
-    `, [
-        guildID,
-        userID,
-        role,
-        Math.max(
-            0,
-            Number(lastAwardXP) || 0
-        )
-    ]);
+    return normalizedType === "xp_boost"
+        ? preferences.xpBoostMessages
+        : preferences.criticalMessages;
 
 }
 
 
-
-async function clearXPBoostProgress(
+async function toggleMessageTypeMute(
     guildID,
-    userID
+    userID,
+    type
 ){
 
-    await db.query(`
+    const normalizedType =
+        normalizeMessageMuteType(
+            type
+        );
 
-        DELETE FROM xp_boost_progress
 
-        WHERE guildID=$1
-        AND userID=$2
+    if(!normalizedType){
+        throw new TypeError(`Unknown message mute type: ${type}`);
+    }
 
-    `, [
-        guildID,
-        userID
-    ]);
+
+    // The column is selected only from these hard-coded values. User input is
+    // never inserted into SQL identifiers.
+    const column =
+        normalizedType === "xp_boost"
+            ? "muteXPBoostMessages"
+            : "muteCriticalMessages";
+
+
+    const result =
+        await db.query(`
+
+            INSERT INTO user_message_preferences
+            (
+                guildID,
+                userID,
+                ${column}
+            )
+
+            VALUES
+            ($1,$2,TRUE)
+
+            ON CONFLICT(
+                guildID,
+                userID
+            )
+
+            DO UPDATE SET
+                ${column} =
+                    NOT user_message_preferences.${column}
+
+            RETURNING
+                muteXPBoostMessages,
+                muteCriticalMessages
+
+        `, [
+            guildID,
+            userID
+        ]);
+
+
+    return normalizeMessageMuteRow(
+        result.rows[0]
+    );
 
 }
 
@@ -10603,11 +10644,11 @@ module.exports = {
 
     consumeBoostInventory,
 
-    getXPBoostProgress,
+    getMessageMutePreferences,
 
-    updateXPBoostProgress,
+    isMessageTypeMuted,
 
-    clearXPBoostProgress,
+    toggleMessageTypeMute,
 
     QUEST_RESET_CONFIG,
 
