@@ -2,6 +2,7 @@ const database = require("../database");
 const xp = require("../utils/xp");
 const luck = require("../utils/luck");
 const leveling = require("../systems/leveling");
+const boosts = require("../systems/boosts");
 
 
 // ======================
@@ -263,6 +264,13 @@ await database.setCommandCooldown(
 
         userID
 
+    );
+
+
+    await boosts.tryAndAnnounceXPBoostDrop(
+        message,
+        "social",
+        "!ezwin"
     );
 
 
