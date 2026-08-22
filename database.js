@@ -1347,6 +1347,87 @@ function rollTravelingMerchantAppearance(
 // TRADING SYSTEM
 // =======================
 
+const BOOST_VALUE_BASES = {
+
+    "xp:tier1": {
+        boostType: "xp",
+        tier: "tier1",
+        baseMin: 5000,
+        baseMax: 15000,
+        order: 1
+    },
+
+    "xp:tier2": {
+        boostType: "xp",
+        tier: "tier2",
+        baseMin: 30000,
+        baseMax: 75000,
+        order: 2
+    },
+
+    "xp:max": {
+        boostType: "xp",
+        tier: "max",
+        baseMin: 100000,
+        baseMax: 200000,
+        order: 3
+    },
+
+    "xp:infinity": {
+        boostType: "xp",
+        tier: "infinity",
+        baseMin: 35000000,
+        baseMax: 350000000,
+        order: 4
+    },
+
+    "luck:tier1": {
+        boostType: "luck",
+        tier: "tier1",
+        baseMin: 20000,
+        baseMax: 50000,
+        order: 5
+    },
+
+    "luck:tier2": {
+        boostType: "luck",
+        tier: "tier2",
+        baseMin: 100000,
+        baseMax: 300000,
+        order: 6
+    },
+
+    "luck:tier3": {
+        boostType: "luck",
+        tier: "tier3",
+        baseMin: 750000,
+        baseMax: 2500000,
+        order: 7
+    },
+
+    "luck:max": {
+        boostType: "luck",
+        tier: "max",
+        baseMin: 5000000,
+        baseMax: 12500000,
+        order: 8
+    },
+
+    "luck:omega": {
+        boostType: "luck",
+        tier: "omega",
+        baseMin: 50000000,
+        baseMax: 500000000,
+        order: 9
+    }
+
+};
+
+
+const BOOST_VALUE_PAIR_WINDOW_MS =
+    30 * 24 * 60 * 60 * 1000;
+
+
 const TRADE_BASE_FEE = 1000;
 const TRADE_XP_FEE_RATE = 0.05;
 
@@ -1360,7 +1441,8 @@ const TRADE_BOOST_FEES = {
     "luck:tier1": 500,
     "luck:tier2": 4000,
     "luck:tier3": 50000,
-    "luck:max": 125000
+    "luck:max": 125000,
+    "luck:omega": 250000
 
 };
 
@@ -1555,6 +1637,718 @@ function parseTradeRow(row){
             )
 
     };
+
+}
+
+
+function clampBoostValueNumber(
+    value,
+    minimum,
+    maximum
+){
+
+    return Math.min(
+        maximum,
+        Math.max(
+            minimum,
+            Number(value) || 0
+        )
+    );
+
+}
+
+
+function getBoostValueRoundingStep(value){
+
+    const safeValue =
+        Math.abs(
+            Number(value) || 0
+        );
+
+
+    if(safeValue < 100000){
+        return 500;
+    }
+
+
+    if(safeValue < 1000000){
+        return 1000;
+    }
+
+
+    if(safeValue < 10000000){
+        return 10000;
+    }
+
+
+    if(safeValue < 100000000){
+        return 100000;
+    }
+
+
+    return 1000000;
+
+}
+
+
+function roundBoostMarketValue(value){
+
+    const step =
+        getBoostValueRoundingStep(
+            value
+        );
+
+
+    return Math.max(
+        1,
+        Math.round(
+            Number(value) /
+            step
+        ) * step
+    );
+
+}
+
+
+function getBoostValueStateField(
+    state,
+    camelName,
+    lowerName
+){
+
+    if(!state){
+        return undefined;
+    }
+
+
+    if(
+        Object.prototype.hasOwnProperty.call(
+            state,
+            camelName
+        )
+    ){
+        return state[camelName];
+    }
+
+
+    return state[lowerName];
+
+}
+
+
+function normalizeBoostValueState(
+    key,
+    state = null
+){
+
+    const normalizedKey =
+        String(key || "")
+            .toLowerCase();
+
+
+    const base =
+        BOOST_VALUE_BASES[
+            normalizedKey
+        ];
+
+
+    if(!base){
+        return null;
+    }
+
+
+    const currentMin =
+        Math.max(
+            1,
+            Number(
+                getBoostValueStateField(
+                    state,
+                    "currentMin",
+                    "currentmin"
+                )
+            ) || base.baseMin
+        );
+
+
+    const currentMax =
+        Math.max(
+            currentMin,
+            Number(
+                getBoostValueStateField(
+                    state,
+                    "currentMax",
+                    "currentmax"
+                )
+            ) || base.baseMax
+        );
+
+
+    return {
+        key:
+            normalizedKey,
+        boostType:
+            base.boostType,
+        tier:
+            base.tier,
+        order:
+            base.order,
+        baseMin:
+            base.baseMin,
+        baseMax:
+            base.baseMax,
+        currentMin,
+        currentMax,
+        midpoint:
+            (
+                currentMin +
+                currentMax
+            ) / 2,
+        tradeCount:
+            Math.max(
+                0,
+                Number(
+                    getBoostValueStateField(
+                        state,
+                        "tradeCount",
+                        "tradecount"
+                    )
+                ) || 0
+            ),
+        distinctTraderCount:
+            Math.max(
+                0,
+                Number(
+                    getBoostValueStateField(
+                        state,
+                        "distinctTraderCount",
+                        "distincttradercount"
+                    )
+                ) || 0
+            ),
+        lastDirection:
+            Math.sign(
+                Number(
+                    getBoostValueStateField(
+                        state,
+                        "lastDirection",
+                        "lastdirection"
+                    )
+                ) || 0
+            ),
+        lastChangePercent:
+            Number(
+                getBoostValueStateField(
+                    state,
+                    "lastChangePercent",
+                    "lastchangepercent"
+                )
+            ) || 0,
+        lastTradeAt:
+            Number(
+                getBoostValueStateField(
+                    state,
+                    "lastTradeAt",
+                    "lasttradeat"
+                )
+            ) || 0,
+        updatedAt:
+            Number(
+                getBoostValueStateField(
+                    state,
+                    "updatedAt",
+                    "updatedat"
+                )
+            ) || 0
+    };
+
+}
+
+
+function getBoostValueRangeFromMidpoint(
+    key,
+    midpoint
+){
+
+    const base =
+        BOOST_VALUE_BASES[
+            String(key).toLowerCase()
+        ];
+
+
+    if(!base){
+        return null;
+    }
+
+
+    const baseMidpoint =
+        (
+            base.baseMin +
+            base.baseMax
+        ) / 2;
+
+
+    const relativeHalfSpread =
+        (
+            base.baseMax -
+            base.baseMin
+        ) /
+        (
+            base.baseMax +
+            base.baseMin
+        );
+
+
+    const boundedMidpoint =
+        clampBoostValueNumber(
+            midpoint,
+            Math.max(
+                1,
+                base.baseMin * 0.25
+            ),
+            base.baseMax * 4
+        );
+
+
+    let currentMin =
+        roundBoostMarketValue(
+            boundedMidpoint *
+            (
+                1 -
+                relativeHalfSpread
+            )
+        );
+
+
+    let currentMax =
+        roundBoostMarketValue(
+            boundedMidpoint *
+            (
+                1 +
+                relativeHalfSpread
+            )
+        );
+
+
+    if(currentMax <= currentMin){
+
+        currentMax =
+            currentMin +
+            getBoostValueRoundingStep(
+                boundedMidpoint
+            );
+
+    }
+
+
+    return {
+        currentMin,
+        currentMax,
+        midpoint:
+            (
+                currentMin +
+                currentMax
+            ) / 2,
+        baseMidpoint
+    };
+
+}
+
+
+function calculateBoostValueUpdate(
+    state,
+    rawUnitValue,
+    pairTradeCount = 0
+){
+
+    const normalizedState =
+        normalizeBoostValueState(
+            state?.key ||
+                state?.boostkey,
+            state
+        );
+
+
+    if(!normalizedState){
+        return null;
+    }
+
+
+    const midpointBefore =
+        normalizedState.midpoint;
+
+
+    const safeRawUnitValue =
+        Math.max(
+            1,
+            Number(rawUnitValue) || 1
+        );
+
+
+    const lowerObservationLimit =
+        midpointBefore / 3;
+
+
+    const upperObservationLimit =
+        midpointBefore * 3;
+
+
+    const adjustedUnitValue =
+        clampBoostValueNumber(
+            safeRawUnitValue,
+            lowerObservationLimit,
+            upperObservationLimit
+        );
+
+
+    const rawRatio =
+        safeRawUnitValue /
+        midpointBefore;
+
+
+    let outlierReliability =
+        1;
+
+
+    if(
+        rawRatio < 1 / 3
+        ||
+        rawRatio > 3
+    ){
+
+        const overflowRatio =
+            rawRatio > 3
+                ? rawRatio / 3
+                : (
+                    1 / 3
+                ) / rawRatio;
+
+
+        outlierReliability =
+            Math.max(
+                0.015,
+                1 /
+                (
+                    1 +
+                    8 *
+                    Math.pow(
+                        Math.log(
+                            Math.max(
+                                1,
+                                overflowRatio
+                            )
+                        ),
+                        2
+                    )
+                )
+            );
+
+    }
+
+
+    const historyInfluence =
+        Math.max(
+            0.02,
+            0.35 /
+            Math.sqrt(
+                1 +
+                normalizedState.tradeCount / 4 +
+                normalizedState.distinctTraderCount / 12
+            )
+        );
+
+
+    const repeatedPairInfluence =
+        1 /
+        Math.sqrt(
+            1 +
+            Math.max(
+                0,
+                Number(pairTradeCount) || 0
+            )
+        );
+
+
+    const influence =
+        clampBoostValueNumber(
+            historyInfluence *
+            repeatedPairInfluence *
+            outlierReliability,
+            0.001,
+            0.35
+        );
+
+
+    const unroundedMidpoint =
+        midpointBefore +
+        (
+            adjustedUnitValue -
+            midpointBefore
+        ) *
+        influence;
+
+
+    const range =
+        getBoostValueRangeFromMidpoint(
+            normalizedState.key,
+            unroundedMidpoint
+        );
+
+
+    const changePercent =
+        (
+            range.midpoint -
+            midpointBefore
+        ) /
+        midpointBefore *
+        100;
+
+
+    const direction =
+        Math.abs(
+            changePercent
+        ) < 0.05
+            ? 0
+            : Math.sign(
+                changePercent
+            );
+
+
+    return {
+        key:
+            normalizedState.key,
+        rawUnitValue:
+            Math.round(
+                safeRawUnitValue
+            ),
+        adjustedUnitValue:
+            Math.round(
+                adjustedUnitValue
+            ),
+        midpointBefore:
+            Math.round(
+                midpointBefore
+            ),
+        midpointAfter:
+            Math.round(
+                range.midpoint
+            ),
+        currentMin:
+            range.currentMin,
+        currentMax:
+            range.currentMax,
+        influence,
+        outlierReliability,
+        direction,
+        changePercent
+    };
+
+}
+
+
+function getBoostValueStateFromCollection(
+    states,
+    key
+){
+
+    if(states instanceof Map){
+        return states.get(key);
+    }
+
+
+    return states?.[key];
+
+}
+
+
+function calculateTradeOfferMarketValue(
+    offer,
+    states
+){
+
+    const normalized =
+        normalizeTradeOffer(
+            offer
+        );
+
+
+    let total =
+        normalized.xp;
+
+
+    for(
+        const [key, amount] of
+        Object.entries(
+            normalized.boosts
+        )
+    ){
+
+        const state =
+            normalizeBoostValueState(
+                key,
+                getBoostValueStateFromCollection(
+                    states,
+                    key
+                )
+            );
+
+
+        if(!state){
+            continue;
+        }
+
+
+        total +=
+            state.midpoint *
+            amount;
+
+    }
+
+
+    return total;
+
+}
+
+
+function buildTradeValueObservations(
+    offer1,
+    offer2,
+    states
+){
+
+    const normalizedOffer1 =
+        normalizeTradeOffer(
+            offer1
+        );
+
+
+    const normalizedOffer2 =
+        normalizeTradeOffer(
+            offer2
+        );
+
+
+    const total1 =
+        calculateTradeOfferMarketValue(
+            normalizedOffer1,
+            states
+        );
+
+
+    const total2 =
+        calculateTradeOfferMarketValue(
+            normalizedOffer2,
+            states
+        );
+
+
+    const observations = [];
+
+
+    const collect = (
+        offered,
+        counterpart,
+        offeredTotal,
+        counterpartTotal,
+        side
+    ) => {
+
+        if(
+            offeredTotal <= 0
+            ||
+            counterpartTotal <= 0
+        ){
+            return;
+        }
+
+
+        for(
+            const [key, amount] of
+            Object.entries(
+                offered.boosts
+            )
+        ){
+
+            // Exchanging the same boost on both sides is not a clean price
+            // signal, so it cannot move that boost's market value.
+            if(counterpart.boosts[key]){
+                continue;
+            }
+
+
+            const state =
+                normalizeBoostValueState(
+                    key,
+                    getBoostValueStateFromCollection(
+                        states,
+                        key
+                    )
+                );
+
+
+            if(!state){
+                continue;
+            }
+
+
+            const assetEstimatedValue =
+                state.midpoint *
+                amount;
+
+
+            const allocatedCounterpartValue =
+                counterpartTotal *
+                assetEstimatedValue /
+                offeredTotal;
+
+
+            const rawUnitValue =
+                allocatedCounterpartValue /
+                amount;
+
+
+            if(
+                Number.isFinite(
+                    rawUnitValue
+                )
+                &&
+                rawUnitValue > 0
+            ){
+
+                observations.push({
+                    key,
+                    side,
+                    amount,
+                    rawUnitValue,
+                    offeredTotal,
+                    counterpartTotal
+                });
+
+            }
+
+        }
+
+    };
+
+
+    collect(
+        normalizedOffer1,
+        normalizedOffer2,
+        total1,
+        total2,
+        1
+    );
+
+
+    collect(
+        normalizedOffer2,
+        normalizedOffer1,
+        total2,
+        total1,
+        2
+    );
+
+
+    return observations;
 
 }
 
@@ -2308,6 +3102,134 @@ await db.query(`
         guildID,
         user2ID,
         status
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS boost_value_state (
+
+        guildID TEXT NOT NULL,
+
+        boostKey TEXT NOT NULL,
+
+        baseMin BIGINT NOT NULL,
+
+        baseMax BIGINT NOT NULL,
+
+        currentMin BIGINT NOT NULL,
+
+        currentMax BIGINT NOT NULL,
+
+        tradeCount INTEGER NOT NULL DEFAULT 0,
+
+        distinctTraderCount INTEGER NOT NULL DEFAULT 0,
+
+        lastDirection SMALLINT NOT NULL DEFAULT 0,
+
+        lastChangePercent DOUBLE PRECISION NOT NULL DEFAULT 0,
+
+        lastTradeAt BIGINT NOT NULL DEFAULT 0,
+
+        createdAt BIGINT NOT NULL,
+
+        updatedAt BIGINT NOT NULL,
+
+        PRIMARY KEY(
+            guildID,
+            boostKey
+        )
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS boost_value_observations (
+
+        id BIGSERIAL PRIMARY KEY,
+
+        tradeID BIGINT NOT NULL
+            REFERENCES trades(id)
+            ON DELETE CASCADE,
+
+        guildID TEXT NOT NULL,
+
+        boostKey TEXT NOT NULL,
+
+        side SMALLINT NOT NULL,
+
+        sellerID TEXT NOT NULL,
+
+        buyerID TEXT NOT NULL,
+
+        amount INTEGER NOT NULL,
+
+        rawUnitValue BIGINT NOT NULL,
+
+        adjustedUnitValue BIGINT NOT NULL,
+
+        midpointBefore BIGINT NOT NULL,
+
+        midpointAfter BIGINT NOT NULL,
+
+        influence DOUBLE PRECISION NOT NULL,
+
+        createdAt BIGINT NOT NULL,
+
+        UNIQUE(
+            tradeID,
+            boostKey,
+            side
+        )
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    boost_value_observation_pair_idx
+
+    ON boost_value_observations(
+        guildID,
+        boostKey,
+        sellerID,
+        buyerID,
+        createdAt
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS boost_value_traders (
+
+        guildID TEXT NOT NULL,
+
+        boostKey TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        tradeCount INTEGER NOT NULL DEFAULT 0,
+
+        firstTradeAt BIGINT NOT NULL,
+
+        lastTradeAt BIGINT NOT NULL,
+
+        PRIMARY KEY(
+            guildID,
+            boostKey,
+            userID
+        )
+
     )
 
 `);
@@ -8932,6 +9854,539 @@ async function advanceRollGuarantee(
 // TRADING SYSTEM
 // =====================================================
 
+async function ensureBoostValueState(
+    executor,
+    guildID,
+    keys = Object.keys(
+        BOOST_VALUE_BASES
+    )
+){
+
+    const normalizedKeys =
+        [
+            ...new Set(
+                keys
+                    .map(
+                        key =>
+                            String(key)
+                                .toLowerCase()
+                    )
+                    .filter(
+                        key =>
+                            BOOST_VALUE_BASES[key]
+                    )
+            )
+        ].sort();
+
+
+    const now =
+        Date.now();
+
+
+    for(const key of normalizedKeys){
+
+        const base =
+            BOOST_VALUE_BASES[key];
+
+
+        await executor.query(`
+
+            INSERT INTO boost_value_state
+            (
+                guildID,
+                boostKey,
+                baseMin,
+                baseMax,
+                currentMin,
+                currentMax,
+                createdAt,
+                updatedAt
+            )
+
+            VALUES
+            ($1,$2,$3,$4,$3,$4,$5,$5)
+
+            ON CONFLICT(
+                guildID,
+                boostKey
+            )
+
+            DO UPDATE SET
+
+                baseMin =
+                    EXCLUDED.baseMin,
+
+                baseMax =
+                    EXCLUDED.baseMax,
+
+                currentMin =
+                    CASE
+                        WHEN boost_value_state.tradeCount = 0
+                        THEN EXCLUDED.currentMin
+                        ELSE boost_value_state.currentMin
+                    END,
+
+                currentMax =
+                    CASE
+                        WHEN boost_value_state.tradeCount = 0
+                        THEN EXCLUDED.currentMax
+                        ELSE boost_value_state.currentMax
+                    END
+
+        `, [
+            String(guildID),
+            key,
+            base.baseMin,
+            base.baseMax,
+            now
+        ]);
+
+    }
+
+}
+
+
+async function getBoostValues(guildID){
+
+    const keys =
+        Object.keys(
+            BOOST_VALUE_BASES
+        );
+
+
+    await ensureBoostValueState(
+        db,
+        guildID,
+        keys
+    );
+
+
+    const result =
+        await db.query(`
+
+            SELECT *
+
+            FROM boost_value_state
+
+            WHERE guildID=$1
+
+        `, [
+            String(guildID)
+        ]);
+
+
+    const rowsByKey =
+        new Map(
+            result.rows.map(
+                row => [
+                    String(
+                        row.boostkey
+                    ).toLowerCase(),
+                    row
+                ]
+            )
+        );
+
+
+    return keys
+        .map(
+            key =>
+                normalizeBoostValueState(
+                    key,
+                    rowsByKey.get(key)
+                )
+        )
+        .filter(Boolean)
+        .sort(
+            (first, second) =>
+                first.order -
+                second.order
+        );
+
+}
+
+
+async function recordCompletedTradeBoostValues(
+    client,
+    trade,
+    rawOffer1,
+    rawOffer2,
+    completedAt = Date.now()
+){
+
+    const offer1 =
+        normalizeTradeOffer(
+            rawOffer1
+        );
+
+
+    const offer2 =
+        normalizeTradeOffer(
+            rawOffer2
+        );
+
+
+    const keys =
+        [
+            ...new Set([
+                ...Object.keys(
+                    offer1.boosts
+                ),
+                ...Object.keys(
+                    offer2.boosts
+                )
+            ])
+        ]
+            .filter(
+                key =>
+                    BOOST_VALUE_BASES[key]
+            )
+            .sort();
+
+
+    if(keys.length === 0){
+        return [];
+    }
+
+
+    const guildID =
+        String(
+            trade.guildid ||
+            trade.guildID
+        );
+
+
+    await ensureBoostValueState(
+        client,
+        guildID,
+        keys
+    );
+
+
+    const states =
+        new Map();
+
+
+    // Lock in key order so simultaneous bundle trades cannot deadlock.
+    for(const key of keys){
+
+        const stateResult =
+            await client.query(`
+
+                SELECT *
+
+                FROM boost_value_state
+
+                WHERE guildID=$1
+                AND boostKey=$2
+
+                FOR UPDATE
+
+            `, [
+                guildID,
+                key
+            ]);
+
+
+        states.set(
+            key,
+            stateResult.rows[0]
+        );
+
+    }
+
+
+    const observations =
+        buildTradeValueObservations(
+            offer1,
+            offer2,
+            states
+        ).sort(
+            (first, second) =>
+                first.key.localeCompare(
+                    second.key
+                )
+                ||
+                first.side -
+                second.side
+        );
+
+
+    const updates = [];
+
+
+    for(const observation of observations){
+
+        const sellerID =
+            String(
+                observation.side === 1
+                    ? trade.user1id ||
+                        trade.user1ID
+                    : trade.user2id ||
+                        trade.user2ID
+            );
+
+
+        const buyerID =
+            String(
+                observation.side === 1
+                    ? trade.user2id ||
+                        trade.user2ID
+                    : trade.user1id ||
+                        trade.user1ID
+            );
+
+
+        const pairResult =
+            await client.query(`
+
+                SELECT COUNT(*) AS count
+
+                FROM boost_value_observations
+
+                WHERE guildID=$1
+                AND boostKey=$2
+                AND createdAt >= $5
+                AND (
+                    (
+                        sellerID=$3
+                        AND buyerID=$4
+                    )
+                    OR
+                    (
+                        sellerID=$4
+                        AND buyerID=$3
+                    )
+                )
+
+            `, [
+                guildID,
+                observation.key,
+                sellerID,
+                buyerID,
+                completedAt -
+                    BOOST_VALUE_PAIR_WINDOW_MS
+            ]);
+
+
+        const pairTradeCount =
+            Number(
+                pairResult.rows[0]
+                    ?.count || 0
+            );
+
+
+        const update =
+            calculateBoostValueUpdate(
+                {
+                    ...states.get(
+                        observation.key
+                    ),
+                    key:
+                        observation.key
+                },
+                observation.rawUnitValue,
+                pairTradeCount
+            );
+
+
+        if(!update){
+            continue;
+        }
+
+
+        const insertedObservation =
+            await client.query(`
+
+                INSERT INTO boost_value_observations
+                (
+                    tradeID,
+                    guildID,
+                    boostKey,
+                    side,
+                    sellerID,
+                    buyerID,
+                    amount,
+                    rawUnitValue,
+                    adjustedUnitValue,
+                    midpointBefore,
+                    midpointAfter,
+                    influence,
+                    createdAt
+                )
+
+                VALUES
+                (
+                    $1,$2,$3,$4,$5,$6,$7,
+                    $8,$9,$10,$11,$12,$13
+                )
+
+                ON CONFLICT(
+                    tradeID,
+                    boostKey,
+                    side
+                )
+
+                DO NOTHING
+
+                RETURNING id
+
+            `, [
+                Number(
+                    trade.id
+                ),
+                guildID,
+                observation.key,
+                observation.side,
+                sellerID,
+                buyerID,
+                Math.max(
+                    1,
+                    Math.floor(
+                        observation.amount
+                    )
+                ),
+                update.rawUnitValue,
+                update.adjustedUnitValue,
+                update.midpointBefore,
+                update.midpointAfter,
+                update.influence,
+                completedAt
+            ]);
+
+
+        if(insertedObservation.rowCount === 0){
+            continue;
+        }
+
+
+        for(
+            const traderID of
+            new Set([
+                sellerID,
+                buyerID
+            ])
+        ){
+
+            await client.query(`
+
+                INSERT INTO boost_value_traders
+                (
+                    guildID,
+                    boostKey,
+                    userID,
+                    tradeCount,
+                    firstTradeAt,
+                    lastTradeAt
+                )
+
+                VALUES
+                ($1,$2,$3,1,$4,$4)
+
+                ON CONFLICT(
+                    guildID,
+                    boostKey,
+                    userID
+                )
+
+                DO UPDATE SET
+                    tradeCount =
+                        boost_value_traders.tradeCount + 1,
+                    lastTradeAt =
+                        EXCLUDED.lastTradeAt
+
+            `, [
+                guildID,
+                observation.key,
+                traderID,
+                completedAt
+            ]);
+
+        }
+
+
+        const distinctResult =
+            await client.query(`
+
+                SELECT COUNT(*) AS count
+
+                FROM boost_value_traders
+
+                WHERE guildID=$1
+                AND boostKey=$2
+
+            `, [
+                guildID,
+                observation.key
+            ]);
+
+
+        const distinctTraderCount =
+            Number(
+                distinctResult.rows[0]
+                    ?.count || 0
+            );
+
+
+        const updatedState =
+            await client.query(`
+
+                UPDATE boost_value_state
+
+                SET
+                    currentMin=$3,
+                    currentMax=$4,
+                    tradeCount=
+                        tradeCount + 1,
+                    distinctTraderCount=$5,
+                    lastDirection=$6,
+                    lastChangePercent=$7,
+                    lastTradeAt=$8,
+                    updatedAt=$8
+
+                WHERE guildID=$1
+                AND boostKey=$2
+
+                RETURNING *
+
+            `, [
+                guildID,
+                observation.key,
+                update.currentMin,
+                update.currentMax,
+                distinctTraderCount,
+                update.direction,
+                update.changePercent,
+                completedAt
+            ]);
+
+
+        states.set(
+            observation.key,
+            updatedState.rows[0]
+        );
+
+
+        updates.push({
+            ...update,
+            amount:
+                observation.amount,
+            side:
+                observation.side,
+            sellerID,
+            buyerID,
+            pairTradeCount,
+            distinctTraderCount
+        });
+
+    }
+
+
+    return updates;
+
+}
+
+
 async function createTradeRequest(
     guildID,
     user1ID,
@@ -10719,6 +12174,20 @@ async function executeTradeTransaction(
         );
 
 
+        const completedAt =
+            Date.now();
+
+
+        const marketValueUpdates =
+            await recordCompletedTradeBoostValues(
+                client,
+                trade,
+                offer1,
+                offer2,
+                completedAt
+            );
+
+
         const completed =
             await client.query(`
 
@@ -10742,7 +12211,7 @@ async function executeTradeTransaction(
                 Number(tradeID),
                 fee1.total,
                 fee2.total,
-                Date.now()
+                completedAt
             ]);
 
 
@@ -10767,6 +12236,7 @@ async function executeTradeTransaction(
                 ),
             fee1,
             fee2,
+            marketValueUpdates,
             balance1:
                 finalBalance1,
             balance2:
@@ -11157,6 +12627,22 @@ module.exports = {
     TRADE_XP_FEE_RATE,
 
     TRADE_BOOST_FEES,
+
+    BOOST_VALUE_BASES,
+
+    normalizeBoostValueState,
+
+    getBoostValueRangeFromMidpoint,
+
+    calculateBoostValueUpdate,
+
+    calculateTradeOfferMarketValue,
+
+    buildTradeValueObservations,
+
+    getBoostValues,
+
+    recordCompletedTradeBoostValues,
 
     normalizeTradeOffer,
 
