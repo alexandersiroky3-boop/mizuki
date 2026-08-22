@@ -1200,11 +1200,14 @@ else if(
 ){
 
     rolledXP =
-        Math.max(
+        luck.rollGuaranteedMinimumWithLuck(
             rolledXP,
             Number(
                 guaranteedRoll.minXP
-            ) || 0
+            ) || 0,
+            rollChanceTable,
+            levelTableName,
+            rollLuckProfile
         );
 
 }
@@ -1224,9 +1227,12 @@ const rollGuarantee =
 if(rollGuarantee.guaranteed){
 
     rolledXP =
-        Math.max(
+        luck.rollGuaranteedMinimumWithLuck(
             rolledXP,
-            ROLL_GUARANTEE_MIN_XP
+            ROLL_GUARANTEE_MIN_XP,
+            rollChanceTable,
+            levelTableName,
+            rollLuckProfile
         );
 
 }
