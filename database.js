@@ -180,6 +180,30 @@ const SHOP_REFRESH_TIME =
 
 const SHOP_CATALOG = {
 
+    "xp:tier1": {
+        key: "xp:tier1",
+        boostType: "xp",
+        tier: "tier1",
+        price: 29999,
+        maxStock: 5
+    },
+
+    "xp:tier2": {
+        key: "xp:tier2",
+        boostType: "xp",
+        tier: "tier2",
+        price: 79999,
+        maxStock: 3
+    },
+
+    "xp:max": {
+        key: "xp:max",
+        boostType: "xp",
+        tier: "max",
+        price: 999999,
+        maxStock: 2
+    },
+
     "luck:tier1": {
         key: "luck:tier1",
         boostType: "luck",
@@ -218,6 +242,24 @@ const SHOP_CATALOG = {
 // Random prices are chosen ONCE per shop refresh and then stored
 // in PostgreSQL for the whole shop cycle.
 const SHOP_PRICE_OPTIONS = {
+
+    "xp:tier1": [
+        29999,
+        49999,
+        74499
+    ],
+
+    "xp:tier2": [
+        79999,
+        119999,
+        144999
+    ],
+
+    "xp:max": [
+        999999,
+        1499999,
+        2499999
+    ],
 
     "luck:tier1": [
         19999,
@@ -638,6 +680,334 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
     },
 
     {
+        id: "omega_for_xp_infinity",
+        name: "Omega-for-Infinity Exchange",
+        stockOptions: [1, 2],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 2)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 3)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 5)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "luck_max_for_xp_infinity",
+        name: "Fortune-for-Infinity Exchange",
+        stockOptions: [1, 2],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 15)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 2)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 30)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 3)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 30)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 5)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "xp_infinity_for_luck_max",
+        name: "Infinity-for-Fortune Exchange",
+        stockOptions: [1, 2],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 7)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 10)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "max", 12)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "buy_xp_infinity_with_xp",
+        name: "Experience-for-Infinity Exchange",
+        stockOptions: [1, 2],
+        variants: [
+            {
+                cost: merchantSide({
+                    xp: 40000000
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 1)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    xp: 60000000
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 1)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    xp: 90000000
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 1)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "timed_infinity_chat_xp",
+        name: "Infinity Chat XP Surge",
+        stockOptions: [1, 2],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    perk: {
+                        type: "chat_xp_timed",
+                        multiplier: 10,
+                        durationMs:
+                            12 * MERCHANT_HOUR
+                    }
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 2)
+                    ]
+                }),
+                reward: merchantSide({
+                    perk: {
+                        type: "chat_xp_timed",
+                        multiplier: 20,
+                        durationMs:
+                            24 * MERCHANT_HOUR
+                    }
+                })
+            }
+        ]
+    },
+
+    {
+        id: "xp_infinity_for_xp_max",
+        name: "Infinity-to-MAX Cache",
+        stockOptions: [1, 2],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "max", 20)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "max", 35)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 1)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "max", 50)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "xp_infinity_for_omega",
+        name: "Infinity-for-Omega Exchange",
+        stockOptions: [1, 2],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 5)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 5)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 2)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
+        id: "xp_i_for_xp_infinity",
+        name: "XP I-for-Infinity Exchange",
+        stockOptions: [1, 2],
+        variants: [
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "tier1", 250)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 1)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "tier1", 500)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 2)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "tier1", 1000)
+                    ]
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 2)
+                    ]
+                })
+            }
+        ]
+    },
+
+    {
         id: "timed_triple_roll",
         name: "Temporary Triple Roll License",
         stockOptions: [1, 2],
@@ -875,37 +1245,14 @@ function cloneMerchantSide(side){
 }
 
 
-function merchantTemplateCreatesXPBoosts(template){
-
-    return template.variants.some(
-        variant =>
-            Array.isArray(
-                variant?.reward?.boosts
-            )
-            &&
-            variant.reward.boosts.some(
-                boost =>
-                    String(
-                        boost?.boostType || ""
-                    ).toLowerCase() === "xp"
-            )
-    );
-
-}
-
-
 function createTravelingMerchantDeals(
     random = Math.random
 ){
 
     const shuffled =
-        TRAVELING_MERCHANT_DEAL_TEMPLATES
-            .filter(
-                template =>
-                    !merchantTemplateCreatesXPBoosts(
-                        template
-                    )
-            );
+        [
+            ...TRAVELING_MERCHANT_DEAL_TEMPLATES
+        ];
 
 
     for(
@@ -1609,9 +1956,8 @@ await db.query(`
 // XP BOOST REMAKE MIGRATION
 // =====================================================
 // Preserve Tier I, Tier II and MAX inventories (including large existing
-// stockpiles), but fully retire XP Boost III and every old shop/merchant
-// supply path. New XP Boosts now come only from the configured command/chat
-// drops and the explicit elite-weekly Infinity reward.
+// stockpiles), but fully retire XP Boost III. The current shop and merchant
+// are allowed to supply the three active shop tiers and XP Boost Infinity.
 await db.query(`
 
     DELETE FROM boost_inventory
@@ -1636,6 +1982,7 @@ await db.query(`
     DELETE FROM shop_stock
 
     WHERE LOWER(boostType) = 'xp'
+    AND LOWER(tier) = 'tier3'
 
 `);
 
@@ -1658,6 +2005,29 @@ await db.query(`
         WHERE LOWER(
             rewardBoost ->> 'boostType'
         ) = 'xp'
+        AND LOWER(
+            rewardBoost ->> 'tier'
+        ) = 'tier3'
+
+    )
+
+    OR EXISTS (
+
+        SELECT 1
+
+        FROM jsonb_array_elements(
+            COALESCE(
+                deal -> 'cost' -> 'boosts',
+                '[]'::jsonb
+            )
+        ) AS costBoost
+
+        WHERE LOWER(
+            costBoost ->> 'boostType'
+        ) = 'xp'
+        AND LOWER(
+            costBoost ->> 'tier'
+        ) = 'tier3'
 
     )
 
@@ -1754,6 +2124,8 @@ await db.query(`
 
         chatXP10Until BIGINT NOT NULL DEFAULT 0,
 
+        chatXP20Until BIGINT NOT NULL DEFAULT 0,
+
         shopDiscount50Until BIGINT NOT NULL DEFAULT 0,
 
         shopDiscount90Until BIGINT NOT NULL DEFAULT 0,
@@ -1805,6 +2177,7 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS rollWindowUses INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP2Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP10Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP20Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS shopDiscount50Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS shopDiscount90Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteedCriticalsRemaining INTEGER NOT NULL DEFAULT 0,
@@ -2015,6 +2388,14 @@ for(const item of Object.values(SHOP_CATALOG)){
         getRandomShopPrice(item);
 
 
+    const allowedPrices =
+        Array.isArray(
+            SHOP_PRICE_OPTIONS[item.key]
+        )
+            ? SHOP_PRICE_OPTIONS[item.key]
+            : [item.price];
+
+
     await db.query(`
 
         INSERT INTO shop_stock
@@ -2038,15 +2419,25 @@ for(const item of Object.values(SHOP_CATALOG)){
 
             maxAmount = EXCLUDED.maxAmount,
 
-            amount = LEAST(
-                shop_stock.amount,
-                EXCLUDED.maxAmount
-            ),
+            amount =
+                CASE
+                    WHEN shop_stock.maxAmount <>
+                        EXCLUDED.maxAmount
+                    THEN EXCLUDED.maxAmount
+                    ELSE LEAST(
+                        shop_stock.amount,
+                        EXCLUDED.maxAmount
+                    )
+                END,
 
             price =
                 CASE
                     WHEN shop_stock.price IS NULL
                     OR shop_stock.price <= 0
+                    OR NOT (
+                        shop_stock.price =
+                        ANY($5::BIGINT[])
+                    )
                     THEN EXCLUDED.price
                     ELSE shop_stock.price
                 END
@@ -2055,7 +2446,8 @@ for(const item of Object.values(SHOP_CATALOG)){
         item.boostType,
         item.tier,
         item.maxStock,
-        initialPrice
+        initialPrice,
+        allowedPrices
     ]);
 
 }
@@ -5024,6 +5416,31 @@ function normalizeTravelingMerchantPerk(
     }
 
 
+    if(type === "chat_xp_timed"){
+
+        return {
+            type,
+            multiplier:
+                Number(
+                    rawPerk.multiplier
+                ) >= 20
+                    ? 20
+                    : 10,
+            durationMs:
+                Math.max(
+                    MERCHANT_HOUR,
+                    Math.floor(
+                        Number(
+                            rawPerk.durationMs
+                        ) ||
+                        12 * MERCHANT_HOUR
+                    )
+                )
+        };
+
+    }
+
+
     if(type === "multi_roll_permanent"){
 
         return {
@@ -5139,6 +5556,18 @@ function resolveChatXPMultiplier(
                     ?.merchantpermanentchatxpmultiplier
             ) || 1
         );
+
+
+    if(
+        Number(
+            effects?.chatxp20until || 0
+        ) > now
+    ){
+        return Math.max(
+            20,
+            permanentMultiplier
+        );
+    }
 
 
     if(
@@ -5909,6 +6338,42 @@ async function purchaseTravelingMerchantDeal(
                 guildID,
                 userID,
                 perk.multiplier
+            ]);
+
+        }
+        else if(
+            perk?.type ===
+            "chat_xp_timed"
+        ){
+
+            const now =
+                Date.now();
+
+
+            const expiryColumn =
+                perk.multiplier >= 20
+                    ? "chatXP20Until"
+                    : "chatXP10Until";
+
+
+            await client.query(`
+
+                UPDATE quest_effects
+
+                SET ${expiryColumn} =
+                    GREATEST(
+                        ${expiryColumn},
+                        $3
+                    ) + $4
+
+                WHERE guildID=$1
+                AND userID=$2
+
+            `, [
+                guildID,
+                userID,
+                now,
+                perk.durationMs
             ]);
 
         }
@@ -10545,6 +11010,8 @@ module.exports = {
 
 
     SHOP_CATALOG,
+
+    SHOP_PRICE_OPTIONS,
 
     SHOP_REFRESH_TIME,
 
