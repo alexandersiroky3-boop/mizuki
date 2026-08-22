@@ -36,7 +36,7 @@ const ELITE_REWARD_LEVEL =
 
 
 const QUEST_RULESET_VERSION =
-    8;
+    9;
 
 
 // Daily-only Luck Boost MAX quantities. Weekly Luck MAX rewards keep their
@@ -67,6 +67,12 @@ const CHAT_XP_QUEST_TARGETS = {
 // Luck Boost Omega is rolled independently from the normal elite weekly
 // extras. This is a real 5% chance, not an indirect shuffled-pool chance.
 const WEEKLY_ELITE_OMEGA_CHANCE =
+    0.05;
+
+
+// Level 150+ weekly quests independently have a real 5% chance to include
+// one XP Boost ထ. It can appear in the same week as Luck Boost Ω.
+const WEEKLY_ELITE_XP_INFINITY_CHANCE =
     0.05;
 
 
@@ -702,15 +708,6 @@ function generateDailyRewardsLow(){
             },
 
             {
-                type: "boost",
-                boostType: "xp",
-                tier: "tier3",
-                amount:
-                    randomChoice([1, 2]),
-                levelBand: "low"
-            },
-
-            {
                 type: "guaranteed_roll",
                 rollType: "daily_25k_75k",
                 amount: 1,
@@ -744,18 +741,6 @@ function generateDailyRewardsHigh(){
             {
                 type: "boost",
                 boostType: "luck",
-                tier:
-                    randomChoice([
-                        "tier2",
-                        "tier3"
-                    ]),
-                amount: 5,
-                levelBand: "high"
-            },
-
-            {
-                type: "boost",
-                boostType: "xp",
                 tier:
                     randomChoice([
                         "tier2",
@@ -806,30 +791,12 @@ function generateDailyRewardsElite(){
 
         {
             type: "boost",
-            boostType: "xp",
-            tier: "max",
-            amount:
-                randomChoice([2, 4, 6]),
-            levelBand
-        },
-
-        {
-            type: "boost",
             boostType: "luck",
             tier: "max",
             amount:
                 randomChoice(
                     DAILY_LUCK_MAX_AMOUNTS
                 ),
-            levelBand
-        },
-
-        {
-            type: "boost",
-            boostType: "xp",
-            tier: "tier3",
-            amount:
-                randomChoice([5, 10, 15]),
             levelBand
         },
 
@@ -930,25 +897,7 @@ function generateWeeklyRewardsHigh(){
 
             {
                 type: "boost",
-                boostType: "xp",
-                tier: "max",
-                amount:
-                    randomChoice([2, 5]),
-                levelBand: "high"
-            },
-
-            {
-                type: "boost",
                 boostType: "luck",
-                tier: "tier3",
-                amount:
-                    randomChoice([10, 20]),
-                levelBand: "high"
-            },
-
-            {
-                type: "boost",
-                boostType: "xp",
                 tier: "tier3",
                 amount:
                     randomChoice([10, 20]),
@@ -1111,6 +1060,19 @@ function generateWeeklyRewardsElite(){
             type: "boost",
             boostType: "luck",
             tier: "omega",
+            amount: 1,
+            levelBand
+        });
+
+    }
+
+
+    if(Math.random() < WEEKLY_ELITE_XP_INFINITY_CHANCE){
+
+        rewards.push({
+            type: "boost",
+            boostType: "xp",
+            tier: "infinity",
             amount: 1,
             levelBand
         });
@@ -2172,6 +2134,48 @@ function migrateWeeklyRewards(
 }
 
 
+function removeRetiredXPBoostQuestRewards(
+    rewards,
+    cycleType,
+    level
+){
+
+    return (rewards || []).filter(
+        reward => {
+
+            const isXPBoost =
+                reward?.type === "boost"
+                &&
+                String(
+                    reward.boostType || ""
+                ).toLowerCase() === "xp";
+
+
+            if(!isXPBoost){
+                return true;
+            }
+
+
+            // The sole quest-based XP Boost supply is one Infinity item from
+            // the independent 5% Level 150+ weekly reward roll.
+            return (
+                String(cycleType).toLowerCase() === "weekly"
+                &&
+                isEliteRewardLevel(level)
+                &&
+                String(
+                    reward.tier || ""
+                ).toLowerCase() === "infinity"
+                &&
+                Number(reward.amount) === 1
+            );
+
+        }
+    );
+
+}
+
+
 function migrateCycleData(
     cycle,
     level = QUEST_UNLOCK_LEVEL
@@ -2361,6 +2365,14 @@ function migrateCycleData(
                 );
 
         }
+
+
+        rewards =
+            removeRetiredXPBoostQuestRewards(
+                rewards,
+                normalized.cycletype,
+                level
+            );
 
     }
 
@@ -3142,8 +3154,8 @@ function formatReward(reward){
     if(reward.type === "guaranteed_roll_minimum"){
 
         return (
-            "A randomized next `!roll` worth **at least " +
-            `${Number(reward.minXP).toLocaleString()} XP**`
+            `Guaranteed **${Number(reward.minXP).toLocaleString()}+ XP** ` +
+            "on your next `!roll`"
         );
 
     }
