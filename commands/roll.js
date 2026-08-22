@@ -15,18 +15,17 @@ const ROLL_COOLDOWN_MS =
     30_000;
 
 
-const ROLL_CLOCK_MARKDOWN =
+const ROLL_CLOCK_EMOJI =
     "⏱️";
 
 
-// Match both the old plain clock and the new linked clock so countdowns from
-// either format can still be edited safely while the bot is running.
+// Match only the plain clock countdown shown by the bot.
 const ROLL_COUNTDOWN_PATTERN =
-    /(?:\[⏱️\]\(https:\/\/discord\.com\/assets\/0936447be3e254dd\.svg\)|⏱️) \*\*Try again in \d+ seconds?\.\.\.\*\*/;
+    /⏱️ \*\*Try again in \d+ seconds?\.\.\.\*\*/;
 
 
 const ROLL_READY_MESSAGE =
-    ROLL_CLOCK_MARKDOWN +
+    ROLL_CLOCK_EMOJI +
     " **You can Roll now.**";
 
 
@@ -330,6 +329,68 @@ const ROLL_GUARANTEE_MIN_XP =
     500000;
 
 
+// A "500,000+" guarantee is a true minimum, not a clamp to exactly
+// 500,000. The active Luck profile now selects and biases the replacement
+// reward using the same tier-aware Luck rules as normal rolling.
+function rollGuaranteedMinimumXP(
+    chanceTable,
+    minimumXP,
+    luckProfile = null,
+    levelTableName = "level1To100",
+    random = Math.random
+){
+
+    return luck.rollAtLeastWithLuck(
+        chanceTable,
+        levelTableName,
+        luckProfile,
+        minimumXP,
+        random
+    );
+
+}
+
+
+function applyMinimumRollGuarantee(
+    rolledXP,
+    chanceTable,
+    minimumXP,
+    luckProfile = null,
+    levelTableName = "level1To100",
+    random = Math.random
+){
+
+    const currentXP =
+        Math.floor(
+            Number(rolledXP) || 0
+        );
+
+
+    const safeMinimum =
+        Math.max(
+            0,
+            Math.floor(
+                Number(minimumXP) || 0
+            )
+        );
+
+
+    if(currentXP >= safeMinimum){
+        return currentXP;
+    }
+
+
+    return rollGuaranteedMinimumXP(
+        chanceTable,
+        safeMinimum,
+        luckProfile,
+        levelTableName,
+        random
+    );
+
+}
+
+
 function buildRollGuaranteeFooter(
     rollGuarantee
 ){
@@ -357,7 +418,7 @@ function buildRollGuaranteeFooter(
         +
         (
             rollGuarantee?.guaranteed
-                ? `\n🎁 **Milestone reached — this roll was guaranteed ${ROLL_GUARANTEE_MIN_XP.toLocaleString()}+ XP!**`
+                ? `\n🎁 **Milestone reached — this roll received a randomized ${ROLL_GUARANTEE_MIN_XP.toLocaleString()}+ XP reward!**`
                 : ""
         )
     );
@@ -493,7 +554,7 @@ function buildRollCountdownLine(
 
 
     return (
-        ROLL_CLOCK_MARKDOWN +
+        ROLL_CLOCK_EMOJI +
         " **Try again in " +
         safeSeconds +
         " " +
@@ -1204,9 +1265,11 @@ if(guaranteedRoll === "daily_25k_75k"){
     rolledXP =
         Math.max(
             rolledXP,
-            Math.floor(
-                Math.random() * 50001
-            ) + 25000
+            luck.rollRangeWithLuck(
+                25000,
+                75000,
+                rollLuckProfile
+            )
         );
 
 }
@@ -1215,9 +1278,11 @@ else if(guaranteedRoll === "impossible"){
     rolledXP =
         Math.max(
             rolledXP,
-            Math.floor(
-                Math.random() * 1500001
-            ) + 500000
+            luck.rollRangeWithLuck(
+                500000,
+                2000000,
+                rollLuckProfile
+            )
         );
 
 }
@@ -1226,11 +1291,12 @@ else if(
 ){
 
     rolledXP =
-        Math.max(
+        applyMinimumRollGuarantee(
             rolledXP,
-            Number(
-                guaranteedRoll.minXP
-            ) || 0
+            rollChanceTable,
+            guaranteedRoll.minXP,
+            rollLuckProfile,
+            levelTableName
         );
 
 }
@@ -1250,9 +1316,12 @@ const rollGuarantee =
 if(rollGuarantee.guaranteed){
 
     rolledXP =
-        Math.max(
+        applyMinimumRollGuarantee(
             rolledXP,
-            ROLL_GUARANTEE_MIN_XP
+            rollChanceTable,
+            ROLL_GUARANTEE_MIN_XP,
+            rollLuckProfile,
+            levelTableName
         );
 
 }
@@ -1389,7 +1458,7 @@ const guaranteedRollExtra =
         : guaranteedRoll === "impossible"
             ? "\nQuest reward used: guaranteed Impossible Roll."
             : guaranteedRoll?.type === "minimum"
-                ? `\nQuest reward used: guaranteed ${Number(guaranteedRoll.minXP).toLocaleString()}+ XP roll.`
+                ? `\nQuest reward used: randomized roll of at least ${Number(guaranteedRoll.minXP).toLocaleString()} XP.`
                 : "";
 
 
@@ -1914,6 +1983,10 @@ module.exports = {
     startRollMessageCountdown,
 
     sendMessageWithRollCountdown,
+
+    rollGuaranteedMinimumXP,
+
+    applyMinimumRollGuarantee,
 
     ROLL_READY_MESSAGE
 
