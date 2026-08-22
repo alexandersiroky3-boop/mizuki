@@ -40,6 +40,12 @@ Here are all available commands:
 \`!hug @user/userid/bot\`
 > You can hug other users and even the bot
 
+\`!trade @user/userid\`
+> Trade Boosts or XP with users.
+
+\`!values\`
+> Shows the current Trading Values of each Boost.
+
 \`!ezwin\`
 > Takes everyone's XP (except you) and you gain XP...
 
@@ -81,6 +87,9 @@ Here are all available commands:
 
 \`!logs\`
 > Shows the last 20 XP logs of the user.
+
+\`!mute\`
+> You can mute either your Critical replies or your XP boosts replies.
 
 \`!commands\`
 > Shows this command list.
