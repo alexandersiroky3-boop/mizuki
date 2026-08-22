@@ -3142,8 +3142,8 @@ function formatReward(reward){
     if(reward.type === "guaranteed_roll_minimum"){
 
         return (
-            `Guaranteed **${Number(reward.minXP).toLocaleString()}+ XP** ` +
-            "on your next `!roll`"
+            "A randomized next `!roll` worth **at least " +
+            `${Number(reward.minXP).toLocaleString()} XP**`
         );
 
     }
