@@ -261,13 +261,34 @@ await database.addXPLog(
 
 
     // ======================
-    // Update boosts
+    // RANDOM CHAT XP BOOST DROP
     // ======================
+    // Every message that actually reaches this XP-award path gets exactly
+    // one roll against the mutually-exclusive chat drop table.
+
+    let xpBoostDrop = null;
 
 
-    await boosts.updateBoost(
-        message.member
-    );
+    try{
+
+        xpBoostDrop =
+            await boosts.tryXPBoostDrop(
+                message.member,
+                "chat",
+                "chat message"
+            );
+
+    }
+    catch(error){
+
+        // A temporary inventory/reply failure must not undo or hide the XP
+        // the message already earned.
+        console.error(
+            "Could not award chat XP Boost drop:",
+            error
+        );
+
+    }
 
 
 
@@ -347,6 +368,25 @@ return {
 
 
     earnedXP,
+
+
+    xpBeforeBoost:
+        reward.xpBeforeBoost,
+
+
+    xpBoostTier:
+        reward.xpBoostTier,
+
+
+    xpBoostMultiplier:
+        reward.xpBoostMultiplier,
+
+
+    xpBoostCriticalBonus:
+        reward.xpBoostCriticalBonus,
+
+
+    xpBoostDrop,
 
 
     critical:
