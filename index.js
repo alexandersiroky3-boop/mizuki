@@ -28,6 +28,7 @@ const rankCommand = require("./commands/rank");
 const giveXPCommand = require("./commands/givexp");
 const commandsCommand = require("./commands/commands");
 const boostCommand = require("./commands/showboost");
+const valuesCommand = require("./commands/values");
 const muteCommand = require("./commands/mute");
 const shopCommand = require("./commands/shop");
 const merchantCommand =
@@ -932,6 +933,18 @@ if(message.content === "!boost"){
 if(
     message.content
         .trim()
+        .toLowerCase() === "!values"
+){
+
+    return valuesCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content
+        .trim()
         .toLowerCase() === "!mute"
 ){
 
@@ -1242,7 +1255,7 @@ if(result.critical){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
 
         ).catch(() => {});
 
@@ -1276,7 +1289,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
 
     ).catch(() => {});
 
