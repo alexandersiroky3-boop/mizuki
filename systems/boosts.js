@@ -22,19 +22,13 @@ const BOOST_ROLES = {
     tier2:
         "1526994944965869648",
 
-    max:
-        "1526995218098815016",
+    tier3:
+        "1526995123420922047",
 
-    infinity:
-        "1540496714903986388"
+    max:
+        "1526995218098815016"
 
 };
-
-
-// XP Boost III no longer exists. Keep its old role ID only in the cleanup
-// list so Mizuki can remove leftover copies after deployment.
-const LEGACY_XP_BOOST_III_ROLE_ID =
-    "1526995123420922047";
 
 
 const BOOST_PROFILES = {
@@ -55,12 +49,6 @@ const BOOST_PROFILES = {
 
         durationText:
             "1 hour",
-
-        multiplier:
-            5,
-
-        criticalChanceBonus:
-            5,
 
         order:
             1
@@ -85,16 +73,34 @@ const BOOST_PROFILES = {
         durationText:
             "1 hour",
 
-        multiplier:
-            25,
-
-        criticalChanceBonus:
-            10,
-
         order:
             2
 
     },
+
+
+    tier3: {
+
+        tier:
+            "tier3",
+
+        roleID:
+            BOOST_ROLES.tier3,
+
+        name:
+            "XP Boost III",
+
+        duration:
+            BOOST_DURATION,
+
+        durationText:
+            "1 hour",
+
+        order:
+            3
+
+    },
+
 
     max: {
 
@@ -113,41 +119,6 @@ const BOOST_PROFILES = {
         durationText:
             "1 hour",
 
-        multiplier:
-            75,
-
-        criticalChanceBonus:
-            20,
-
-        order:
-            3
-
-    },
-
-
-    infinity: {
-
-        tier:
-            "infinity",
-
-        roleID:
-            BOOST_ROLES.infinity,
-
-        name:
-            "XP Boost ထ",
-
-        duration:
-            BOOST_DURATION,
-
-        durationText:
-            "1 hour",
-
-        multiplier:
-            500,
-
-        criticalChanceBonus:
-            30,
-
         order:
             4
 
@@ -156,39 +127,44 @@ const BOOST_PROFILES = {
 };
 
 
-const XP_BOOST_DROP_CHANCES = {
+const BOOST_REQUIREMENTS = {
 
-    chat: {
-        tier1: 7,
-        tier2: 3,
-        max: 0.75,
-        infinity: 0.01
-    },
+    [BOOST_ROLES.tier1]:
+        1250,
 
-    roll: {
-        tier1: 12,
-        tier2: 5,
-        max: 1.5,
-        infinity: 0.075
-    },
+    [BOOST_ROLES.tier2]:
+        5000,
 
-    social: {
-        tier1: 15,
-        tier2: 7.5,
-        max: 3,
-        infinity: 0.35
-    }
+    [BOOST_ROLES.tier3]:
+        12500,
+
+    [BOOST_ROLES.max]:
+        25000
+
+};
+
+
+const ROLE_ORDER = {
+
+    [BOOST_ROLES.tier1]:
+        1,
+
+    [BOOST_ROLES.tier2]:
+        2,
+
+    [BOOST_ROLES.tier3]:
+        3,
+
+    [BOOST_ROLES.max]:
+        4
 
 };
 
 
 const BOOST_ROLE_IDS =
-    [
-        ...Object.values(
-            BOOST_ROLES
-        ),
-        LEGACY_XP_BOOST_III_ROLE_ID
-    ];
+    Object.values(
+        BOOST_ROLES
+    );
 
 
 
@@ -196,30 +172,36 @@ const BOOST_ROLE_IDS =
 // HELPERS
 // =====================================
 
-function normalizeXPBoostTier(tier){
+function getBoostRole(xp){
 
-    const normalized =
-        String(tier || "")
-            .trim()
-            .toLowerCase();
+    if(xp >= 25000)
+        return BOOST_ROLES.max;
 
 
-    const aliases = {
-        "1": "tier1",
-        "i": "tier1",
-        "tier1": "tier1",
-        "2": "tier2",
-        "ii": "tier2",
-        "tier2": "tier2",
-        "max": "max",
-        "inf": "infinity",
-        "infinity": "infinity",
-        "∞": "infinity",
-        "ထ": "infinity"
-    };
+    if(xp >= 12500)
+        return BOOST_ROLES.tier3;
 
 
-    return aliases[normalized] || null;
+    if(xp >= 5000)
+        return BOOST_ROLES.tier2;
+
+
+    if(xp >= 1250)
+        return BOOST_ROLES.tier1;
+
+
+    return null;
+
+}
+
+
+
+function getRequirement(role){
+
+    return (
+        BOOST_REQUIREMENTS[role] ||
+        0
+    );
 
 }
 
@@ -229,33 +211,8 @@ function getBoostProfileByTier(tier){
 
     return (
         BOOST_PROFILES[
-            normalizeXPBoostTier(
-                tier
-            )
+            String(tier).toLowerCase()
         ] || null
-    );
-
-}
-
-
-function getMemberBoostProfile(member){
-
-    return (
-        Object.values(
-            BOOST_PROFILES
-        )
-            .sort(
-                (first, second) =>
-                    second.order - first.order
-            )
-            .find(
-                profile =>
-                    member?.roles?.cache?.has(
-                        profile.roleID
-                    )
-            )
-        ||
-        getNoBoostProfile()
     );
 
 }
@@ -296,12 +253,6 @@ function getNoBoostProfile(){
 
         durationText:
             "",
-
-        multiplier:
-            1,
-
-        criticalChanceBonus:
-            0,
 
         order:
             0,
@@ -799,69 +750,228 @@ async function activateXPBoostFromInventory(
 
 
 // =====================================
-// RANDOM XP BOOST INVENTORY DROPS
+// EARN XP BOOST INVENTORY FROM CHATTING
 // =====================================
 
-function rollXPBoostDropTier(
-    dropType,
-    random = Math.random
-){
+async function updateBoost(member){
 
-    const chances =
-        XP_BOOST_DROP_CHANCES[
-            String(dropType || "").toLowerCase()
-        ];
+    const guildID =
+        member.guild.id;
 
 
-    if(!chances){
+    const userID =
+        member.id;
+
+
+    const hourlyXP =
+        await database.getHourlyBoostXP(
+            guildID,
+            userID
+        );
+
+
+    const wantedRole =
+        getBoostRole(
+            hourlyXP
+        );
+
+
+    const progress =
+        await database.getXPBoostProgress(
+            guildID,
+            userID
+        );
+
+
+    if(!wantedRole){
+
+        if(
+            progress
+            &&
+            hourlyXP <= 0
+        ){
+
+            await database.clearXPBoostProgress(
+                guildID,
+                userID
+            );
+
+        }
+        else if(
+            progress
+            &&
+            Number(
+                progress.lastawardxp
+            ) > hourlyXP
+        ){
+
+            await database.updateXPBoostProgress(
+                guildID,
+                userID,
+                progress.role,
+                hourlyXP
+            );
+
+        }
+
+
         return null;
+
     }
 
 
-    const rawRoll =
+    const wantedProfile =
+        getBoostProfileByRole(
+            wantedRole
+        );
+
+
+    if(!wantedProfile){
+
+        return null;
+
+    }
+
+
+    if(!progress){
+
+        const award =
+            await awardXPBoost(
+                member,
+                wantedProfile.tier,
+                "hourly XP"
+            );
+
+
+        await database.updateXPBoostProgress(
+            guildID,
+            userID,
+            wantedRole,
+            hourlyXP
+        );
+
+
+        return award;
+
+    }
+
+
+    const progressRole =
+        progress.role;
+
+
+    const progressOrder =
+        ROLE_ORDER[
+            progressRole
+        ] || 0;
+
+
+    const wantedOrder =
+        ROLE_ORDER[
+            wantedRole
+        ] || 0;
+
+
+    // Reaching a higher tier stores one
+    // copy of that higher-tier boost.
+    if(wantedOrder > progressOrder){
+
+        const award =
+            await awardXPBoost(
+                member,
+                wantedProfile.tier,
+                "hourly XP tier-up"
+            );
+
+
+        await database.updateXPBoostProgress(
+            guildID,
+            userID,
+            wantedRole,
+            hourlyXP
+        );
+
+
+        return award;
+
+    }
+
+
+    // The rolling one-hour XP total dropped.
+    // Move the progress baseline down without
+    // awarding another copy immediately.
+    if(wantedOrder < progressOrder){
+
+        await database.updateXPBoostProgress(
+            guildID,
+            userID,
+            wantedRole,
+            hourlyXP
+        );
+
+
+        return null;
+
+    }
+
+
+    const lastAwardXP =
         Number(
-            random()
+            progress.lastawardxp
+        ) || 0;
+
+
+    const gained =
+        hourlyXP -
+        lastAwardXP;
+
+
+    const requiredGain =
+
+        wantedRole ===
+        BOOST_ROLES.max
+
+            ? 1000000
+
+            : getRequirement(
+                wantedRole
+            );
+
+
+    if(gained < 0){
+
+        await database.updateXPBoostProgress(
+            guildID,
+            userID,
+            wantedRole,
+            hourlyXP
         );
 
 
-    const roll =
-        Math.min(
-            99.999999999,
-            Math.max(
-                0,
-                Number.isFinite(rawRoll)
-                    ? rawRoll * 100
-                    : 0
-            )
+        return null;
+
+    }
+
+
+    if(gained >= requiredGain){
+
+        const award =
+            await awardXPBoost(
+                member,
+                wantedProfile.tier,
+                "hourly XP repeat"
+            );
+
+
+        await database.updateXPBoostProgress(
+            guildID,
+            userID,
+            wantedRole,
+            hourlyXP
         );
 
 
-    // One random roll makes these mutually exclusive real percentages.
-    // Rare tiers are checked first, so at most one item can be awarded.
-    const orderedTiers =
-        [
-            "infinity",
-            "max",
-            "tier2",
-            "tier1"
-        ];
-
-
-    let cumulativeChance =
-        0;
-
-
-    for(const tier of orderedTiers){
-
-        cumulativeChance +=
-            Number(
-                chances[tier]
-            ) || 0;
-
-
-        if(roll < cumulativeChance){
-            return tier;
-        }
+        return award;
 
     }
 
@@ -870,164 +980,6 @@ function rollXPBoostDropTier(
 
 }
 
-
-async function tryXPBoostDrop(
-    member,
-    dropType,
-    source = dropType,
-    random = Math.random
-){
-
-    const tier =
-        rollXPBoostDropTier(
-            dropType,
-            random
-        );
-
-
-    if(!tier){
-        return null;
-    }
-
-
-    return awardXPBoost(
-        member,
-        tier,
-        source
-    );
-
-}
-
-
-function buildXPBoostDropMessage(
-    message,
-    award
-){
-
-    if(!award?.awarded){
-        return "";
-    }
-
-
-    const profile =
-        award.role;
-
-
-    return (
-        `⚡ ${message.author} found **1x** <@&${profile.roleID}>! ` +
-        `Stored in your XP Boost inventory: **x${Number(award.amount).toLocaleString()}**.`
-    );
-
-}
-
-
-async function sendXPBoostDropReply(
-    message,
-    award
-){
-
-    if(!award?.awarded){
-        return null;
-    }
-
-
-    let muted = false;
-
-
-    try{
-
-        muted =
-            await database.isMessageTypeMuted(
-                message.guild.id,
-                message.author.id,
-                "xp_boost"
-            );
-
-    }
-    catch(error){
-
-        console.error(
-            "Could not read XP Boost reply preference:",
-            error
-        );
-
-    }
-
-
-    if(muted){
-        return null;
-    }
-
-
-    return message.reply({
-        content:
-            buildXPBoostDropMessage(
-                message,
-                award
-            ),
-        allowedMentions: {
-            users: [message.author.id],
-            roles: [],
-            repliedUser: false
-        }
-    }).catch(error => {
-
-        console.error(
-            "Could not send XP Boost drop reply:",
-            error
-        );
-
-
-        return null;
-
-    });
-
-}
-
-
-async function tryAndAnnounceXPBoostDrop(
-    message,
-    dropType,
-    source = dropType,
-    random = Math.random
-){
-
-    let award = null;
-
-
-    try{
-
-        award =
-            await tryXPBoostDrop(
-                message.member,
-                dropType,
-                source,
-                random
-            );
-
-    }
-    catch(error){
-
-        console.error(
-            `Could not award ${dropType} XP Boost drop:`,
-            error
-        );
-
-
-        return null;
-
-    }
-
-
-    await sendXPBoostDropReply(
-        message,
-        award
-    );
-
-
-    return award;
-
-}
 
 
 // =====================================
@@ -1040,31 +992,11 @@ async function checkBoostRole(member){
         return;
 
 
-    let databaseBoost =
+    const databaseBoost =
         await database.getBoost(
             member.guild.id,
             member.id
         );
-
-
-    if(
-        databaseBoost
-        &&
-        !getBoostProfileByRole(
-            databaseBoost.role
-        )
-    ){
-
-        await database.clearBoost(
-            member.guild.id,
-            member.id
-        );
-
-
-        databaseBoost =
-            null;
-
-    }
 
 
     for(
@@ -1176,8 +1108,9 @@ async function removeExpiredBoosts(client){
 
             if(member){
 
-                await getActiveBoost(
-                    member
+                await syncMemberBoostRoles(
+                    member,
+                    null
                 ).catch(console.error);
 
             }
@@ -1238,14 +1171,7 @@ async function restoreBoosts(client){
 
     for(const boost of savedBoosts){
 
-        const profile =
-            getBoostProfileByRole(
-                boost.role
-            );
-
         if(
-            !profile
-            ||
             Number(
                 boost.expiresat
             ) <= Date.now()
@@ -1284,44 +1210,11 @@ async function restoreBoosts(client){
 
         await syncMemberBoostRoles(
             member,
-            profile.roleID
+            boost.role
         ).catch(console.error);
 
 
         restored++;
-
-    }
-
-
-    // Remove the deleted XP Boost III role even for users who had no active
-    // database boost when the bot restarted.
-    for(const guild of client.guilds.cache.values()){
-
-        const members =
-            await guild.members.fetch()
-                .catch(() => null);
-
-
-        if(!members){
-            continue;
-        }
-
-
-        for(const member of members.values()){
-
-            if(
-                member.roles.cache.has(
-                    LEGACY_XP_BOOST_III_ROLE_ID
-                )
-            ){
-
-                await getActiveBoost(
-                    member
-                ).catch(console.error);
-
-            }
-
-        }
 
     }
 
@@ -1340,15 +1233,13 @@ module.exports = {
 
     BOOST_PROFILES,
 
-    XP_BOOST_DROP_CHANCES,
+    getBoostRole,
 
-    LEGACY_XP_BOOST_III_ROLE_ID,
+    getRequirement,
 
     getBoostProfileByTier,
 
     getBoostProfileByRole,
-
-    getMemberBoostProfile,
 
     getActiveBoost,
 
@@ -1356,15 +1247,7 @@ module.exports = {
 
     activateXPBoostFromInventory,
 
-    rollXPBoostDropTier,
-
-    tryXPBoostDrop,
-
-    buildXPBoostDropMessage,
-
-    sendXPBoostDropReply,
-
-    tryAndAnnounceXPBoostDrop,
+    updateBoost,
 
     checkBoostRole,
 
