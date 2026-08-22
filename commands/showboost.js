@@ -1,5 +1,4 @@
 const {
-    EmbedBuilder,
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
@@ -7,519 +6,213 @@ const {
     MessageFlags
 } = require("discord.js");
 
+const database = require("../database");
+const boosts = require("../systems/boosts");
+const luck = require("../utils/luck");
 
-const database =
-    require("../database");
 
+const PANEL_DURATION_MS =
+    2 * 60 * 1000;
 
-const boosts =
-    require("../systems/boosts");
 
-
-const luck =
-    require("../utils/luck");
-
-
-const XP_TIERS = [
-    "tier1",
-    "tier2",
-    "tier3",
-    "max"
-];
-
-
-const LUCK_TIERS = [
-    "tier1",
-    "tier2",
-    "tier3",
-    "max",
-    "omega"
-];
-
-
-const TIER_LABELS = {
-
-    tier1:
-        "I",
-
-    tier2:
-        "II",
-
-    tier3:
-        "III",
-
-    max:
-        "MAX",
-
-    omega:
-        "Ω"
-
-};
-
-
-
-// ==========================
-// HELPERS
-// ==========================
-
-function formatTime(milliseconds){
-
-    if(
-        !milliseconds
-        ||
-        milliseconds <= 0
-    ){
-
-        return "Expired";
-
-    }
-
-
-    const totalSeconds =
-        Math.ceil(
-            milliseconds / 1000
-        );
-
-
-    const hours =
-        Math.floor(
-            totalSeconds / 3600
-        );
-
-
-    const minutes =
-        Math.floor(
-            (
-                totalSeconds %
-                3600
-            ) / 60
-        );
-
-
-    const seconds =
-        totalSeconds %
-        60;
-
-
-    return (
-        `${hours}h ${minutes}m ${seconds}s`
-    );
-
-}
-
-
-
-function createEmptyInventory(){
-
-    return {
-
-        xp: {
-
-            tier1: 0,
-            tier2: 0,
-            tier3: 0,
-            max: 0
-
-        },
-
-        luck: {
-
-            tier1: 0,
-            tier2: 0,
-            tier3: 0,
-            max: 0,
-            omega: 0
-
-        }
-
-    };
-
-}
-
-
-
-function mapInventory(rows){
-
-    const inventory =
-        createEmptyInventory();
-
-
-    for(const row of rows){
-
-        const type =
-            String(
-                row.boosttype
-            ).toLowerCase();
-
-
-        const tier =
-            String(
-                row.tier
-            ).toLowerCase();
-
-
-        if(
-            inventory[type]
-            &&
-            Object.prototype.hasOwnProperty.call(
-                inventory[type],
-                tier
-            )
-        ){
-
-            inventory[type][tier] =
-                Number(
-                    row.amount
-                ) || 0;
-
-        }
-
-    }
-
-
-    return inventory;
-
-}
-
-
-
-function formatInventoryTable(
-    inventory
-){
-
-    const formatTier = (label, amount) =>
-        `\`${label} x${amount}\``;
-
-
-    const xpInventory = [
-        formatTier("I", inventory.xp.tier1),
-        formatTier("II", inventory.xp.tier2),
-        formatTier("III", inventory.xp.tier3),
-        formatTier("MAX", inventory.xp.max)
-    ].join("  ");
-
-
-    const luckInventory = [
-        formatTier("I", inventory.luck.tier1),
-        formatTier("II", inventory.luck.tier2),
-        formatTier("III", inventory.luck.tier3),
-        formatTier("MAX", inventory.luck.max),
-        formatTier("Ω", inventory.luck.omega)
-    ].join("  ");
-
-
-    return (
-        `**XP Boosts**
-${xpInventory}
-
-` +
-        `**Luck Boosts**
-${luckInventory}`
-    );
-
-}
-
-
-function getNextTierData(
-    hourlyXP,
-    progressData = null
-){
-
-    const safeXP =
-        Math.max(
-            0,
-            Number(hourlyXP) || 0
-        );
-
-
-    const maxRoleID =
-        boosts.BOOST_PROFILES.max.roleID;
-
-
-    const savedRole =
-        progressData?.role || null;
-
-
-    const savedLastAwardXP =
-        Number(
-            progressData?.lastawardxp ??
-            progressData?.lastAwardXP ??
-            0
-        ) || 0;
-
-
-    // After MAX is earned, start a new MAX progress cycle.
-    // Repeated MAX rewards require another 1,000,000 hourly XP.
-    if(safeXP >= 25000){
-
-        const cycleStartXP =
-            savedRole === maxRoleID
-            &&
-            savedLastAwardXP > 0
-
-                ? savedLastAwardXP
-                : 25000;
-
-
-        const requiredXP =
-            1000000;
-
-
-        const currentXP =
-            Math.max(
-                0,
-                Math.min(
-                    requiredXP,
-                    safeXP - cycleStartXP
-                )
-            );
-
-
-        const percentage =
-            Math.max(
-                0,
-                Math.min(
-                    100,
-                    Math.floor(
-                        (
-                            currentXP /
-                            requiredXP
-                        ) * 100
-                    )
-                )
-            );
-
-
-        const filled =
-            Math.round(
-                percentage / 5
-            );
-
-
-        return {
-
-            tier:
-                "max",
-
-            xpTier:
-                `<@&${boosts.BOOST_PROFILES.max.roleID}>`,
-
-            luckTier:
-                `<@&${luck.LUCK_ROLES.max.roleID}>`,
-
-            currentXP,
-
-            requiredXP,
-
-            needed:
-                Math.max(
-                    0,
-                    requiredXP -
-                    currentXP
-                ),
-
-            percentage,
-
-            progressBar:
-                "■".repeat(filled) +
-                "□".repeat(
-                    20 - filled
-                )
-
-        };
-
-    }
-
-
-    const tiers = [
-
-        {
-            tier: "tier1",
-            startXP: 0,
-            requiredXP: 1250
-        },
-
-        {
-            tier: "tier2",
-            startXP: 1250,
-            requiredXP: 5000
-        },
-
-        {
-            tier: "tier3",
-            startXP: 5000,
-            requiredXP: 12500
-        },
-
-        {
-            tier: "max",
-            startXP: 12500,
-            requiredXP: 25000
-        }
-
+const XP_TIERS =
+    [
+        "tier1",
+        "tier2",
+        "max",
+        "infinity"
     ];
 
 
-    const next =
-        tiers.find(
-            entry =>
-                safeXP <
-                entry.requiredXP
-        );
+const LUCK_TIERS =
+    [
+        "tier1",
+        "tier2",
+        "tier3",
+        "max",
+        "omega"
+    ];
 
 
-    const tierProgress =
-        safeXP -
-        next.startXP;
+function inventoryMap(rows){
 
-
-    const tierRequirement =
-        next.requiredXP -
-        next.startXP;
-
-
-    const percentage =
-        Math.max(
-            0,
-            Math.min(
-                100,
-                Math.floor(
-                    (
-                        tierProgress /
-                        tierRequirement
-                    ) * 100
-                )
-            )
-        );
-
-
-    const filled =
-        Math.round(
-            percentage / 5
-        );
-
-
-    return {
-
-        tier:
-            next.tier,
-
-        xpTier:
-            `<@&${boosts.BOOST_PROFILES[next.tier].roleID}>`,
-
-        luckTier:
-            `<@&${luck.LUCK_ROLES[next.tier].roleID}>`,
-
-        currentXP:
-            Math.max(
-                0,
-                tierProgress
-            ),
-
-        requiredXP:
-            tierRequirement,
-
-        needed:
-            Math.max(
-                0,
-                next.requiredXP -
-                safeXP
-            ),
-
-        percentage,
-
-        progressBar:
-            "■".repeat(filled) +
-            "□".repeat(
-                20 - filled
-            )
-
-    };
+    return new Map(
+        rows.map(row => [
+            `${String(row.boosttype).toLowerCase()}:${String(row.tier).toLowerCase()}`,
+            Number(row.amount) || 0
+        ])
+    );
 
 }
 
 
-function createBoostButtons(
-    userID,
+function getInventoryAmount(
     inventory,
-    disableAll = false
+    type,
+    tier
+){
+
+    return Number(
+        inventory.get(
+            `${type}:${tier}`
+        ) || 0
+    );
+
+}
+
+
+function formatActiveBoost(profile){
+
+    if(!profile?.roleID){
+        return "None";
+    }
+
+
+    const expiresAt =
+        Number(profile.expiresAt) || 0;
+
+
+    const expiry =
+        expiresAt > Date.now()
+            ? ` • ends <t:${Math.floor(expiresAt / 1000)}:R>`
+            : "";
+
+
+    return `<@&${profile.roleID}>${expiry}`;
+
+}
+
+
+function buildXPInventoryLines(inventory){
+
+    return XP_TIERS.map(tier => {
+
+        const profile =
+            boosts.BOOST_PROFILES[tier];
+
+
+        const amount =
+            getInventoryAmount(
+                inventory,
+                "xp",
+                tier
+            );
+
+
+        return (
+            `• <@&${profile.roleID}> — **x${amount.toLocaleString()}** ` +
+            `• **x${profile.multiplier} XP** • **+${profile.criticalChanceBonus}% crit**`
+        );
+
+    });
+
+}
+
+
+function buildLuckInventoryLines(inventory){
+
+    return LUCK_TIERS.map(tier => {
+
+        const profile =
+            luck.LUCK_ROLES[tier];
+
+
+        const amount =
+            getInventoryAmount(
+                inventory,
+                "luck",
+                tier
+            );
+
+
+        return (
+            `• <@&${profile.roleID}> — **x${amount.toLocaleString()}** ` +
+            `• **x${profile.multiplier} luck**`
+        );
+
+    });
+
+}
+
+
+function buildButtons(
+    inventory,
+    disabled = false
 ){
 
     const xpRow =
         new ActionRowBuilder();
 
 
-    const luckRow =
-        new ActionRowBuilder();
-
-
     for(const tier of XP_TIERS){
 
-        const xpAmount =
-            inventory.xp[tier];
+        const profile =
+            boosts.BOOST_PROFILES[tier];
+
+
+        const amount =
+            getInventoryAmount(
+                inventory,
+                "xp",
+                tier
+            );
 
 
         xpRow.addComponents(
-
             new ButtonBuilder()
-
-                .setCustomId(
-                    `use_boost:xp:${tier}:${userID}`
-                )
-
+                .setCustomId(`activate_xp_${tier}`)
                 .setLabel(
-                    `XP ${TIER_LABELS[tier]}  |  ${xpAmount}`
+                    `${profile.name} (x${amount.toLocaleString()})`
                 )
-
                 .setStyle(
-                    tier === "max"
+                    tier === "infinity"
                         ? ButtonStyle.Danger
-                        : ButtonStyle.Primary
+                        : tier === "max"
+                            ? ButtonStyle.Success
+                            : ButtonStyle.Primary
                 )
-
                 .setDisabled(
-                    disableAll
-                    ||
-                    xpAmount <= 0
+                    disabled || amount <= 0
                 )
-
         );
 
     }
 
 
+    const luckRow =
+        new ActionRowBuilder();
+
+
     for(const tier of LUCK_TIERS){
 
-        const luckAmount =
-            inventory.luck[tier];
+        const profile =
+            luck.LUCK_ROLES[tier];
+
+
+        const amount =
+            getInventoryAmount(
+                inventory,
+                "luck",
+                tier
+            );
 
 
         luckRow.addComponents(
-
             new ButtonBuilder()
-
-                .setCustomId(
-                    `use_boost:luck:${tier}:${userID}`
-                )
-
+                .setCustomId(`activate_luck_${tier}`)
                 .setLabel(
-                    `Luck ${TIER_LABELS[tier]}  |  ${luckAmount}`
+                    `${profile.name} (x${amount.toLocaleString()})`
                 )
-
                 .setStyle(
                     tier === "omega"
                         ? ButtonStyle.Danger
                         : tier === "max"
-                            ? ButtonStyle.Danger
-                            : ButtonStyle.Success
+                            ? ButtonStyle.Success
+                            : ButtonStyle.Secondary
                 )
-
                 .setDisabled(
-                    disableAll
-                    ||
-                    luckAmount <= 0
+                    disabled || amount <= 0
                 )
-
         );
 
     }
@@ -532,485 +225,281 @@ function createBoostButtons(
 
 }
 
-function getActivationMessage(
-    type,
-    result
+
+async function buildBoostPanel(
+    member,
+    disabled = false,
+    notice = ""
 ){
-
-    const boostTypeName =
-        type === "xp"
-            ? "XP Boost"
-            : "Luck Boost";
-
-
-    if(
-        result.status ===
-        "no-stock"
-    ){
-
-        return (
-            `You do not have that ${boostTypeName} in your inventory.`
-        );
-
-    }
-
-
-    if(
-        result.status ===
-        "stronger-active"
-    ){
-
-        return (
-            `A stronger ${boostTypeName} is already active. The selected boost was not consumed.`
-        );
-
-    }
-
-
-    if(!result.success){
-
-        return (
-            `The ${boostTypeName} could not be activated.`
-        );
-
-    }
-
-
-    const unixExpiry =
-        Math.floor(
-            result.boost.expiresAt /
-            1000
-        );
-
-
-    const actionText = {
-
-        activated:
-            "activated",
-
-        refreshed:
-            "refreshed",
-
-        upgraded:
-            "upgraded to"
-
-    }[result.status] || "activated";
-
-
-    return (
-        `Successfully ${actionText} <@&${result.boost.roleID}>.\n` +
-        `Inventory remaining: **${result.remaining}**\n` +
-        `Expires: <t:${unixExpiry}:R>`
-    );
-
-}
-
-
-async function buildDashboard(
-    message,
-    disableAll = false
-){
-
-    const guildID =
-        message.guild.id;
-
-
-    const userID =
-        message.author.id;
-
 
     const [
-        activeXPBoost,
-        activeLuckBoost,
-        inventoryRows,
+        rows,
         hourlyXP,
-        streakData,
-        progressData
+        activeXP,
+        activeLuck
     ] = await Promise.all([
-
-        boosts.getActiveBoost(
-            message.member
-        ),
-
-        luck.getActiveLuckBoost(
-            message.member
-        ),
-
         database.getBoostInventory(
-            guildID,
-            userID
+            member.guild.id,
+            member.id
         ),
-
         database.getHourlyBoostXP(
-            guildID,
-            userID
+            member.guild.id,
+            member.id
         ),
-
-        database.getCriticalStreak(
-            guildID,
-            userID
+        boosts.getActiveBoost(
+            member
         ),
-
-        database.getXPBoostProgress(
-            guildID,
-            userID
+        luck.getActiveLuckBoost(
+            member
         )
-
     ]);
 
 
     const inventory =
-        mapInventory(
-            inventoryRows
-        );
+        inventoryMap(rows);
 
 
-    const safeHourlyXP =
-        Number(hourlyXP) || 0;
-
-
-    const nextTier =
-        getNextTierData(
-            safeHourlyXP,
-            progressData
-        );
-
-
-    const xpBoostName =
-        activeXPBoost.roleID
-            ? `<@&${activeXPBoost.roleID}>`
-            : "None";
-
-
-    const luckBoostName =
-        activeLuckBoost.roleID
-            ? `<@&${activeLuckBoost.roleID}>`
-            : "None";
-
-
-    const xpTimeLeft =
-        activeXPBoost.expiresAt
-            ? formatTime(
-                activeXPBoost.expiresAt -
-                Date.now()
-            )
-            : "Not active";
-
-
-    const luckTimeLeft =
-        activeLuckBoost.expiresAt
-            ? formatTime(
-                activeLuckBoost.expiresAt -
-                Date.now()
-            )
-            : "Not active";
-
-
-    const embed =
-        new EmbedBuilder()
-
-            .setColor(
-                "#7A5CFF"
-            )
-
-            .setAuthor({
-
-                name:
-                    `${message.author.username}'s Boosts`,
-
-                iconURL:
-                    message.author.displayAvatarURL()
-
-            })
-
-            .setThumbnail(
-                message.author.displayAvatarURL({
-                    size:
-                        1024
-                })
-            )
-
-            .setDescription(
-
-`## Active Boosts
-
-**XP Boost**
-${xpBoostName}
-\`${xpTimeLeft}\`
-
-**Luck Boost**
-${luckBoostName}
-\`${luckTimeLeft}\`
-
-## Inventory
-
-${formatInventoryTable(inventory)}
-
-*The number beside each tier is how many copies you own.*
-
-## Hourly Progress
-
-**Hourly XP:** ${safeHourlyXP.toLocaleString()} XP
-
-\`${nextTier.progressBar}\`
-
-**Tier Progress:** ${nextTier.currentXP.toLocaleString()} / ${nextTier.requiredXP.toLocaleString()} XP
-
-\`${nextTier.percentage}% Complete\`
-
-> **Next XP Boost:** ${nextTier.xpTier}
-> **Next Luck Boost:** ${nextTier.luckTier}
-> **✦ XP Needed:** ${nextTier.needed.toLocaleString()}
-> **:boom: Critical Streak:** ${Number(streakData.current) || 0}
-> **:heart_on_fire: Best Streak:** ${Number(streakData.best) || 0}`
-
-            )
-
-            .setFooter({
-
-                text:
-                    disableAll
-                        ? "This panel is unavailable."
-                        : "Choose a boost below to activate it. This panel stays active until the bot restarts."
-
-            })
-
-            .setTimestamp();
+    const content =
+        "## ⚡ Boost Inventory\n" +
+        `**Hourly chat XP:** ${Number(hourlyXP).toLocaleString()} *(tracking only)*\n` +
+        `**Active XP Boost:** ${formatActiveBoost(activeXP)}\n` +
+        `**Active Luck Boost:** ${formatActiveBoost(activeLuck)}\n\n` +
+        "### XP Boosts\n" +
+        `${buildXPInventoryLines(inventory).join("\n")}\n\n` +
+        "### Luck Boosts\n" +
+        `${buildLuckInventoryLines(inventory).join("\n")}` +
+        (notice ? `\n\n${notice}` : "") +
+        (disabled ? "\n\n*Run `!boost` again to activate another boost.*" : "");
 
 
     return {
-
-        embeds: [
-            embed
-        ],
-
+        content,
         components:
-            createBoostButtons(
-                userID,
+            buildButtons(
                 inventory,
-                disableAll
-            )
-
+                disabled
+            ),
+        allowedMentions: {
+            parse: []
+        }
     };
 
 }
 
 
-// ==========================
-// COMMAND
-// ==========================
+function activationFailureMessage(result){
+
+    if(result?.status === "no-stock"){
+        return "That boost is no longer in your inventory.";
+    }
+
+
+    if(result?.status === "stronger-active"){
+        return (
+            `You already have the stronger <@&${result.currentBoost.roleID}> active. ` +
+            "The weaker item was not consumed."
+        );
+    }
+
+
+    return "That boost could not be activated.";
+
+}
+
 
 async function execute(message){
 
-    if(!message.guild)
-        return;
+    if(!message.guild || !message.member){
+        return null;
+    }
 
 
-    const dashboard =
-        await buildDashboard(
-            message
-        );
+    let lastNotice = "";
 
 
-    const reply =
+    const panel =
         await message.reply(
-            dashboard
+            await buildBoostPanel(
+                message.member
+            )
         );
-
-
-    const processingUsers =
-        new Set();
 
 
     const collector =
-        reply.createMessageComponentCollector({
-
+        panel.createMessageComponentCollector({
             componentType:
-                ComponentType.Button
-
+                ComponentType.Button,
+            time:
+                PANEL_DURATION_MS
         });
 
 
-    collector.on(
-        "collect",
-        async interaction => {
+    collector.on("collect", async interaction => {
 
-            if(
-                interaction.user.id !==
-                message.author.id
-            ){
+        try{
 
-                return interaction.reply({
+        if(interaction.user.id !== message.author.id){
 
-                    content:
-                        "This boost panel belongs to someone else.",
-
-                    flags:
-                        MessageFlags.Ephemeral
-
-                });
-
-            }
-
-
-            const [
-                action,
-                type,
-                tier,
-                ownerID
-            ] = interaction.customId.split(
-                ":"
-            );
-
-
-            if(
-                action !== "use_boost"
-                ||
-                ownerID !==
-                message.author.id
-            ){
-
-                return;
-
-            }
-
-
-            const processingKey =
-                `${interaction.guild.id}:${interaction.user.id}`;
-
-
-            if(
-                processingUsers.has(
-                    processingKey
-                )
-            ){
-
-                return interaction.reply({
-
-                    content:
-                        "A boost is already being activated. Try again in a moment.",
-
-                    flags:
-                        MessageFlags.Ephemeral
-
-                });
-
-            }
-
-
-            processingUsers.add(
-                processingKey
-            );
-
-
-            await interaction.deferReply({
-
+            await interaction.reply({
+                content:
+                    "This is someone else's boost inventory. Run `!boost` to open yours.",
                 flags:
                     MessageFlags.Ephemeral
-
-            });
-
-
-            try{
-
-                const member =
-                    await interaction.guild.members.fetch(
-                        interaction.user.id
-                    );
+            }).catch(() => {});
 
 
-                let result;
+            return;
+
+        }
 
 
-                if(type === "xp"){
-
-                    result =
-                        await boosts.activateXPBoostFromInventory(
-                            member,
-                            tier
-                        );
-
-                }
-                else if(type === "luck"){
-
-                    result =
-                        await luck.activateLuckBoostFromInventory(
-                            member,
-                            tier
-                        );
-
-                }
-                else{
-
-                    return interaction.editReply({
-
-                        content:
-                            "Unknown boost type."
-
-                    });
-
-                }
-
-
-                await interaction.editReply({
-
-                    content:
-                        getActivationMessage(
-                            type,
-                            result
-                        )
-
-                });
-
-
-                await reply.edit(
-                    await buildDashboard(
-                        message
-                    )
-                ).catch(error => {
-
-                    console.error(
-                        "Boost activated, but the panel could not refresh:",
-                        error
-                    );
-
-                });
-
-            }
-            catch(error){
-
-                console.error(
-                    "Failed to activate boost:",
-                    error
+        const match =
+            /^activate_(xp|luck)_(tier1|tier2|tier3|max|infinity|omega)$/
+                .exec(
+                    interaction.customId
                 );
 
 
-                await interaction.editReply({
+        if(!match){
+            return;
+        }
 
-                    content:
-                        "The boost could not be activated. Nothing should have been consumed."
 
-                }).catch(() => {});
+        const [, type, tier] =
+            match;
+
+
+        const result =
+            type === "xp"
+                ? await boosts.activateXPBoostFromInventory(
+                    message.member,
+                    tier
+                )
+                : await luck.activateLuckBoostFromInventory(
+                    message.member,
+                    tier
+                );
+
+
+        if(!result.success){
+
+            await interaction.reply({
+                content:
+                    activationFailureMessage(result),
+                flags:
+                    MessageFlags.Ephemeral,
+                allowedMentions: {
+                    parse: []
+                }
+            }).catch(() => {});
+
+
+            await panel.edit(
+                await buildBoostPanel(
+                    message.member,
+                    false,
+                    lastNotice
+                )
+            ).catch(() => {});
+
+
+            return;
+
+        }
+
+
+        const statusText = {
+            activated: "activated",
+            refreshed: "refreshed for a fresh duration",
+            upgraded: "upgraded"
+        }[result.status] || "activated";
+
+
+        lastNotice =
+            `✅ <@&${result.boost.roleID}> ${statusText}. ` +
+            `Inventory remaining: **x${Number(result.remaining).toLocaleString()}**.`;
+
+
+        await interaction.update(
+            await buildBoostPanel(
+                message.member,
+                false,
+                lastNotice
+            )
+        );
+
+        }
+        catch(error){
+
+            console.error(
+                "Boost panel interaction failed:",
+                error
+            );
+
+
+            const errorReply = {
+                content:
+                    "The boost panel hit a temporary error. Your inventory was protected; run `!boost` again to refresh it.",
+                flags:
+                    MessageFlags.Ephemeral
+            };
+
+
+            if(
+                interaction.replied
+                ||
+                interaction.deferred
+            ){
+
+                await interaction.followUp(
+                    errorReply
+                ).catch(() => {});
 
             }
-            finally{
+            else{
 
-                processingUsers.delete(
-                    processingKey
-                );
+                await interaction.reply(
+                    errorReply
+                ).catch(() => {});
 
             }
 
         }
 
-    );
+    });
 
+
+    collector.once("end", async() => {
+
+        try{
+
+            await panel.edit(
+                await buildBoostPanel(
+                    message.member,
+                    true,
+                    lastNotice
+                )
+            ).catch(() => {});
+
+        }
+        catch(error){
+
+            console.error(
+                "Could not close expired boost panel:",
+                error
+            );
+
+        }
+
+    });
+
+
+    return panel;
 
 }
 
 
 module.exports = {
-
-    execute
-
+    execute,
+    buildBoostPanel
 };
