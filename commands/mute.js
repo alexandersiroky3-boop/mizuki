@@ -12,7 +12,7 @@ const database =
 
 
 const MUTE_PANEL_DURATION_MS =
-    2 * 60 * 1000;
+    200 * 60 * 1000;
 
 
 const MUTE_PANEL_COLORS = {
