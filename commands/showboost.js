@@ -13,7 +13,7 @@ const luck = require("../utils/luck");
 
 
 const PANEL_DURATION_MS =
-    2 * 60 * 1000;
+    200 * 60 * 1000;
 
 
 const PANEL_COLORS = {
@@ -245,7 +245,8 @@ async function buildBoostPanel(
         rows,
         hourlyXP,
         activeXP,
-        activeLuck
+        activeLuck,
+        criticalStreak
     ] = await Promise.all([
         database.getBoostInventory(
             member.guild.id,
@@ -260,6 +261,10 @@ async function buildBoostPanel(
         ),
         luck.getActiveLuckBoost(
             member
+        ),
+        database.getCriticalStreak(
+            member.guild.id,
+            member.id
         )
     ]);
 
@@ -271,7 +276,9 @@ async function buildBoostPanel(
     const description =
         `**Hourly chat XP:** ${Number(hourlyXP).toLocaleString()} *(tracking only)*\n` +
         `**Active XP Boost:** ${formatActiveBoost(activeXP)}\n` +
-        `**Active Luck Boost:** ${formatActiveBoost(activeLuck)}\n\n` +
+        `**Active Luck Boost:** ${formatActiveBoost(activeLuck)}\n` +
+        `💥 **Critical Streak:** ${Number(criticalStreak?.current || 0).toLocaleString()}　` +
+        `❤️‍🔥 **Best Streak:** ${Number(criticalStreak?.best || 0).toLocaleString()}\n\n` +
         "**⚔️ XP Boosts**\n" +
         `${buildXPInventoryLines(inventory).join("\n")}\n\n` +
         "**🌿 Luck Boosts**\n" +
