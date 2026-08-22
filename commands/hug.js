@@ -10,15 +10,6 @@ const COOLDOWN =
     5 * 60 * 60 * 1000; // 5 hours
 
 
-const MAX_BOOST_DURATION =
-    60 * 60 * 1000; // 1 hour
-
-
-const MAX_BOOST_ROLE =
-    "1526995218098815016";
-
-
-
 // ======================
 // RANDOM NUMBER
 // ======================
@@ -144,31 +135,6 @@ function rollExactOutcome(baseTable, chanceTable){
 
 
 // ======================
-// GIVE MAX BOOST
-// ======================
-
-async function giveMaxBoost(
-    message,
-    userID
-){
-
-    const member =
-        await message.guild.members.fetch(
-            userID
-        );
-
-
-    return boosts.awardXPBoost(
-        member,
-        "max",
-        "DIVINE !hug"
-    );
-
-}
-
-
-
-// ======================
 // EXECUTE
 // ======================
 
@@ -270,6 +236,9 @@ async function execute(message, options = {}){
                     {
                         questRepeatChild: true,
                         skipCooldown:
+                            repeatIndex > 0,
+
+                        skipXPBoostDrop:
                             repeatIndex > 0
                     }
                 );
@@ -388,6 +357,17 @@ await database.setCommandCooldown(
     "hug",
     Date.now() + COOLDOWN
 );
+
+
+if(!options.skipXPBoostDrop){
+
+    await boosts.tryAndAnnounceXPBoostDrop(
+        message,
+        "social",
+        "!hug"
+    );
+
+}
 
 const wonLuckBoost =
     await luck.tryCommandLuckBoostDrop(
@@ -762,38 +742,6 @@ await syncAndTrackLevel(
 
 
     // ======================
-    // DIVINE MAX BOOST
-    // ======================
-
-    let authorMaxBoost =
-        null;
-
-
-    let targetMaxBoost =
-        null;
-
-
-    if(rarity === "✨ DIVINE"){
-
-
-        authorMaxBoost =
-            await giveMaxBoost(
-                message,
-                userID
-            );
-
-
-        targetMaxBoost =
-            await giveMaxBoost(
-                message,
-                target.id
-            );
-
-    }
-
-
-
-    // ======================
     // START COOLDOWN
     // ======================
 
@@ -803,6 +751,17 @@ await database.setCommandCooldown(
     "hug",
     Date.now() + COOLDOWN
 );
+
+
+if(!options.skipXPBoostDrop){
+
+    await boosts.tryAndAnnounceXPBoostDrop(
+        message,
+        "social",
+        "!hug"
+    );
+
+}
 
 const wonLuckBoost =
     await luck.tryCommandLuckBoostDrop(
@@ -823,25 +782,6 @@ const luckExtra =
     // ======================
     // RESPONSE
     // ======================
-
-    if(rarity === "✨ DIVINE"){
-
-        return message.channel.send(
-
-`${text}
-
-${rarity}
-
-${rewardSummary}
-
-💎 ${message.author} stored <@&${MAX_BOOST_ROLE}>! Inventory: **x${authorMaxBoost.amount}**
-
-💎 ${target} stored <@&${MAX_BOOST_ROLE}>! Inventory: **x${targetMaxBoost.amount}**${usedLuckExtra}${luckExtra}`
-
-        );
-
-    }
-
 
     return message.channel.send(
 
