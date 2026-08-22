@@ -19,9 +19,24 @@ const quests =
 
 const BOOST_ROLE_MENTIONS = {
 
+    "xp:tier1":
+        "<@&" +
+        boosts.BOOST_ROLES.tier1 +
+        ">",
+
+    "xp:tier2":
+        "<@&" +
+        boosts.BOOST_ROLES.tier2 +
+        ">",
+
     "xp:max":
         "<@&" +
         boosts.BOOST_ROLES.max +
+        ">",
+
+    "xp:infinity":
+        "<@&" +
+        boosts.BOOST_ROLES.infinity +
         ">",
 
     "luck:tier1":
@@ -49,8 +64,17 @@ const BOOST_ROLE_MENTIONS = {
 
 const BOOST_FALLBACK_NAMES = {
 
+    "xp:tier1":
+        "⚡ XP Boost I",
+
+    "xp:tier2":
+        "⚡ XP Boost II",
+
     "xp:max":
         "💎 XP Boost MAX",
+
+    "xp:infinity":
+        "🧿 XP Boost ထ",
 
     "luck:tier1":
         "🌿 Luck Boost I",
@@ -163,6 +187,25 @@ function formatPerk(perk){
                 perk.multiplier
             ) +
             "× chat XP**"
+        );
+
+    }
+
+
+    if(
+        perk?.type ===
+        "chat_xp_timed"
+    ){
+
+        return (
+            "**" +
+            formatNumber(
+                perk.multiplier
+            ) +
+            "× chat XP** for " +
+            formatDuration(
+                perk.durationMs
+            )
         );
 
     }
