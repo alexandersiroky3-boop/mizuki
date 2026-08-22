@@ -920,7 +920,11 @@ if(message.content === "!commands"){
 
 }
 
-if(message.content === "!boost"){
+if(
+    message.content
+        .trim()
+        .toLowerCase() === "!boost"
+){
 
     return boostCommand.execute(
         message
