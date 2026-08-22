@@ -28,6 +28,7 @@ const rankCommand = require("./commands/rank");
 const giveXPCommand = require("./commands/givexp");
 const commandsCommand = require("./commands/commands");
 const boostCommand = require("./commands/showboost");
+const muteCommand = require("./commands/mute");
 const shopCommand = require("./commands/shop");
 const merchantCommand =
     require("./commands/merchant");
@@ -931,6 +932,18 @@ if(message.content === "!boost"){
 if(
     message.content
         .trim()
+        .toLowerCase() === "!mute"
+){
+
+    return muteCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content
+        .trim()
         .toLowerCase() === "!quests"
 ){
 
@@ -1130,6 +1143,19 @@ if(
             return;
 
 
+await boosts.sendXPBoostDropReply(
+    message,
+    result.xpBoostDrop
+).catch(error => {
+
+    console.error(
+        "Could not send chat XP Boost drop reply:",
+        error
+    );
+
+});
+
+
 await quests.recordEvent(
     message,
     "earn_xp",
@@ -1150,6 +1176,20 @@ await quests.recordEvent(
         Number(result.earnedXP) || 0
     )
 );
+
+
+const criticalMessagesMuted =
+    (
+        result.critical
+        ||
+        Number(result.lostCriticalStreak) >= 2
+    )
+        ? await database.isMessageTypeMuted(
+            message.guild.id,
+            message.author.id,
+            "critical"
+        )
+        : false;
 
 
 if(result.critical){
@@ -1179,6 +1219,8 @@ if(result.critical){
 
 
 
+    if(!criticalMessagesMuted){
+
     // Critical streaks 20+.
     if(result.criticalStreak >= 20){
 
@@ -1200,7 +1242,7 @@ if(result.critical){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
 
         ).catch(() => {});
 
@@ -1220,6 +1262,9 @@ if(result.critical){
     }
 
 
+    }
+
+
 }
 
 
@@ -1227,11 +1272,15 @@ if(result.critical){
 else if(result.lostCriticalStreak >= 2){
 
 
+    if(!criticalMessagesMuted){
+
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
 
     ).catch(() => {});
+
+    }
 
 
 }
