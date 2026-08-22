@@ -9,16 +9,21 @@ const boosts = require("../systems/boosts");
 // XP Boosts and Luck Boosts add separate exact bonuses.
 // Each consecutive critical adds +4% momentum
 // to the NEXT critical roll, up to +28%.
-// An active streak of 20+ adds another +3% chance,
-// and critical rewards at 20+ receive 5x XP.
-// Final critical chance is capped at 95%.
+// An active streak of 20+ adds another +3% chance.
+// Critical rewards receive 5x XP at 20-49 and 20x XP at 50+.
+// Final critical chance is normally capped at 95%, with two exact
+// Luck Boost Omega combinations receiving their own higher caps.
 
 const CRITICAL_MOMENTUM_PER_STREAK = 4;
 const CRITICAL_MOMENTUM_CAP = 28;
 const CRITICAL_STREAK_BONUS_THRESHOLD = 20;
 const CRITICAL_STREAK_CHANCE_BONUS = 3;
 const CRITICAL_STREAK_XP_MULTIPLIER = 5;
-const CRITICAL_CHANCE_CAP = 95;
+const CRITICAL_STREAK_SUPER_THRESHOLD = 50;
+const CRITICAL_STREAK_SUPER_XP_MULTIPLIER = 20;
+const DEFAULT_CRITICAL_CHANCE_CAP = 95;
+const OMEGA_MAX_CRITICAL_CHANCE_CAP = 98;
+const OMEGA_INFINITY_CRITICAL_CHANCE_CAP = 99;
 
 
 function getCriticalMomentum(currentStreak){
@@ -43,7 +48,8 @@ function buildCriticalChance(
     baseCriticalChance,
     xpBoostCriticalBonus,
     luckCriticalBonus,
-    currentStreak
+    currentStreak,
+    criticalChanceCap = DEFAULT_CRITICAL_CHANCE_CAP
 ){
 
     const momentumBonus =
@@ -63,7 +69,8 @@ function buildCriticalChance(
 
     const finalChance =
         Math.min(
-            CRITICAL_CHANCE_CAP,
+            Number(criticalChanceCap) ||
+                DEFAULT_CRITICAL_CHANCE_CAP,
             Number(baseCriticalChance) +
             Number(xpBoostCriticalBonus) +
             Number(luckCriticalBonus) +
@@ -87,9 +94,38 @@ function buildCriticalChance(
 
         streakChanceBonus,
 
+        criticalChanceCap:
+            Number(criticalChanceCap) ||
+                DEFAULT_CRITICAL_CHANCE_CAP,
+
         finalChance
 
     };
+
+}
+
+
+function getCriticalChanceCap(
+    xpBoostTier,
+    luckBoostTier
+){
+
+    if(luckBoostTier !== "omega"){
+        return DEFAULT_CRITICAL_CHANCE_CAP;
+    }
+
+
+    if(xpBoostTier === "infinity"){
+        return OMEGA_INFINITY_CRITICAL_CHANCE_CAP;
+    }
+
+
+    if(xpBoostTier === "max"){
+        return OMEGA_MAX_CRITICAL_CHANCE_CAP;
+    }
+
+
+    return DEFAULT_CRITICAL_CHANCE_CAP;
 
 }
 
@@ -418,8 +454,8 @@ function getXPAmount(
     if(isAboveLevel100){
 
 
-        min = 50;
-        max = 125;
+        min = 70;
+        max = 200;
 
         baseCriticalChance = 7.5;
         criticalBonus = 200;
@@ -436,8 +472,8 @@ function getXPAmount(
     else{
 
 
-        min = 20;
-        max = 60;
+        min = 70;
+        max = 200;
 
         baseCriticalChance = 3;
         criticalBonus = 100;
@@ -470,9 +506,22 @@ function getXPAmount(
         );
 
 
-    const luckCriticalBonus =
-        luck.getCriticalChanceBonus(
+    const activeLuckBoost =
+        luck.getMemberLuckProfile(
             member
+        );
+
+
+    const luckCriticalBonus =
+        Number(
+            activeLuckBoost?.criticalChanceBonus
+        ) || 0;
+
+
+    const criticalChanceCap =
+        getCriticalChanceCap(
+            activeXPBoost.tier,
+            activeLuckBoost?.tier
         );
 
 
@@ -481,7 +530,8 @@ function getXPAmount(
             baseCriticalChance,
             xpBoostCriticalBonus,
             luckCriticalBonus,
-            startingStreak
+            startingStreak,
+            criticalChanceCap
         );
 
 
@@ -536,6 +586,18 @@ function getXPAmount(
 
         if(
             criticalStreak >=
+                CRITICAL_STREAK_SUPER_THRESHOLD
+        ){
+
+            streakXPMultiplier =
+                CRITICAL_STREAK_SUPER_XP_MULTIPLIER;
+
+            earnedXP *=
+                streakXPMultiplier;
+
+        }
+        else if(
+            criticalStreak >=
                 CRITICAL_STREAK_BONUS_THRESHOLD
         ){
 
@@ -580,7 +642,8 @@ function getXPAmount(
             baseCriticalChance,
             xpBoostCriticalBonus,
             luckCriticalBonus,
-            criticalStreak
+            criticalStreak,
+            criticalChanceCap
         );
 
 
@@ -629,6 +692,10 @@ function getXPAmount(
 
         streakChanceBonus:
             chanceData.streakChanceBonus,
+
+
+        criticalChanceCap:
+            chanceData.criticalChanceCap,
 
 
         criticalChance,
