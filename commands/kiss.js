@@ -8,10 +8,13 @@ const xp =
 const quests =
     require("../systems/quests");
 
+const boosts =
+    require("../systems/boosts");
+
 
 // 1 hour cooldown
 const COOLDOWN =
-    20 * 60 * 1000;
+    15 * 60 * 1000;
 
 
 
@@ -514,6 +517,9 @@ async function execute(message, options = {}){
                     {
                         questRepeatChild: true,
                         skipCooldown:
+                            repeatIndex > 0,
+
+                        skipXPBoostDrop:
                             repeatIndex > 0
                     }
                 );
@@ -636,6 +642,17 @@ await database.setCommandCooldown(
     "kiss",
     Date.now() + COOLDOWN
 );
+
+
+if(!options.skipXPBoostDrop){
+
+    await boosts.tryAndAnnounceXPBoostDrop(
+        message,
+        "social",
+        "!kiss"
+    );
+
+}
 
 await quests.recordEvent(
     message,
@@ -857,6 +874,17 @@ await database.setCommandCooldown(
     "kiss",
     Date.now() + COOLDOWN
 );
+
+
+if(!options.skipXPBoostDrop){
+
+    await boosts.tryAndAnnounceXPBoostDrop(
+        message,
+        "social",
+        "!kiss"
+    );
+
+}
 
 await quests.recordEvent(
     message,
