@@ -3,6 +3,7 @@ const {
     ButtonBuilder,
     ButtonStyle,
     ComponentType,
+    EmbedBuilder,
     MessageFlags
 } = require("discord.js");
 
@@ -12,6 +13,18 @@ const database =
 
 const MUTE_PANEL_DURATION_MS =
     2 * 60 * 1000;
+
+
+const MUTE_PANEL_COLORS = {
+    enabled:
+        0x57F287,
+    mixed:
+        0x5865F2,
+    muted:
+        0xED4245,
+    expired:
+        0x747F8D
+};
 
 
 function buildMutePanel(
@@ -62,14 +75,62 @@ function buildMutePanel(
             );
 
 
+    const embedColor =
+        disabled
+            ? MUTE_PANEL_COLORS.expired
+            : xpMuted && criticalMuted
+                ? MUTE_PANEL_COLORS.muted
+                : !xpMuted && !criticalMuted
+                    ? MUTE_PANEL_COLORS.enabled
+                    : MUTE_PANEL_COLORS.mixed;
+
+
+    const embed =
+        new EmbedBuilder()
+            .setColor(
+                embedColor
+            )
+            .setTitle(
+                "🔕 Personal Reply Settings"
+            )
+            .setDescription(
+                "Choose which replies Mizuki should mute **for your account only**. " +
+                "Your rewards, XP, boosts, criticals, reactions, and other users' messages are not affected."
+            )
+            .addFields(
+                {
+                    name:
+                        "⚡ XP Boost Replies",
+                    value:
+                        xpMuted
+                            ? "🔴 **MUTED**"
+                            : "🟢 **ON**",
+                    inline:
+                        true
+                },
+                {
+                    name:
+                        "💥 Critical Replies",
+                    value:
+                        criticalMuted
+                            ? "🔴 **MUTED**"
+                            : "🟢 **ON**",
+                    inline:
+                        true
+                }
+            )
+            .setFooter({
+                text:
+                    disabled
+                        ? "Panel expired • Run !mute to change these settings"
+                        : "Press a button to switch that reply type ON or MUTED"
+            });
+
+
     return {
-        content:
-            "## 🔕 Personal Reply Settings\n" +
-            "Choose which replies Mizuki should mute **for your account only**. " +
-            "Your rewards, XP, boosts, criticals, reactions, and other users' messages are not affected.\n\n" +
-            `⚡ XP Boost replies: **${xpMuted ? "MUTED" : "ON"}**\n` +
-            `💥 Critical streak/loss replies: **${criticalMuted ? "MUTED" : "ON"}**` +
-            (disabled ? "\n\n*Run `!mute` again to change these settings.*" : ""),
+        embeds: [
+            embed
+        ],
         components: [row],
         allowedMentions: {
             parse: []
