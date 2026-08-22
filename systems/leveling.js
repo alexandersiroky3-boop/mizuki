@@ -420,6 +420,14 @@ return {
         reward.momentumBonus,
 
 
+    streakChanceBonus:
+        reward.streakChanceBonus,
+
+
+    criticalChanceCap:
+        reward.criticalChanceCap,
+
+
     criticalChance:
         reward.criticalChance,
 
@@ -430,6 +438,10 @@ return {
 
     criticalMultiplier:
         reward.criticalMultiplier,
+
+
+    streakXPMultiplier:
+        reward.streakXPMultiplier,
 
 
 criticalStreak:
