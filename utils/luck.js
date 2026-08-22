@@ -13,6 +13,10 @@ const OWNER_ID =
     "1239975819112353969";
 
 
+const XP_MAX_ROLE =
+    "1526995218098815016";
+
+
 const LUCK_ROLES = {
 
     tier1: {
@@ -1416,7 +1420,7 @@ function getAdjustedWeight(
     const modifiers =
 
         LUCK_WEIGHT_MODIFIERS[
-            profile.order
+            profile?.order
         ]
 
         ||
@@ -1578,6 +1582,297 @@ function rollFromWeightedTable(
     return randomInteger(
         fallback.min,
         fallback.max
+    );
+
+}
+
+
+function safeRandomUnit(
+    random = Math.random
+){
+
+    const value =
+        Number(
+            random()
+        );
+
+
+    if(!Number.isFinite(value)){
+        return 0;
+    }
+
+
+    return Math.min(
+        0.999999999999,
+        Math.max(
+            0,
+            value
+        )
+    );
+
+}
+
+
+// Luck does not multiply the guaranteed XP directly. Just like a normal
+// roll, it improves the odds of higher ranges and biases the value inside a
+// selected range upward. No Luck Boost keeps the range perfectly uniform.
+function rollRangeWithLuck(
+    min,
+    max,
+    profile,
+    random = Math.random
+){
+
+    const safeMin =
+        Math.ceil(
+            Number(min) || 0
+        );
+
+
+    const safeMax =
+        Math.max(
+            safeMin,
+            Math.floor(
+                Number(max) || safeMin
+            )
+        );
+
+
+    const luckMultiplier =
+        Math.max(
+            1,
+            Number(
+                profile?.multiplier
+            ) || 1
+        );
+
+
+    const biasStrength =
+        1
+        +
+        Math.min(
+            1.5,
+            Math.log10(
+                luckMultiplier
+            ) * 0.35
+        );
+
+
+    const randomUnit =
+        safeRandomUnit(
+            random
+        );
+
+
+    const luckBiasedUnit =
+        1 -
+        Math.pow(
+            1 - randomUnit,
+            biasStrength
+        );
+
+
+    return (
+        safeMin
+        +
+        Math.floor(
+            luckBiasedUnit
+            *
+            (
+                safeMax -
+                safeMin +
+                1
+            )
+        )
+    );
+
+}
+
+
+// Used by the persistent 100-roll milestone and quest minimum-roll rewards.
+// It conditions the user's real Luck table on outcomes above the requested
+// minimum instead of discarding Luck and clamping the result to one number.
+function rollAtLeastWithLuck(
+    rollChanceTable,
+    levelTableName,
+    profile,
+    minimumXP,
+    random = Math.random
+){
+
+    const safeMinimum =
+        Math.max(
+            0,
+            Math.floor(
+                Number(minimumXP) || 0
+            )
+        );
+
+
+    const normalizedLevelTableName =
+        levelTableName === "level101Plus"
+            ? "level101Plus"
+            : "level1To100";
+
+
+    // Ω keeps its own special roll table. Every other tier uses the normal
+    // level table with the existing Luck weight modifiers.
+    const sourceTable =
+        String(
+            profile?.tier || ""
+        ).toLowerCase() === "omega"
+            ? OMEGA_ROLL_CHANCE_TABLES[
+                normalizedLevelTableName
+            ]
+            : (
+                Array.isArray(rollChanceTable)
+                    ? rollChanceTable
+                    : []
+            );
+
+
+    const eligibleOutcomes =
+        sourceTable
+            .filter(outcome => (
+                String(
+                    outcome?.type || "positive"
+                ) === "positive"
+                &&
+                Number(outcome?.chancePercent) > 0
+                &&
+                Number(outcome?.max) > safeMinimum
+            ))
+            .map(outcome => ({
+                original: {
+                    ...outcome,
+                    type:
+                        outcome.type || "positive"
+                },
+                min:
+                    Math.max(
+                        safeMinimum,
+                        Math.ceil(
+                            Number(outcome.min) || 0
+                        )
+                    ),
+                max:
+                    Math.floor(
+                        Number(outcome.max) || 0
+                    )
+            }))
+            .filter(outcome => (
+                outcome.max >= outcome.min
+            ))
+            .sort(
+                (first, second) =>
+                    first.max - second.max
+            );
+
+
+    if(eligibleOutcomes.length > 0){
+
+        const rangeLuckFactor =
+            Math.sqrt(
+                Math.max(
+                    1,
+                    Number(
+                        profile?.multiplier
+                    ) || 1
+                )
+            );
+
+
+        const weightedOutcomes =
+            eligibleOutcomes.map(
+                (outcome, index) => {
+
+                    const rangePosition =
+                        eligibleOutcomes.length <= 1
+                            ? 0
+                            : index /
+                                (
+                                    eligibleOutcomes.length - 1
+                                );
+
+
+                    return {
+                        ...outcome,
+                        weight:
+                            getAdjustedWeight(
+                                outcome.original,
+                                profile
+                            )
+                            *
+                            Math.pow(
+                                rangeLuckFactor,
+                                rangePosition
+                            )
+                    };
+
+                }
+            );
+
+
+        const totalWeight =
+            weightedOutcomes.reduce(
+                (total, outcome) =>
+                    total + outcome.weight,
+                0
+            );
+
+
+        let selectedOutcome =
+            weightedOutcomes[
+                weightedOutcomes.length - 1
+            ];
+
+
+        let randomWeight =
+            safeRandomUnit(random) *
+            totalWeight;
+
+
+        for(const outcome of weightedOutcomes){
+
+            if(randomWeight < outcome.weight){
+
+                selectedOutcome =
+                    outcome;
+
+
+                break;
+
+            }
+
+
+            randomWeight -=
+                outcome.weight;
+
+        }
+
+
+        return rollRangeWithLuck(
+            selectedOutcome.min,
+            selectedOutcome.max,
+            profile,
+            random
+        );
+
+    }
+
+
+    // The elite 10m/15m/25m quest guarantees begin above the regular table.
+    // Use the existing Mega Roll ceiling and let Luck bias the value upward.
+    return rollRangeWithLuck(
+        safeMinimum,
+        Math.max(
+            safeMinimum,
+            Number(
+                LUCK_MEGA_ROLL_SETTINGS.maxXP
+            ) || 50000000
+        ),
+        profile,
+        random
     );
 
 }
@@ -3167,12 +3462,38 @@ function buildCommandLuckExtra(
 
 function buildRollExtras(
     message,
+    wonXPMaxBoost,
     usedLuckBoost,
     wonLuckBoost
 ){
 
     const extras =
         [];
+
+
+    if(wonXPMaxBoost){
+
+        const amount =
+
+            typeof wonXPMaxBoost ===
+            "object"
+
+                ? wonXPMaxBoost.amount
+
+                : null;
+
+
+        extras.push(
+
+            amount
+
+                ? `💎 ${message.author} found <@&${XP_MAX_ROLE}>! Stored in inventory: **x${amount}**.`
+
+                : `💎 ${message.author} found <@&${XP_MAX_ROLE}> and stored it in their boost inventory.`
+
+        );
+
+    }
 
 
     if(usedLuckBoost.roleID){
@@ -3240,6 +3561,10 @@ module.exports = {
     getRollCooldown,
 
     rollWithLuck,
+
+    rollRangeWithLuck,
+
+    rollAtLeastWithLuck,
 
     getLuckMegaRollChance,
 
