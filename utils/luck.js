@@ -872,16 +872,27 @@ function getLuckRoleByID(roleID){
 // Strongest role wins if Discord briefly has more
 // than one Luck role cached during a role update.
 
-function getCriticalChanceBonus(member){
+function getMemberLuckProfile(member){
 
-    const activeRole =
+    return (
         LUCK_ROLE_LIST.find(
 
             role =>
-                member.roles.cache.has(
+                member?.roles?.cache?.has(
                     role.roleID
                 )
 
+        ) || null
+    );
+
+}
+
+
+function getCriticalChanceBonus(member){
+
+    const activeRole =
+        getMemberLuckProfile(
+            member
         );
 
 
@@ -3321,6 +3332,8 @@ module.exports = {
     LUCK_ROLES,
 
     LUCK_MEGA_ROLL_SETTINGS,
+
+    getMemberLuckProfile,
 
     getCriticalChanceBonus,
 
