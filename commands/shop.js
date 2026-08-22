@@ -14,7 +14,13 @@ const leveling = require("../systems/leveling");
 const quests = require("../systems/quests");
 const merchantCommand = require("./merchant");
 
-const TIERS = [
+const XP_TIERS = [
+    "tier1",
+    "tier2",
+    "max"
+];
+
+const LUCK_TIERS = [
     "tier1",
     "tier2",
     "tier3",
@@ -96,7 +102,6 @@ function mapStock(rows){
         xp: {
             tier1: 0,
             tier2: 0,
-            tier3: 0,
             max: 0
         },
         luck: {
@@ -211,18 +216,11 @@ function createShopButtons(
         new ActionRowBuilder();
 
 
-    for(const tier of TIERS){
+    for(const tier of XP_TIERS){
 
         const xpItem =
             getCatalogItem(
                 "xp",
-                tier
-            );
-
-
-        const luckItem =
-            getCatalogItem(
-                "luck",
                 tier
             );
 
@@ -246,6 +244,17 @@ function createShopButtons(
                     stock.xp[tier] <= 0
                 )
         );
+
+    }
+
+
+    for(const tier of LUCK_TIERS){
+
+        const luckItem =
+            getCatalogItem(
+                "luck",
+                tier
+            );
 
 
         luckRow.addComponents(
@@ -441,7 +450,7 @@ async function buildShopPanel(
 
 
     const xpLines =
-        TIERS.map(
+        XP_TIERS.map(
             tier =>
                 formatShopLine(
                     "xp",
@@ -452,7 +461,7 @@ async function buildShopPanel(
 
 
     const luckLines =
-        TIERS.map(
+        LUCK_TIERS.map(
             tier =>
                 formatShopLine(
                     "luck",
