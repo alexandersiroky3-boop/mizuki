@@ -7,6 +7,9 @@ const luck =
 const quests =
     require("../systems/quests");
 
+const boosts =
+    require("../systems/boosts");
+
 
 // ==========================
 // SETTINGS
@@ -231,6 +234,9 @@ async function execute(message, options = {}){
                     {
                         questRepeatChild: true,
                         skipCooldown:
+                            repeatIndex > 0,
+
+                        skipXPBoostDrop:
                             repeatIndex > 0
                     }
                 );
@@ -325,6 +331,17 @@ await database.setCommandCooldown(
     "steal",
     Date.now() + COOLDOWN
 );
+
+
+if(!options.skipXPBoostDrop){
+
+    await boosts.tryAndAnnounceXPBoostDrop(
+        message,
+        "social",
+        "!steal"
+    );
+
+}
 
 const wonLuckBoost =
     await luck.tryCommandLuckBoostDrop(
@@ -585,6 +602,17 @@ await database.setCommandCooldown(
     "steal",
     Date.now() + COOLDOWN
 );
+
+
+if(!options.skipXPBoostDrop){
+
+    await boosts.tryAndAnnounceXPBoostDrop(
+        message,
+        "social",
+        "!steal"
+    );
+
+}
 
 const wonLuckBoost =
     await luck.tryCommandLuckBoostDrop(
