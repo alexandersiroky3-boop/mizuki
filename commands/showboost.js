@@ -3,6 +3,7 @@ const {
     ButtonBuilder,
     ButtonStyle,
     ComponentType,
+    EmbedBuilder,
     MessageFlags
 } = require("discord.js");
 
@@ -13,6 +14,16 @@ const luck = require("../utils/luck");
 
 const PANEL_DURATION_MS =
     2 * 60 * 1000;
+
+
+const PANEL_COLORS = {
+    active:
+        0x7C5CFC,
+    updated:
+        0x57F287,
+    expired:
+        0x747F8D
+};
 
 
 const XP_TIERS =
@@ -257,21 +268,44 @@ async function buildBoostPanel(
         inventoryMap(rows);
 
 
-    const content =
-        "## ⚡ Boost Inventory\n" +
+    const description =
         `**Hourly chat XP:** ${Number(hourlyXP).toLocaleString()} *(tracking only)*\n` +
         `**Active XP Boost:** ${formatActiveBoost(activeXP)}\n` +
         `**Active Luck Boost:** ${formatActiveBoost(activeLuck)}\n\n` +
-        "### XP Boosts\n" +
+        "**⚔️ XP Boosts**\n" +
         `${buildXPInventoryLines(inventory).join("\n")}\n\n` +
-        "### Luck Boosts\n" +
+        "**🌿 Luck Boosts**\n" +
         `${buildLuckInventoryLines(inventory).join("\n")}` +
-        (notice ? `\n\n${notice}` : "") +
-        (disabled ? "\n\n*Run `!boost` again to activate another boost.*" : "");
+        (notice ? `\n\n${notice}` : "");
+
+
+    const embed =
+        new EmbedBuilder()
+            .setColor(
+                disabled
+                    ? PANEL_COLORS.expired
+                    : notice
+                        ? PANEL_COLORS.updated
+                        : PANEL_COLORS.active
+            )
+            .setTitle(
+                "⚡ Boost Inventory"
+            )
+            .setDescription(
+                description
+            )
+            .setFooter({
+                text:
+                    disabled
+                        ? "Panel expired • Run !boost to open it again"
+                        : "Choose a boost below • Only you can use these buttons"
+            });
 
 
     return {
-        content,
+        embeds: [
+            embed
+        ],
         components:
             buildButtons(
                 inventory,
