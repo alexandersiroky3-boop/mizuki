@@ -1741,6 +1741,97 @@ async function rollWithLuck(
 }
 
 
+function rollGuaranteedMinimumWithLuck(
+    currentXP,
+    minimumXP,
+    rollChanceTable,
+    levelTableName = "level1To100",
+    profile = null
+){
+
+    const safeMinimum =
+        Math.max(
+            0,
+            Math.floor(
+                Number(minimumXP) || 0
+            )
+        );
+
+
+    const safeCurrent =
+        Math.floor(
+            Number(currentXP) || 0
+        );
+
+
+    if(safeCurrent >= safeMinimum){
+        return safeCurrent;
+    }
+
+
+    const normalizedTableName =
+        levelTableName === "level101Plus"
+            ? "level101Plus"
+            : "level1To100";
+
+
+    const sourceTable =
+        String(profile?.tier || "").toLowerCase() === "omega"
+            ? OMEGA_ROLL_CHANCE_TABLES[
+                normalizedTableName
+            ]
+            : rollChanceTable;
+
+
+    const eligibleTable =
+        (sourceTable || [])
+            .filter(
+                outcome =>
+                    Number(outcome.max) >= safeMinimum
+                    &&
+                    Number(outcome.max) > 0
+            )
+            .map(
+                outcome => ({
+                    ...outcome,
+                    type:
+                        outcome.type || "positive",
+                    min:
+                        Math.max(
+                            safeMinimum,
+                            Number(outcome.min) || 0
+                        )
+                })
+            );
+
+
+    if(eligibleTable.length > 0){
+
+        return rollFromWeightedTable(
+            eligibleTable,
+            profile || {
+                order: 0,
+                rollWeightFactor: 1
+            }
+        );
+
+    }
+
+
+    // The normal tables end at 10m. Guarantees above that floor use the
+    // existing Luck-sensitive reward bias across the 10m-50m mega range.
+    return rollCommandXP(
+        safeMinimum,
+        Math.max(
+            safeMinimum,
+            LUCK_MEGA_ROLL_SETTINGS.maxXP
+        ),
+        profile
+    );
+
+}
+
+
 // ==============================
 // COMMAND-WIDE LUCK SYSTEM
 // ==============================
@@ -3240,6 +3331,8 @@ module.exports = {
     getRollCooldown,
 
     rollWithLuck,
+
+    rollGuaranteedMinimumWithLuck,
 
     getLuckMegaRollChance,
 
