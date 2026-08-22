@@ -16,13 +16,13 @@ const ROLL_COOLDOWN_MS =
 
 
 const ROLL_CLOCK_MARKDOWN =
-    "[⏱️](https://discord.com/assets/0936447be3e254dd.svg)";
+    "⏱️";
 
 
 // Match both the old plain clock and the new linked clock so countdowns from
 // either format can still be edited safely while the bot is running.
 const ROLL_COUNTDOWN_PATTERN =
-    /(?:\[⏱️\]\(https:\/\/discord\.com\/assets\/0936447be3e254dd\.svg\)|⏱️) \*\*Try again in \d+ seconds?\.\.\.\*\*/;
+    /⏱️ \*\*Try again in \d+ seconds?\.\.\.\*\*/;
 
 
 const ROLL_READY_MESSAGE =
