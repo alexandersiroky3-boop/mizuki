@@ -2892,7 +2892,15 @@ await db.query(`
 
         guaranteed1m INTEGER NOT NULL DEFAULT 0,
 
+        guaranteed2m5 INTEGER NOT NULL DEFAULT 0,
+
+        guaranteed5m INTEGER NOT NULL DEFAULT 0,
+
+        guaranteed7m5 INTEGER NOT NULL DEFAULT 0,
+
         guaranteed10m INTEGER NOT NULL DEFAULT 0,
+
+        guaranteed12m5 INTEGER NOT NULL DEFAULT 0,
 
         guaranteed15m INTEGER NOT NULL DEFAULT 0,
 
@@ -2916,17 +2924,31 @@ await db.query(`
 
         chatXP2Until BIGINT NOT NULL DEFAULT 0,
 
+        chatXP3Until BIGINT NOT NULL DEFAULT 0,
+
+        chatXP5Until BIGINT NOT NULL DEFAULT 0,
+
+        chatXP7Until BIGINT NOT NULL DEFAULT 0,
+
         chatXP10Until BIGINT NOT NULL DEFAULT 0,
 
         chatXP20Until BIGINT NOT NULL DEFAULT 0,
 
         shopDiscount50Until BIGINT NOT NULL DEFAULT 0,
 
+        shopDiscount30Until BIGINT NOT NULL DEFAULT 0,
+
+        shopDiscount60Until BIGINT NOT NULL DEFAULT 0,
+
+        shopDiscount75Until BIGINT NOT NULL DEFAULT 0,
+
         shopDiscount90Until BIGINT NOT NULL DEFAULT 0,
 
         guaranteedCriticalsRemaining INTEGER NOT NULL DEFAULT 0,
 
         socialTripleUntil BIGINT NOT NULL DEFAULT 0,
+
+        nextHugTripleUses INTEGER NOT NULL DEFAULT 0,
 
         merchantPermanentChatXPMultiplier
             INTEGER NOT NULL DEFAULT 1,
@@ -2959,7 +2981,11 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS guaranteed250k INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteed500k INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteed1m INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS guaranteed2m5 INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS guaranteed5m INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS guaranteed7m5 INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteed10m INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS guaranteed12m5 INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteed15m INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteed25m INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS nextRollBurst10 INTEGER NOT NULL DEFAULT 0,
@@ -2970,12 +2996,19 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS rollWindowEndsAt BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS rollWindowUses INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP2Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP3Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP5Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP7Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP10Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP20Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS shopDiscount50Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS shopDiscount30Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS shopDiscount60Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS shopDiscount75Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS shopDiscount90Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteedCriticalsRemaining INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS socialTripleUntil BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextHugTripleUses INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS merchantPermanentChatXPMultiplier INTEGER NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS merchantPermanentRollCount INTEGER NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS merchantTimedRollCount INTEGER NOT NULL DEFAULT 1,
@@ -5933,7 +5966,10 @@ async function purchaseGlobalShopItem(
             await client.query(`
 
                 SELECT
+                    shopDiscount30Until,
                     shopDiscount50Until,
+                    shopDiscount60Until,
+                    shopDiscount75Until,
                     shopDiscount90Until
 
                 FROM quest_effects
@@ -5954,15 +5990,9 @@ async function purchaseGlobalShopItem(
 
 
         const discountPercent =
-            Number(
-                discountRow.shopdiscount90until || 0
-            ) > Date.now()
-                ? 90
-                : Number(
-                    discountRow.shopdiscount50until || 0
-                ) > Date.now()
-                    ? 50
-                    : 0;
+            resolveShopDiscount(
+                discountRow
+            );
 
 
         const currentPrice =
@@ -6480,43 +6510,53 @@ function resolveChatXPMultiplier(
         );
 
 
-    if(
-        Number(
-            effects?.chatxp20until || 0
-        ) > now
-    ){
-        return Math.max(
-            20,
-            permanentMultiplier
-        );
-    }
+    const timedMultipliers = [
+        [20, "chatxp20until"],
+        [10, "chatxp10until"],
+        [7, "chatxp7until"],
+        [5, "chatxp5until"],
+        [3, "chatxp3until"],
+        [2, "chatxp2until"]
+    ];
 
 
-    if(
-        Number(
-            effects?.chatxp10until || 0
-        ) > now
-    ){
-        return Math.max(
-            10,
-            permanentMultiplier
-        );
-    }
+    const activeTimedMultiplier =
+        timedMultipliers.find(
+            ([, field]) =>
+                Number(
+                    effects?.[field] || 0
+                ) > now
+        )?.[0] || 1;
 
 
-    if(
-        Number(
-            effects?.chatxp2until || 0
-        ) > now
-    ){
-        return Math.max(
-            2,
-            permanentMultiplier
-        );
-    }
+    return Math.max(
+        activeTimedMultiplier,
+        permanentMultiplier
+    );
+
+}
 
 
-    return permanentMultiplier;
+function resolveShopDiscount(
+    effects,
+    now = Date.now()
+){
+
+    const discounts = [
+        [90, "shopdiscount90until"],
+        [75, "shopdiscount75until"],
+        [60, "shopdiscount60until"],
+        [50, "shopdiscount50until"],
+        [30, "shopdiscount30until"]
+    ];
+
+
+    return discounts.find(
+        ([, field]) =>
+            Number(
+                effects?.[field] || 0
+            ) > now
+    )?.[0] || 0;
 
 }
 
@@ -8696,7 +8736,11 @@ async function claimQuestCycleRewards(
                     250000: "guaranteed250k",
                     500000: "guaranteed500k",
                     1000000: "guaranteed1m",
+                    2500000: "guaranteed2m5",
+                    5000000: "guaranteed5m",
+                    7500000: "guaranteed7m5",
                     10000000: "guaranteed10m",
+                    12500000: "guaranteed12m5",
                     15000000: "guaranteed15m",
                     25000000: "guaranteed25m"
                 };
@@ -8821,80 +8865,94 @@ async function claimQuestCycleRewards(
             }
             else if(reward.type === "chat_xp_multiplier"){
 
-                const multiplier =
-                    Number(reward.multiplier) >= 10
-                        ? 10
-                        : 2;
+                const multiplierColumns = {
+                    2: "chatXP2Until",
+                    3: "chatXP3Until",
+                    5: "chatXP5Until",
+                    7: "chatXP7Until",
+                    10: "chatXP10Until"
+                };
 
 
                 const column =
-                    multiplier === 10
-                        ? "chatXP10Until"
-                        : "chatXP2Until";
+                    multiplierColumns[
+                        Number(reward.multiplier)
+                    ];
 
 
-                await client.query(`
+                if(column){
 
-                    UPDATE quest_effects
+                    await client.query(`
 
-                    SET ${column} =
-                        GREATEST(
-                            ${column},
-                            $3
-                        ) + $4
+                        UPDATE quest_effects
 
-                    WHERE guildID=$1
-                    AND userID=$2
+                        SET ${column} =
+                            GREATEST(
+                                ${column},
+                                $3
+                            ) + $4
 
-                `, [
-                    guildID,
-                    userID,
-                    now,
-                    Math.max(
-                        1,
-                        Number(reward.durationMs) ||
-                        24 * 60 * 60 * 1000
-                    )
-                ]);
+                        WHERE guildID=$1
+                        AND userID=$2
+
+                    `, [
+                        guildID,
+                        userID,
+                        now,
+                        Math.max(
+                            1,
+                            Number(reward.durationMs) ||
+                            24 * 60 * 60 * 1000
+                        )
+                    ]);
+
+                }
 
             }
             else if(reward.type === "shop_discount"){
 
-                const discount =
-                    Number(reward.discountPercent) >= 90
-                        ? 90
-                        : 50;
+                const discountColumns = {
+                    30: "shopDiscount30Until",
+                    50: "shopDiscount50Until",
+                    60: "shopDiscount60Until",
+                    75: "shopDiscount75Until",
+                    90: "shopDiscount90Until"
+                };
 
 
                 const column =
-                    discount === 90
-                        ? "shopDiscount90Until"
-                        : "shopDiscount50Until";
+                    discountColumns[
+                        Number(reward.discountPercent)
+                    ];
 
 
-                await client.query(`
+                if(column){
 
-                    UPDATE quest_effects
+                    await client.query(`
 
-                    SET ${column} =
-                        GREATEST(
-                            ${column},
-                            $3
-                        ) + $4
+                        UPDATE quest_effects
 
-                    WHERE guildID=$1
-                    AND userID=$2
+                        SET ${column} =
+                            GREATEST(
+                                ${column},
+                                $3
+                            ) + $4
 
-                `, [
-                    guildID,
-                    userID,
-                    now,
-                    Math.max(
-                        1,
-                        Number(reward.durationMs) ||
-                        24 * 60 * 60 * 1000
-                    )
-                ]);
+                        WHERE guildID=$1
+                        AND userID=$2
+
+                    `, [
+                        guildID,
+                        userID,
+                        now,
+                        Math.max(
+                            1,
+                            Number(reward.durationMs) ||
+                            24 * 60 * 60 * 1000
+                        )
+                    ]);
+
+                }
 
             }
             else if(reward.type === "guaranteed_criticals"){
@@ -8942,6 +9000,28 @@ async function claimQuestCycleRewards(
                         1,
                         Number(reward.durationMs) ||
                         24 * 60 * 60 * 1000
+                    )
+                ]);
+
+            }
+            else if(reward.type === "next_hug_triple"){
+
+                await client.query(`
+
+                    UPDATE quest_effects
+
+                    SET nextHugTripleUses =
+                        nextHugTripleUses + $3
+
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                `, [
+                    guildID,
+                    userID,
+                    Math.max(
+                        1,
+                        Number(reward.amount) || 1
                     )
                 ]);
 
@@ -9078,33 +9158,9 @@ async function getQuestShopDiscount(
         );
 
 
-    const now =
-        Date.now();
-
-
-    if(
-        Number(
-            effects?.shopdiscount90until || 0
-        ) > now
-    ){
-
-        return 90;
-
-    }
-
-
-    if(
-        Number(
-            effects?.shopdiscount50until || 0
-        ) > now
-    ){
-
-        return 50;
-
-    }
-
-
-    return 0;
+    return resolveShopDiscount(
+        effects
+    );
 
 }
 
@@ -9158,7 +9214,8 @@ async function consumeQuestGuaranteedCritical(
 
 async function getQuestSocialCommandRepeatCount(
     guildID,
-    userID
+    userID,
+    commandName = null
 ){
 
     const effects =
@@ -9168,9 +9225,98 @@ async function getQuestSocialCommandRepeatCount(
         );
 
 
-    return Number(
-        effects?.socialtripleuntil || 0
-    ) > Date.now()
+    const timedRewardActive =
+        Number(
+            effects?.socialtripleuntil || 0
+        ) > Date.now();
+
+
+    const oneTimeHugAvailable =
+        String(commandName || "").toLowerCase() === "hug"
+        &&
+        Number(
+            effects?.nexthugtripleuses || 0
+        ) > 0;
+
+
+    return (
+        timedRewardActive
+        ||
+        oneTimeHugAvailable
+    )
+        ? 3
+        : 1;
+
+}
+
+
+async function consumeQuestSocialCommandRepeat(
+    guildID,
+    userID,
+    commandName
+){
+
+    const normalizedCommand =
+        String(commandName || "").toLowerCase();
+
+
+    const now =
+        Date.now();
+
+
+    await db.query(`
+
+        INSERT INTO quest_effects
+        (
+            guildID,
+            userID
+        )
+
+        VALUES($1,$2)
+
+        ON CONFLICT DO NOTHING
+
+    `, [
+        guildID,
+        userID
+    ]);
+
+
+    const result =
+        await db.query(`
+
+            UPDATE quest_effects
+
+            SET nextHugTripleUses =
+                CASE
+                    WHEN socialTripleUntil <= $4
+                    AND $3 = 'hug'
+                    AND nextHugTripleUses > 0
+                        THEN nextHugTripleUses - 1
+                    ELSE nextHugTripleUses
+                END
+
+            WHERE guildID=$1
+            AND userID=$2
+            AND (
+                socialTripleUntil > $4
+                OR (
+                    $3 = 'hug'
+                    AND nextHugTripleUses > 0
+                )
+            )
+
+            RETURNING nextHugTripleUses
+
+        `, [
+            guildID,
+            userID,
+            normalizedCommand,
+            now
+        ]);
+
+
+    return result.rowCount > 0
         ? 3
         : 1;
 
@@ -9247,9 +9393,29 @@ async function consumeGuaranteedQuestRoll(
                 minXP: 15000000
             },
             {
+                field: "guaranteed12m5",
+                rowField: "guaranteed12m5",
+                minXP: 12500000
+            },
+            {
                 field: "guaranteed10m",
                 rowField: "guaranteed10m",
                 minXP: 10000000
+            },
+            {
+                field: "guaranteed7m5",
+                rowField: "guaranteed7m5",
+                minXP: 7500000
+            },
+            {
+                field: "guaranteed5m",
+                rowField: "guaranteed5m",
+                minXP: 5000000
+            },
+            {
+                field: "guaranteed2m5",
+                rowField: "guaranteed2m5",
+                minXP: 2500000
             },
             {
                 field: "guaranteed1m",
@@ -12614,6 +12780,8 @@ module.exports = {
     consumeQuestGuaranteedCritical,
 
     getQuestSocialCommandRepeatCount,
+
+    consumeQuestSocialCommandRepeat,
 
     consumeGuaranteedQuestRoll,
 
