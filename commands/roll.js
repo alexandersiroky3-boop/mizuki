@@ -1321,11 +1321,12 @@ await database.addBoostActivity(
 // Each real roll—including each result inside Multi Roll—uses the exact
 // mutually-exclusive roll drop chances from systems/boosts.js.
 
-await boosts.tryAndAnnounceXPBoostDrop(
-    message,
-    "roll",
-    "!roll"
-);
+const xpBoostDropMessage =
+    await boosts.tryXPBoostDropInline(
+        message,
+        "roll",
+        "!roll"
+    );
 
 // ======================
 // LUCK BOOST REWARD
@@ -1342,6 +1343,12 @@ const wonLuckBoost =
     await luck.tryLuckBoostDrop(
         message.member
     );
+
+
+const xpBoostDropExtra =
+    xpBoostDropMessage
+        ? `\n${xpBoostDropMessage}`
+        : "";
 
 
 const guaranteedRollExtra =
@@ -1373,6 +1380,7 @@ const rollExtras =
         usedLuckBoost,
         wonLuckBoost
     )
+    + xpBoostDropExtra
     + guaranteedRollExtra
     + megaRollExtra
     + buildRollCooldownExtra(
