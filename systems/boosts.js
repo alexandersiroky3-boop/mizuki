@@ -921,6 +921,36 @@ function buildXPBoostDropMessage(
 }
 
 
+async function isXPBoostDropMuted(
+    message
+){
+
+    try{
+
+        return Boolean(
+            await database.isMessageTypeMuted(
+                message.guild.id,
+                message.author.id,
+                "xp_boost"
+            )
+        );
+
+    }
+    catch(error){
+
+        console.error(
+            "Could not read XP Boost reply preference:",
+            error
+        );
+
+
+        return false;
+
+    }
+
+}
+
+
 async function sendXPBoostDropReply(
     message,
     award
@@ -931,27 +961,10 @@ async function sendXPBoostDropReply(
     }
 
 
-    let muted = false;
-
-
-    try{
-
-        muted =
-            await database.isMessageTypeMuted(
-                message.guild.id,
-                message.author.id,
-                "xp_boost"
-            );
-
-    }
-    catch(error){
-
-        console.error(
-            "Could not read XP Boost reply preference:",
-            error
+    const muted =
+        await isXPBoostDropMuted(
+            message
         );
-
-    }
 
 
     if(muted){
@@ -981,6 +994,61 @@ async function sendXPBoostDropReply(
         return null;
 
     });
+
+}
+
+
+async function tryXPBoostDropInline(
+    message,
+    dropType,
+    source = dropType,
+    random = Math.random
+){
+
+    let award = null;
+
+
+    try{
+
+        award =
+            await tryXPBoostDrop(
+                message.member,
+                dropType,
+                source,
+                random
+            );
+
+    }
+    catch(error){
+
+        console.error(
+            `Could not award ${dropType} XP Boost drop:`,
+            error
+        );
+
+
+        return "";
+
+    }
+
+
+    if(
+        !award?.awarded
+        ||
+        await isXPBoostDropMuted(
+            message
+        )
+    ){
+
+        return "";
+
+    }
+
+
+    return buildXPBoostDropMessage(
+        message,
+        award
+    );
 
 }
 
@@ -1363,6 +1431,8 @@ module.exports = {
     buildXPBoostDropMessage,
 
     sendXPBoostDropReply,
+
+    tryXPBoostDropInline,
 
     tryAndAnnounceXPBoostDrop,
 
