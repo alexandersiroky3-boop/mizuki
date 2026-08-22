@@ -26,10 +26,11 @@ const EMBED_COLORS = {
 };
 
 
-const XP_TIERS =
+const XP_TIER_ORDER =
     [
         "tier1",
         "tier2",
+        "tier3",
         "max",
         "infinity"
     ];
@@ -43,6 +44,20 @@ const LUCK_TIERS =
         "max",
         "omega"
     ];
+
+
+// Only render tiers that the installed boost system actually supports.
+// This prevents !boost from crashing when tiers are added, removed, or
+// renamed in systems/boosts.js.
+function getAvailableXPTiers(){
+
+    return XP_TIER_ORDER.filter(
+        tier => Boolean(
+            boosts.BOOST_PROFILES?.[tier]
+        )
+    );
+
+}
 
 
 function inventoryMap(rows){
@@ -96,7 +111,7 @@ function formatActiveBoost(profile){
 
 function buildXPInventoryLines(inventory){
 
-    return XP_TIERS.map(tier => {
+    return getAvailableXPTiers().map(tier => {
 
         const profile =
             boosts.BOOST_PROFILES[tier];
@@ -149,11 +164,18 @@ function buildButtons(
     disabled = false
 ){
 
+    const rows = [];
+
+
     const xpRow =
         new ActionRowBuilder();
 
 
-    for(const tier of XP_TIERS){
+    const availableXPTiers =
+        getAvailableXPTiers();
+
+
+    for(const tier of availableXPTiers){
 
         const profile =
             boosts.BOOST_PROFILES[tier];
@@ -185,6 +207,11 @@ function buildButtons(
                 )
         );
 
+    }
+
+
+    if(availableXPTiers.length > 0){
+        rows.push(xpRow);
     }
 
 
@@ -227,10 +254,12 @@ function buildButtons(
     }
 
 
-    return [
-        xpRow,
-        luckRow
-    ];
+    if(LUCK_TIERS.length > 0){
+        rows.push(luckRow);
+    }
+
+
+    return rows;
 
 }
 
@@ -361,7 +390,8 @@ async function buildBoostPanel(
                     value:
                         buildXPInventoryLines(
                             inventory
-                        ).join("\n"),
+                        ).join("\n")
+                        || "No XP Boost tiers are currently available.",
                     inline:
                         true
                 },
