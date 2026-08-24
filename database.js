@@ -863,7 +863,7 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
                 reward: merchantSide({
                     perk: {
                         type: "chat_xp_timed",
-                        multiplier: 10,
+                        multiplier: 8,
                         durationMs:
                             12 * MERCHANT_HOUR
                     }
@@ -878,9 +878,24 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
                 reward: merchantSide({
                     perk: {
                         type: "chat_xp_timed",
-                        multiplier: 20,
+                        multiplier: 12,
                         durationMs:
-                            24 * MERCHANT_HOUR
+                            12 * MERCHANT_HOUR
+                    }
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 2)
+                    ]
+                }),
+                reward: merchantSide({
+                    perk: {
+                        type: "chat_xp_timed",
+                        multiplier: 15,
+                        durationMs:
+                            16 * MERCHANT_HOUR
                     }
                 })
             }
@@ -2930,8 +2945,15 @@ await db.query(`
 
         chatXP7Until BIGINT NOT NULL DEFAULT 0,
 
+        chatXP8Until BIGINT NOT NULL DEFAULT 0,
+
         chatXP10Until BIGINT NOT NULL DEFAULT 0,
 
+        chatXP12Until BIGINT NOT NULL DEFAULT 0,
+
+        chatXP15Until BIGINT NOT NULL DEFAULT 0,
+
+        -- Retained only so existing 20x rewards can be migrated safely.
         chatXP20Until BIGINT NOT NULL DEFAULT 0,
 
         shopDiscount50Until BIGINT NOT NULL DEFAULT 0,
@@ -2999,7 +3021,10 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS chatXP3Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP5Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP7Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP8Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP10Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP12Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP15Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP20Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS shopDiscount50Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS shopDiscount30Until BIGINT NOT NULL DEFAULT 0,
@@ -3013,6 +3038,26 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS merchantPermanentRollCount INTEGER NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS merchantTimedRollCount INTEGER NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS merchantTimedRollUntil BIGINT NOT NULL DEFAULT 0
+
+`);
+
+
+// Preserve every existing 20x merchant reward and its exact remaining time,
+// but apply the new 15x balance cap. This migration is idempotent, and the
+// legacy column stays available so rolling deployments cannot lose a reward.
+await db.query(`
+
+    UPDATE quest_effects
+
+    SET
+        chatXP15Until =
+            GREATEST(
+                chatXP15Until,
+                chatXP20Until
+            ),
+        chatXP20Until = 0
+
+    WHERE chatXP20Until > 0
 
 `);
 
@@ -6370,24 +6415,35 @@ function normalizeTravelingMerchantPerk(
 
     if(type === "chat_xp_timed"){
 
+        const rawMultiplier =
+            Math.floor(
+                Number(
+                    rawPerk.multiplier
+                ) || 8
+            );
+
+
+        const rawDuration =
+            Math.floor(
+                Number(
+                    rawPerk.durationMs
+                ) ||
+                12 * MERCHANT_HOUR
+            );
+
         return {
             type,
             multiplier:
-                Number(
-                    rawPerk.multiplier
-                ) >= 20
-                    ? 20
-                    : 10,
+                rawMultiplier >= 15
+                    ? 15
+                    : rawMultiplier >= 12
+                        ? 12
+                        : 8,
             durationMs:
-                Math.max(
-                    MERCHANT_HOUR,
-                    Math.floor(
-                        Number(
-                            rawPerk.durationMs
-                        ) ||
-                        12 * MERCHANT_HOUR
-                    )
-                )
+                rawDuration >=
+                    16 * MERCHANT_HOUR
+                    ? 16 * MERCHANT_HOUR
+                    : 12 * MERCHANT_HOUR
         };
 
     }
@@ -6511,8 +6567,12 @@ function resolveChatXPMultiplier(
 
 
     const timedMultipliers = [
-        [20, "chatxp20until"],
+        [15, "chatxp15until"],
+        // A pre-migration 20x expiry is still treated as 15x, never deleted.
+        [15, "chatxp20until"],
+        [12, "chatxp12until"],
         [10, "chatxp10until"],
+        [8, "chatxp8until"],
         [7, "chatxp7until"],
         [5, "chatxp5until"],
         [3, "chatxp3until"],
@@ -7312,10 +7372,17 @@ async function purchaseTravelingMerchantDeal(
                 Date.now();
 
 
+            const expiryColumns = {
+                8: "chatXP8Until",
+                12: "chatXP12Until",
+                15: "chatXP15Until"
+            };
+
+
             const expiryColumn =
-                perk.multiplier >= 20
-                    ? "chatXP20Until"
-                    : "chatXP10Until";
+                expiryColumns[
+                    perk.multiplier
+                ];
 
 
             await client.query(`
@@ -12670,6 +12737,8 @@ module.exports = {
     rollTravelingMerchantAppearance,
 
     getTravelingMerchantRollPerk,
+
+    normalizeTravelingMerchantPerk,
 
     resolveChatXPMultiplier,
 
