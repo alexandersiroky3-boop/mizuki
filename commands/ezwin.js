@@ -4,6 +4,9 @@ const luck = require("../utils/luck");
 const leveling = require("../systems/leveling");
 const boosts = require("../systems/boosts");
 
+const economyLimits =
+    require("../utils/economyLimits");
+
 
 // ======================
 // SETTINGS
@@ -11,6 +14,32 @@ const boosts = require("../systems/boosts");
 
 const COOLDOWN =
     24 * 60 * 60 * 1000; // 24 hours
+
+
+const LEVEL1_TO99_EZWIN_RANGES =
+    Object.freeze({
+        gained: {
+            min: 1000,
+            max: 5000
+        },
+        lost: {
+            min: 1000,
+            max: 5000
+        }
+    });
+
+
+const LEVEL100_PLUS_EZWIN_RANGES =
+    Object.freeze({
+        gained: {
+            min: 100000,
+            max: 250000
+        },
+        lost: {
+            min: 20000,
+            max: 100000
+        }
+    });
 
 
 
@@ -122,13 +151,17 @@ await database.setCommandCooldown(
 
 
     const highLevel =
-        currentLevel > 100;
-
-
-    // Protection starts at exactly Level 100, even though the
-    // existing EZ Win reward tier still uses its old >100 check.
-    const isLevel100PlusActor =
         currentLevel >= 100;
+
+
+    const isLevel100PlusActor =
+        highLevel;
+
+
+    const rewardRanges =
+        highLevel
+            ? LEVEL100_PLUS_EZWIN_RANGES
+            : LEVEL1_TO99_EZWIN_RANGES;
 
 
     const activeLuck =
@@ -144,31 +177,27 @@ await database.setCommandCooldown(
 
 
     const gainedXP =
-        highLevel
-            ? luck.rollCommandXP(
-                100000,
-                250000,
+        economyLimits.capSocialXP(
+            "ezwin",
+            luck.rollCommandXP(
+                rewardRanges.gained.min,
+                rewardRanges.gained.max,
                 activeLuck
-            )
-            : luck.rollCommandXP(
-                12500,
-                50000,
-                activeLuck
-            );
+            ),
+            currentLevel
+        );
 
 
     const lostXP =
-        highLevel
-            ? luck.rollCommandXP(
-                20000,
-                100000,
+        economyLimits.capSocialXP(
+            "ezwin",
+            luck.rollCommandXP(
+                rewardRanges.lost.min,
+                rewardRanges.lost.max,
                 activeLuck
-            )
-            : luck.rollCommandXP(
-                2000,
-                12500,
-                activeLuck
-            );
+            ),
+            currentLevel
+        );
 
 
     for(const user of users){
@@ -296,6 +325,8 @@ message.channel.send(
 
 module.exports = {
 
-    execute
+    execute,
+    LEVEL1_TO99_EZWIN_RANGES,
+    LEVEL100_PLUS_EZWIN_RANGES
 
 };
