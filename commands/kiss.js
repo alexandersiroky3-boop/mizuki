@@ -11,6 +11,9 @@ const quests =
 const boosts =
     require("../systems/boosts");
 
+const economyLimits =
+    require("../utils/economyLimits");
+
 
 // 1 hour cooldown
 const COOLDOWN =
@@ -46,35 +49,35 @@ const KISS_TABLES = {
             key: "rare",
             chancePercent: 20,
             min: 4000,
-            max: 10000,
+            max: 8000,
             rarity: "💜 RARE KISS"
         },
         {
             key: "epic",
             chancePercent: 12.89,
-            min: 10000,
-            max: 50000,
+            min: 8000,
+            max: 15000,
             rarity: "🌌 EPIC KISS"
         },
         {
             key: "legendary",
             chancePercent: 2,
-            min: 50000,
-            max: 250000,
+            min: 15000,
+            max: 25000,
             rarity: "✨ LEGENDARY KISS"
         },
         {
             key: "mythic",
             chancePercent: 0.1,
-            min: 500000,
-            max: 3000000,
+            min: 25000,
+            max: 40000,
             rarity: "🔮 MYTHIC KISS"
         },
         {
             key: "divine",
             chancePercent: 0.001,
-            min: 3000000,
-            max: 7500000,
+            min: 50000,
+            max: 50000,
             rarity: "🌠 DIVINE KISS"
         }
     ],
@@ -118,6 +121,34 @@ const KISS_TABLES = {
     ]
 
 };
+
+
+const KISS_BOT_RANGES =
+    Object.freeze({
+
+        level1To99: {
+            reward: {
+                min: 1000,
+                max: 3000
+            },
+            loss: {
+                min: 500,
+                max: 2500
+            }
+        },
+
+        level100Plus: {
+            reward: {
+                min: 25000,
+                max: 75000
+            },
+            loss: {
+                min: 10000,
+                max: 30000
+            }
+        }
+
+    });
 
 // =====================================================
 // LEVEL 1-99 EXACT KISS CHANCES FOR LUCK II / III / MAX
@@ -634,6 +665,25 @@ if(remaining > 0){
             `<@!${mizukiUserID}>`;
 
 
+    const authorData =
+        await database.getUser(
+            guildID,
+            userID
+        );
+
+
+    const currentLevel =
+        xp.getLevel(
+            Number(authorData?.xp) || 0
+        );
+
+
+    const kissBotRanges =
+        currentLevel >= 100
+            ? KISS_BOT_RANGES.level100Plus
+            : KISS_BOT_RANGES.level1To99;
+
+
     if(isMizukiTarget){
 
 await database.setCommandCooldown(
@@ -700,10 +750,14 @@ const luckExtra =
 
 
             const reward =
-                luck.rollCommandXP(
-                    5,
-                    100,
-                    activeLuck
+                economyLimits.capSocialXP(
+                    "kiss",
+                    luck.rollCommandXP(
+                        kissBotRanges.reward.min,
+                        kissBotRanges.reward.max,
+                        activeLuck
+                    ),
+                    currentLevel
                 );
 
 
@@ -731,7 +785,7 @@ await syncAndTrackLevel(
 
 `*Goth mommy bot blushed so hard that her whole face turned as red as a tomato... then she licks her lips and keeps looking at you.*
 
-"For your kiss, I will give you **${reward} XP**~~ 💋"${luckExtra}`
+"For your kiss, I will give you **${reward.toLocaleString()} XP**~~ 💋"${luckExtra}`
 
             );
 
@@ -744,8 +798,8 @@ await syncAndTrackLevel(
 
             const loss =
                 luck.rollCommandPenalty(
-                    5,
-                    100,
+                    kissBotRanges.loss.min,
+                    kissBotRanges.loss.max,
                     activeLuck
                 );
 
@@ -758,6 +812,20 @@ const user =
     );
 
 
+const currentXP =
+    Math.max(
+        0,
+        Number(user?.xp) || 0
+    );
+
+
+const actualLoss =
+    Math.min(
+        currentXP,
+        loss
+    );
+
+
 await database.setXP(
 
     message.guild.id,
@@ -766,7 +834,7 @@ await database.setXP(
 
     Math.max(
         0,
-        user.xp - loss
+        currentXP - actualLoss
     )
 
 );
@@ -784,7 +852,7 @@ await syncAndTrackLevel(
 
 "EW! DON'T YOU KISS ME!" *she says with pure shock and anger.*
 
-"For that, I will take **${loss} XP**!" 😤${usedLuckExtra}${luckExtra}`
+"For that, I will take **${actualLoss.toLocaleString()} XP**!" 😤${usedLuckExtra}${luckExtra}`
 
             );
 
@@ -917,19 +985,6 @@ const usedLuckExtra =
     );
 
 
-const authorData =
-    await database.getUser(
-        guildID,
-        userID
-    );
-
-
-const currentLevel =
-    xp.getLevel(
-        Number(authorData?.xp) || 0
-    );
-
-
 const targetData =
     await database.getUser(
         guildID,
@@ -998,16 +1053,20 @@ const outcome =
 
 
 const reward =
-    luck.rollCommandXP(
-        outcome.min,
-        outcome.max,
-        commandLuck
+    economyLimits.capSocialXP(
+        "kiss",
+        luck.rollCommandXP(
+            outcome.min,
+            outcome.max,
+            commandLuck
+        ),
+        currentLevel
     );
 
 
 // A Level 1-99 target only receives 10% of a player-command
 // reward when the command author is Level 100+.
-const targetReward =
+const protectedTargetReward =
     lowLevelTargetProtection
         ? Math.max(
             1,
@@ -1016,6 +1075,19 @@ const targetReward =
             )
         )
         : reward;
+
+
+const targetReward =
+    economyLimits.capSocialXP(
+        "kiss",
+        protectedTargetReward,
+        targetLevel
+    );
+
+
+const targetLevelCapApplied =
+    targetReward <
+    protectedTargetReward;
 
 
 await database.giveXP(
@@ -1027,8 +1099,12 @@ await database.giveXP(
 
 // The kisser receives 15% less XP than the kissed user.
 const kisserReward =
-    Math.floor(
-        reward * 0.85
+    economyLimits.capSocialXP(
+        "kiss",
+        Math.floor(
+            reward * 0.85
+        ),
+        currentLevel
     );
 
 
@@ -1102,7 +1178,7 @@ ${dialogue}
 
 💋 **${message.author.username} kissed ${target.username}!**
 
-💖 **${target.username} received +${targetReward.toLocaleString()} XP!**${lowLevelTargetProtection ? " 🛡️ *(90% Lv1-99 protection applied)*" : ""}
+💖 **${target.username} received +${targetReward.toLocaleString()} XP!**${lowLevelTargetProtection ? " 🛡️ *(90% Lv1-99 protection applied)*" : ""}${targetLevelCapApplied ? " 🛡️ *(Level 1-99 reward cap applied)*" : ""}
 
 💕 **${message.author.username} received +${kisserReward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
 
@@ -1116,6 +1192,8 @@ ${dialogue}
 
 module.exports = {
 
-    execute
+    execute,
+    KISS_TABLES,
+    KISS_BOT_RANGES
 
 };
