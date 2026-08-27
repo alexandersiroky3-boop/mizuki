@@ -10,6 +10,9 @@ const quests =
 const boosts =
     require("../systems/boosts");
 
+const economyLimits =
+    require("../utils/economyLimits");
+
 
 // ==========================
 // SETTINGS
@@ -76,6 +79,92 @@ const LEVEL100_PLUS_STEAL_LUCK_TABLES = {
         { key: "mythic_high", chancePercent: 0.6 }
     ]
 };
+
+
+const LEVEL100_PLUS_STEAL_OUTCOMES = [
+    {
+        key: "failure",
+        chancePercent: 10.4
+    },
+    {
+        key: "common",
+        chancePercent: 60,
+        min: 20000,
+        max: 50000,
+        rarity: "COMMON"
+    },
+    {
+        key: "rare",
+        chancePercent: 20,
+        min: 50000,
+        max: 150000,
+        rarity: "RARE"
+    },
+    {
+        key: "epic",
+        chancePercent: 7,
+        min: 150000,
+        max: 300000,
+        rarity: "EPIC"
+    },
+    {
+        key: "legendary",
+        chancePercent: 2,
+        min: 300000,
+        max: 500000,
+        rarity: "LEGENDARY"
+    },
+    {
+        key: "mythic",
+        chancePercent: 0.5,
+        min: 500000,
+        max: 1000000,
+        rarity: "MYTHIC"
+    },
+    {
+        key: "mythic_high",
+        chancePercent: 0.1,
+        min: 1000000,
+        max: 2500000,
+        rarity: "MYTHIC"
+    }
+];
+
+
+const LEVEL1_TO99_STEAL_OUTCOMES = [
+    {
+        key: "failure",
+        chancePercent: 13.5
+    },
+    {
+        key: "common",
+        chancePercent: 75,
+        min: 1000,
+        max: 5000,
+        rarity: "COMMON"
+    },
+    {
+        key: "rare",
+        chancePercent: 10,
+        min: 5000,
+        max: 12500,
+        rarity: "RARE"
+    },
+    {
+        key: "epic",
+        chancePercent: 1,
+        min: 12500,
+        max: 25000,
+        rarity: "EPIC"
+    },
+    {
+        key: "legendary",
+        chancePercent: 0.5,
+        min: 25000,
+        max: 50000,
+        rarity: "LEGENDARY"
+    }
+];
 
 
 
@@ -315,6 +404,33 @@ if(remaining > 0){
         );
 
 
+    const thief =
+        await database.getUser(
+            guildID,
+            userID
+        );
+
+
+    if(!thief){
+
+        return message.reply(
+            "❌ I couldn't load your user data from the database."
+        );
+
+    }
+
+
+    const thiefXP =
+        Math.max(
+            0,
+            Number(thief.xp) || 0
+        );
+
+
+    const thiefLevel =
+        xp.getLevel(thiefXP);
+
+
     // ==========================
     // STEAL FROM BOT
     // ==========================
@@ -369,10 +485,14 @@ const luckExtra =
         if(success){
 
             const reward =
-                luck.rollCommandXP(
-                    100,
-                    2000,
-                    activeLuck
+                economyLimits.capSocialXP(
+                    "steal",
+                    luck.rollCommandXP(
+                        100,
+                        2000,
+                        activeLuck
+                    ),
+                    thiefLevel
                 );
 
 
@@ -512,13 +632,6 @@ await syncAndTrackLevel(
     // GET USERS
     // ==========================
 
-    const thief =
-        await database.getUser(
-            guildID,
-            userID
-        );
-
-
     const victim =
         await database.getUser(
             guildID,
@@ -526,7 +639,7 @@ await syncAndTrackLevel(
         );
 
 
-    if(!thief || !victim){
+    if(!victim){
 
         return message.reply(
 
@@ -536,17 +649,6 @@ await syncAndTrackLevel(
 
     }
 
-
-
-    const thiefXP =
-        Math.max(
-            0,
-            Number(thief.xp) || 0
-        );
-
-
-    const thiefLevel =
-        xp.getLevel(thiefXP);
 
 
     const victimXP =
@@ -635,88 +737,8 @@ const luckExtra =
 
     const stealOutcomes =
         isLevel100Plus
-            ? [
-                {
-                    key: "failure",
-                    chancePercent: 10.4
-                },
-                {
-                    key: "common",
-                    chancePercent: 60,
-                    min: 20000,
-                    max: 50000,
-                    rarity: "COMMON"
-                },
-                {
-                    key: "rare",
-                    chancePercent: 20,
-                    min: 50000,
-                    max: 150000,
-                    rarity: "RARE"
-                },
-                {
-                    key: "epic",
-                    chancePercent: 7,
-                    min: 150000,
-                    max: 300000,
-                    rarity: "EPIC"
-                },
-                {
-                    key: "legendary",
-                    chancePercent: 2,
-                    min: 300000,
-                    max: 500000,
-                    rarity: "LEGENDARY"
-                },
-                {
-                    key: "mythic",
-                    chancePercent: 0.5,
-                    min: 500000,
-                    max: 1000000,
-                    rarity: "MYTHIC"
-                },
-                {
-                    key: "mythic_high",
-                    chancePercent: 0.1,
-                    min: 1000000,
-                    max: 2500000,
-                    rarity: "MYTHIC"
-                }
-            ]
-            : [
-                {
-                    key: "failure",
-                    chancePercent: 13.5
-                },
-                {
-                    key: "common",
-                    chancePercent: 75,
-                    min: 100,
-                    max: 2000,
-                    rarity: "COMMON"
-                },
-                {
-                    key: "rare",
-                    chancePercent: 10,
-                    min: 2000,
-                    max: 15000,
-                    rarity: "RARE"
-                },
-                {
-                    key: "epic",
-                    chancePercent: 1,
-                    min: 15000,
-                    max: 50000,
-                    rarity: "EPIC"
-                },
-                {
-                    key: "legendary",
-                    chancePercent: 0.5,
-                    min: 50000,
-                    max: 100000,
-                    rarity: "LEGENDARY"
-                }
-            ];
+            ? LEVEL100_PLUS_STEAL_OUTCOMES
+            : LEVEL1_TO99_STEAL_OUTCOMES;
 
 
     const exactStealLuckTable =
@@ -752,11 +774,15 @@ const luckExtra =
 
 
     const attemptedAmount =
-        luck.rollCommandXP(
-            stealOutcome.min,
-            stealOutcome.max,
-            commandLuck
-        );
+        economyLimits.capSocialXP(
+            "steal",
+            luck.rollCommandXP(
+                    stealOutcome.min,
+                    stealOutcome.max,
+                    commandLuck
+                ),
+                thiefLevel
+            );
 
 
     const rarity =
@@ -1072,6 +1098,8 @@ await syncAndTrackLevel(
 
 module.exports = {
 
-    execute
+    execute,
+    LEVEL1_TO99_STEAL_OUTCOMES,
+    LEVEL100_PLUS_STEAL_OUTCOMES
 
 };
