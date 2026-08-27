@@ -804,11 +804,16 @@ async function buyMerchantDeal(
             "!**\n" +
             "You received: " +
             formatSide(
+                result.effectiveReward ||
                 result.deal.reward
             ) +
             "\nYou paid: " +
             formatSide(
-                result.deal.cost
+                {
+                    ...result.deal.cost,
+                    xp:
+                        result.costXP
+                }
             ) +
             "\nGlobal stock remaining: **" +
             formatNumber(
@@ -819,6 +824,20 @@ async function buyMerchantDeal(
                 updatedUser.xp
             ) +
             " XP**" +
+            (
+                Number(result.merchantXPDiscountPercent) > 0
+                    ? "\n🛒 Merchant XP discount: **" +
+                        formatNumber(
+                            result.merchantXPDiscountPercent
+                        ) +
+                        "% off**"
+                    : ""
+            ) +
+            (
+                result.accidentalDouble
+                    ? "\n🎁 **The merchant accidentally doubled your reward!**"
+                    : ""
+            ) +
             (
                 result.entireMerchantSoldOut
                     ? "\n\n🏜️ **Every deal is now sold out.**"
