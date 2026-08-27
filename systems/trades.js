@@ -30,10 +30,8 @@ const quests =
 const xp =
     require("../utils/xp");
 
-
-const TRADE_UNLOCK_LEVEL =
-    50;
-
+const economyLimits =
+    require("../utils/economyLimits");
 
 const TRADE_CATEGORY_ID =
     "1535247237821505556";
@@ -123,14 +121,13 @@ function isParticipant(
 }
 
 
-async function getTradeLevelLock(trade){
+async function getTradeAvailability(trade){
 
     if(!trade){
 
         return {
             locked: true,
-            userID: null,
-            level: 0
+            reason: "missing"
         };
 
     }
@@ -154,39 +151,44 @@ async function getTradeLevelLock(trade){
     ]);
 
 
-    const level1 =
-        xp.getLevel(
-            Number(user1?.xp) || 0
-        );
-
-
-    const level2 =
-        xp.getLevel(
-            Number(user2?.xp) || 0
-        );
-
-
-    if(level1 < TRADE_UNLOCK_LEVEL){
-
-        return {
-            locked: true,
+    const users = [
+        {
             userID:
                 String(trade.user1id),
-            level:
-                level1
-        };
+            totalXP:
+                Number(user1?.xp) || 0
+        },
+        {
+            userID:
+                String(trade.user2id),
+            totalXP:
+                Number(user2?.xp) || 0
+        }
+    ];
 
-    }
+
+    const lockedUser =
+        users.find(
+            user =>
+                !economyLimits
+                    .getTradeProtection(
+                        user.totalXP
+                    )
+                    .unlocked
+        );
 
 
-    if(level2 < TRADE_UNLOCK_LEVEL){
+    if(lockedUser){
 
         return {
             locked: true,
+            reason: "level",
             userID:
-                String(trade.user2id),
+                lockedUser.userID,
             level:
-                level2
+                xp.getLevel(
+                    lockedUser.totalXP
+                )
         };
 
     }
@@ -194,19 +196,24 @@ async function getTradeLevelLock(trade){
 
     return {
         locked: false,
-        userID: null,
-        level: null
+        reason: null
     };
 
 }
 
 
-function buildTradeLockedMessage(lock){
+function buildTradeUnavailableMessage(lock){
 
-    return (
-        `🔒 Trading unlocks at **Level ${TRADE_UNLOCK_LEVEL}**. ` +
-        `<@${lock.userID}> is currently **Level ${lock.level}**, so this trade cannot continue.`
-    );
+    if(lock?.reason === "level"){
+
+        return (
+            `🔒 Trading unlocks at **Level ${economyLimits.TRADE_UNLOCK_LEVEL}**. ` +
+            `<@${lock.userID}> is currently **Level ${lock.level}**, so this trade cannot continue.`
+        );
+
+    }
+
+    return "🔒 This trade is no longer available.";
 
 }
 
@@ -330,11 +337,15 @@ function formatOffer(offer){
 }
 
 
-function formatFee(offer){
+function formatFee(
+    offer,
+    feeReductionPercent = 0
+){
 
     const fee =
         database.calculateTradeFee(
-            offer
+            offer,
+            feeReductionPercent
         );
 
 
@@ -342,7 +353,12 @@ function formatFee(offer){
         `**${fee.total.toLocaleString()} XP**\n` +
         `Base: ${fee.baseFee.toLocaleString()} | ` +
         `XP fee: ${fee.xpFee.toLocaleString()} | ` +
-        `Boost fee: ${fee.boostFee.toLocaleString()}`
+        `Boost fee: ${fee.boostFee.toLocaleString()}` +
+        (
+            fee.reductionPercent > 0
+                ? ` | Upgrade: ${fee.reductionPercent}% off`
+                : ""
+        )
     );
 
 }
@@ -414,7 +430,7 @@ function getPanelColor(status){
 }
 
 
-function buildTradePanel(trade){
+async function buildTradePanel(trade){
 
     const offer1 =
         normalizeOffer(
@@ -425,6 +441,19 @@ function buildTradePanel(trade){
         normalizeOffer(
             trade.user2offer
         );
+
+
+    const [upgradeEffects1, upgradeEffects2] =
+        await Promise.all([
+            database.getUserUpgradeEffects(
+                trade.guildid,
+                trade.user1id
+            ),
+            database.getUserUpgradeEffects(
+                trade.guildid,
+                trade.user2id
+            )
+        ]);
 
 
     const embed =
@@ -479,8 +508,8 @@ function buildTradePanel(trade){
                         "Trade Fees",
 
                     value:
-                        `<@${trade.user1id}> pays ${formatFee(offer1)}\n\n` +
-                        `<@${trade.user2id}> pays ${formatFee(offer2)}`,
+                        `<@${trade.user1id}> pays ${formatFee(offer1, upgradeEffects1.tradeFeeReductionPercent)}\n\n` +
+                        `<@${trade.user2id}> pays ${formatFee(offer2, upgradeEffects2.tradeFeeReductionPercent)}`,
 
                     inline:
                         false
@@ -503,7 +532,7 @@ function buildTradePanel(trade){
             .setFooter({
 
                 text:
-                    "Trading unlocks at Level 50. Level 50-99 players can receive max 100,000 XP per trade. Only stored boost inventory and XP can be traded."
+                    "XP offers: minimum 1,000. Level 50-99: max 500,000 incoming XP. Both users must offer something."
 
             })
 
@@ -766,20 +795,20 @@ async function getAuthorizedTrade(
     }
 
 
-    const levelLock =
-        await getTradeLevelLock(
+    const tradeAvailability =
+        await getTradeAvailability(
             trade
         );
 
 
-    if(levelLock.locked){
+    if(tradeAvailability.locked){
 
         await privateReply(
             interaction,
             {
                 content:
-                    buildTradeLockedMessage(
-                        levelLock
+                    buildTradeUnavailableMessage(
+                        tradeAvailability
                     )
             }
         );
@@ -846,7 +875,7 @@ async function refreshTradePanel(
     if(panel){
 
         await panel.edit(
-            buildTradePanel(
+            await buildTradePanel(
                 trade
             )
         ).catch(
@@ -861,7 +890,7 @@ async function refreshTradePanel(
 
         const replacement =
             await channel.send(
-                buildTradePanel(
+                await buildTradePanel(
                     trade
                 )
             );
@@ -961,7 +990,11 @@ function buildTradeInvite(
 
             .setDescription(
                 `${user1} wants to start a secure trade with you.\n\n` +
-                `🔓 Trading requires **Level ${TRADE_UNLOCK_LEVEL}+** for both players.\n` +
+                `🔓 Trading requires **Level ${economyLimits.TRADE_UNLOCK_LEVEL}+** for both users.\n` +
+                `🛡️ Level 50-99 users can receive at most **${economyLimits.LIMITED_TRADE_INCOMING_XP_CAP.toLocaleString()} XP** per trade.\n` +
+                `🔓 Level ${economyLimits.TRADE_FULL_UNLOCK_LEVEL}+ users have no XP receiving cap.\n` +
+                `💰 Every nonzero XP offer must be at least **${economyLimits.MINIMUM_TRADE_XP_OFFER.toLocaleString()} XP**.\n` +
+                `⚖️ Both users must offer at least ${economyLimits.MINIMUM_TRADE_XP_OFFER.toLocaleString()} XP or one boost—gift trades are blocked.\n` +
                 `Only **XP** and **stored XP/Luck Boosts** can be traded.\n` +
                 `Every participant pays an automatic fee when the trade completes.\n\n` +
                 `Invite expires <t:${expires}:R>.`
@@ -1225,7 +1258,7 @@ async function createTradeRoom(
 
         const panel =
             await channel.send(
-                buildTradePanel({
+                await buildTradePanel({
                     ...trade,
                     status:
                         "active",
@@ -1353,7 +1386,7 @@ async function handleAddXP(
             )
 
             .setPlaceholder(
-                "Example: 250000"
+                "Minimum 1000, or 0 to remove"
             )
 
             .setStyle(
@@ -1431,20 +1464,20 @@ async function handleXPModal(
     }
 
 
-    const levelLock =
-        await getTradeLevelLock(
+    const tradeAvailability =
+        await getTradeAvailability(
             trade
         );
 
 
-    if(levelLock.locked){
+    if(tradeAvailability.locked){
 
         return privateReply(
             interaction,
             {
                 content:
-                    buildTradeLockedMessage(
-                        levelLock
+                    buildTradeUnavailableMessage(
+                        tradeAvailability
                     )
             }
         );
@@ -1477,6 +1510,62 @@ async function handleXPModal(
     }
 
 
+    if(
+        !economyLimits.isValidTradeXPAmount(
+            amount
+        )
+    ){
+
+        return privateReply(
+            interaction,
+            {
+                content:
+                    `An XP offer must be **0** to remove it or at least **${economyLimits.MINIMUM_TRADE_XP_OFFER.toLocaleString()} XP**.`
+            }
+        );
+
+    }
+
+
+    const recipientID =
+        String(trade.user1id) ===
+        String(interaction.user.id)
+            ? String(trade.user2id)
+            : String(trade.user1id);
+
+
+    const recipient =
+        await database.getUser(
+            trade.guildid,
+            recipientID
+        );
+
+
+    const recipientProtection =
+        economyLimits.getTradeProtection(
+            Number(recipient?.xp) || 0
+        );
+
+
+    if(
+        !recipientProtection.fullyUnlocked
+        &&
+        amount >
+            recipientProtection.incomingXPCap
+    ){
+
+        return privateReply(
+            interaction,
+            {
+                content:
+                    `<@${recipientID}> is **Level ${recipientProtection.level}** and can receive at most ` +
+                    `**${recipientProtection.incomingXPCap.toLocaleString()} XP** in one trade. Lower your XP offer to continue.`
+            }
+        );
+
+    }
+
+
     const user =
         await database.getUser(
             trade.guildid,
@@ -1495,9 +1584,18 @@ async function handleXPModal(
         amount;
 
 
+    const upgradeEffects =
+        await database.getUserUpgradeEffects(
+            trade.guildid,
+            interaction.user.id
+        );
+
+
     const fee =
         database.calculateTradeFee(
-            currentOffer
+            currentOffer,
+            upgradeEffects
+                .tradeFeeReductionPercent
         );
 
 
@@ -1726,20 +1824,20 @@ async function handleBoostSelect(
     }
 
 
-    const levelLock =
-        await getTradeLevelLock(
+    const tradeAvailability =
+        await getTradeAvailability(
             trade
         );
 
 
-    if(levelLock.locked){
+    if(tradeAvailability.locked){
 
         return privateReply(
             interaction,
             {
                 content:
-                    buildTradeLockedMessage(
-                        levelLock
+                    buildTradeUnavailableMessage(
+                        tradeAvailability
                     )
             }
         );
@@ -1887,20 +1985,20 @@ async function handleBoostModal(
     }
 
 
-    const levelLock =
-        await getTradeLevelLock(
+    const tradeAvailability =
+        await getTradeAvailability(
             trade
         );
 
 
-    if(levelLock.locked){
+    if(tradeAvailability.locked){
 
         return privateReply(
             interaction,
             {
                 content:
-                    buildTradeLockedMessage(
-                        levelLock
+                    buildTradeUnavailableMessage(
+                        tradeAvailability
                     )
             }
         );
@@ -1991,9 +2089,18 @@ async function handleBoostModal(
         amount;
 
 
+    const upgradeEffects =
+        await database.getUserUpgradeEffects(
+            trade.guildid,
+            interaction.user.id
+        );
+
+
     const fee =
         database.calculateTradeFee(
-            currentOffer
+            currentOffer,
+            upgradeEffects
+                .tradeFeeReductionPercent
         );
 
 
@@ -2218,20 +2325,20 @@ async function handleRemoveSelect(
     }
 
 
-    const levelLock =
-        await getTradeLevelLock(
+    const tradeAvailability =
+        await getTradeAvailability(
             trade
         );
 
 
-    if(levelLock.locked){
+    if(tradeAvailability.locked){
 
         return privateReply(
             interaction,
             {
                 content:
-                    buildTradeLockedMessage(
-                        levelLock
+                    buildTradeUnavailableMessage(
+                        tradeAvailability
                     )
             }
         );
@@ -2405,18 +2512,18 @@ async function handleConfirm(
     }
 
 
-    const levelLock =
-        await getTradeLevelLock(
+    const tradeAvailability =
+        await getTradeAvailability(
             trade
         );
 
 
-    if(levelLock.locked){
+    if(tradeAvailability.locked){
 
         await database.cancelTrade(
             trade.id,
             interaction.user.id,
-            `Trade locked because ${levelLock.userID} is below Level ${TRADE_UNLOCK_LEVEL}.`,
+            "Trade unavailable.",
             "cancelled"
         );
 
@@ -2439,8 +2546,8 @@ async function handleConfirm(
             interaction,
             {
                 content:
-                    buildTradeLockedMessage(
-                        levelLock
+                    buildTradeUnavailableMessage(
+                        tradeAvailability
                     ) +
                     "\nThe trade was cancelled and nothing was transferred."
             }
@@ -2541,21 +2648,49 @@ async function handleConfirm(
         }
         else if(
             completion.status ===
-            "low-level-xp-cap"
-        ){
-
-            message +=
-                `\n🛡️ <@${completion.userID}> is below **Level 100** and can receive at most **${completion.cap.toLocaleString()} XP** in one trade. ` +
-                `This trade tried to send them **${completion.incomingXP.toLocaleString()} XP**.`;
-
-        }
-        else if(
-            completion.status ===
             "empty-trade"
         ){
 
             message +=
                 "\nAt least one item or XP amount must be offered.";
+
+        }
+        else if(
+            completion.status ===
+            "one-sided-trade"
+        ){
+
+            message +=
+                `\n⚖️ Gift trades are disabled. **Both users** must offer at least **${economyLimits.MINIMUM_TRADE_XP_OFFER.toLocaleString()} XP** or **one boost**.`;
+
+        }
+        else if(
+            completion.status ===
+            "trade-xp-minimum"
+        ){
+
+            message +=
+                `\n💰 Every nonzero XP offer must be at least **${completion.minimumXP.toLocaleString()} XP**. ` +
+                "Use **0 XP** to remove the XP offer, or offer a boost instead.";
+
+        }
+        else if(
+            completion.status ===
+            "trade-level-locked"
+        ){
+
+            message +=
+                `\n🔒 <@${completion.userID}> is **Level ${completion.level}**. Trading unlocks at **Level ${economyLimits.TRADE_UNLOCK_LEVEL}**.`;
+
+        }
+        else if(
+            completion.status ===
+            "limited-level-xp-cap"
+        ){
+
+            message +=
+                `\n🛡️ <@${completion.userID}> is **Level ${completion.level}** and can receive at most **${completion.cap.toLocaleString()} XP** in one trade. ` +
+                `This trade tried to send them **${completion.incomingXP.toLocaleString()} XP**.`;
 
         }
 
@@ -2820,26 +2955,26 @@ async function handleInviteAccept(
     }
 
 
-    const levelLock =
-        await getTradeLevelLock(
+    const tradeAvailability =
+        await getTradeAvailability(
             pendingTrade
         );
 
 
-    if(levelLock.locked){
+    if(tradeAvailability.locked){
 
         await database.cancelTrade(
             pendingTrade.id,
             interaction.user.id,
-            `Trade locked because ${levelLock.userID} is below Level ${TRADE_UNLOCK_LEVEL}.`,
+            "Trade unavailable.",
             "cancelled"
         );
 
 
         return interaction.update({
             content:
-                buildTradeLockedMessage(
-                    levelLock
+                buildTradeUnavailableMessage(
+                    tradeAvailability
                 ) +
                 "\nThis invitation was cancelled.",
             embeds: [],
@@ -3219,19 +3354,19 @@ async function restoreTrades(
 
         try{
 
-            const levelLock =
-                await getTradeLevelLock(
+            const tradeAvailability =
+                await getTradeAvailability(
                     trade
                 );
 
 
-            if(levelLock.locked){
+            if(tradeAvailability.locked){
 
                 const cancelled =
                     await database.cancelTrade(
                         trade.id,
                         null,
-                        `Trade locked because ${levelLock.userID} is below Level ${TRADE_UNLOCK_LEVEL}.`,
+                        "Trade unavailable.",
                         "cancelled"
                     );
 
