@@ -29,6 +29,7 @@ const giveXPCommand = require("./commands/givexp");
 const commandsCommand = require("./commands/commands");
 const boostCommand = require("./commands/showboost");
 const valuesCommand = require("./commands/values");
+const sellCommand = require("./commands/sell");
 const muteCommand = require("./commands/mute");
 const upgradesCommand = require("./commands/upgrades");
 const shopCommand = require("./commands/shop");
@@ -678,6 +679,17 @@ client.on(
         }
 
 
+        const sellHandled =
+            await sellCommand.handleInteraction(
+                interaction
+            );
+
+
+        if(sellHandled){
+            return;
+        }
+
+
         await trades.handleInteraction(
             interaction
         );
@@ -942,6 +954,18 @@ if(
 ){
 
     return valuesCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content
+        .trim()
+        .toLowerCase() === "!sell"
+){
+
+    return sellCommand.execute(
         message
     );
 
