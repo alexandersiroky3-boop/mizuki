@@ -1,5 +1,6 @@
 const database = require("../database");
 const xp = require("../utils/xp");
+const guildMembers = require("../utils/guildMembers");
 
 // YOUR Discord ID
 const OWNER_ID = "1239975819112353969";
@@ -32,12 +33,18 @@ async function execute(message){
 
     }
 
-    // Fetch every member
-    await message.guild.members.fetch();
+    // Paginated REST listing avoids Discord Gateway opcode-8 limits.
+    const members =
+        await guildMembers.listAllGuildMembers(
+            message.guild,
+            {
+                cache: false
+            }
+        );
 
     let given = 0;
 
-    for(const member of message.guild.members.cache.values()){
+    for(const member of members){
 
         // Skip bots
         if(member.user.bot)
