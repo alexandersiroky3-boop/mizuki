@@ -4,6 +4,8 @@ const upgrades = require("./utils/upgrades");
 
 const economyLimits = require("./utils/economyLimits");
 
+const boostSell = require("./utils/boostSell");
+
 
 
 // =======================
@@ -3390,6 +3392,52 @@ await db.query(`
             userID
         )
 
+    )
+
+`);
+
+
+// Bot/vendor sales are recorded separately from player trades. They are
+// useful for economy audits, but intentionally never feed back into
+// boost_value_state: only completed player-to-player trades move !values.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS boost_sales (
+
+        id BIGSERIAL PRIMARY KEY,
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        boostKey TEXT NOT NULL,
+
+        quantity INTEGER NOT NULL,
+
+        marketMin BIGINT NOT NULL,
+
+        marketMax BIGINT NOT NULL,
+
+        unitPayout BIGINT NOT NULL,
+
+        totalPayout BIGINT NOT NULL,
+
+        soldAt BIGINT NOT NULL
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    boost_sales_user_idx
+
+    ON boost_sales(
+        guildID,
+        userID,
+        soldAt
     )
 
 `);
@@ -10998,6 +11046,369 @@ async function getBoostValues(guildID){
 }
 
 
+async function sellBoostInventory(
+    guildID,
+    userID,
+    boostType,
+    tier,
+    requestedQuantity
+){
+
+    const normalizedBoostType =
+        String(
+            boostType || ""
+        ).trim().toLowerCase();
+
+
+    const normalizedTier =
+        String(
+            tier || ""
+        ).trim().toLowerCase();
+
+
+    const key =
+        `${normalizedBoostType}:${normalizedTier}`;
+
+
+    if(!BOOST_VALUE_BASES[key]){
+
+        return {
+            success: false,
+            status: "invalid-boost",
+            key
+        };
+
+    }
+
+
+    const quantity =
+        boostSell.parseSellQuantity(
+            requestedQuantity
+        );
+
+
+    if(!quantity){
+
+        return {
+            success: false,
+            status: "invalid-quantity",
+            key,
+            maximum:
+                boostSell
+                    .MAX_BOOST_SELL_QUANTITY
+        };
+
+    }
+
+
+    // Initialize the market row before opening the sale transaction. Inside
+    // the transaction the user, inventory and value rows are then locked in
+    // the same order used by trading, preventing oversells and deadlocks.
+    await ensureBoostValueState(
+        db,
+        guildID,
+        [
+            key
+        ]
+    );
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        await client.query(`
+
+            INSERT INTO users
+            (
+                guildID,
+                userID
+            )
+
+            VALUES($1,$2)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            String(guildID),
+            String(userID)
+        ]);
+
+
+        const userResult =
+            await client.query(`
+
+                SELECT xp
+
+                FROM users
+
+                WHERE guildID=$1
+                AND userID=$2
+
+                FOR UPDATE
+
+            `, [
+                String(guildID),
+                String(userID)
+            ]);
+
+
+        const inventoryResult =
+            await client.query(`
+
+                SELECT amount
+
+                FROM boost_inventory
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND boostType=$3
+                AND tier=$4
+
+                FOR UPDATE
+
+            `, [
+                String(guildID),
+                String(userID),
+                normalizedBoostType,
+                normalizedTier
+            ]);
+
+
+        const available =
+            Math.max(
+                0,
+                Number(
+                    inventoryResult
+                        .rows[0]?.amount
+                ) || 0
+            );
+
+
+        if(available < quantity){
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status:
+                    "insufficient-inventory",
+                key,
+                boostType:
+                    normalizedBoostType,
+                tier:
+                    normalizedTier,
+                requested:
+                    quantity,
+                available
+            };
+
+        }
+
+
+        const valueResult =
+            await client.query(`
+
+                SELECT *
+
+                FROM boost_value_state
+
+                WHERE guildID=$1
+                AND boostKey=$2
+
+                FOR UPDATE
+
+            `, [
+                String(guildID),
+                key
+            ]);
+
+
+        const state =
+            normalizeBoostValueState(
+                key,
+                valueResult.rows[0]
+            );
+
+
+        const quote =
+            boostSell
+                .calculateBoostSellQuote(
+                    state,
+                    quantity
+                );
+
+
+        if(!quote){
+
+            await client.query("ROLLBACK");
+
+
+            return {
+                success: false,
+                status:
+                    "market-value-unavailable",
+                key
+            };
+
+        }
+
+
+        await client.query(`
+
+            UPDATE boost_inventory
+
+            SET amount = amount - $5
+
+            WHERE guildID=$1
+            AND userID=$2
+            AND boostType=$3
+            AND tier=$4
+
+        `, [
+            String(guildID),
+            String(userID),
+            normalizedBoostType,
+            normalizedTier,
+            quantity
+        ]);
+
+
+        await client.query(`
+
+            DELETE FROM boost_inventory
+
+            WHERE guildID=$1
+            AND userID=$2
+            AND boostType=$3
+            AND tier=$4
+            AND amount <= 0
+
+        `, [
+            String(guildID),
+            String(userID),
+            normalizedBoostType,
+            normalizedTier
+        ]);
+
+
+        const updatedUser =
+            await client.query(`
+
+                UPDATE users
+
+                SET xp = xp + $3
+
+                WHERE guildID=$1
+                AND userID=$2
+
+                RETURNING xp
+
+            `, [
+                String(guildID),
+                String(userID),
+                quote.totalPayout
+            ]);
+
+
+        const soldAt =
+            Date.now();
+
+
+        await client.query(`
+
+            INSERT INTO boost_sales
+            (
+                guildID,
+                userID,
+                boostKey,
+                quantity,
+                marketMin,
+                marketMax,
+                unitPayout,
+                totalPayout,
+                soldAt
+            )
+
+            VALUES
+            ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+
+        `, [
+            String(guildID),
+            String(userID),
+            key,
+            quantity,
+            quote.currentMin,
+            quote.currentMax,
+            quote.unitPayout,
+            quote.totalPayout,
+            soldAt
+        ]);
+
+
+        await client.query("COMMIT");
+
+
+        userCache.delete(
+            `${guildID}:${userID}`
+        );
+
+
+        return {
+            success: true,
+            status: "sold",
+            key,
+            boostType:
+                normalizedBoostType,
+            tier:
+                normalizedTier,
+            quantity,
+            currentMin:
+                quote.currentMin,
+            currentMax:
+                quote.currentMax,
+            marketMidpoint:
+                quote.marketMidpoint,
+            payoutRate:
+                quote.payoutRate,
+            unitPayout:
+                quote.unitPayout,
+            totalPayout:
+                quote.totalPayout,
+            remaining:
+                available -
+                quantity,
+            balance:
+                Number(
+                    updatedUser
+                        .rows[0]?.xp || 0
+                ),
+            soldAt
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
 async function recordCompletedTradeBoostValues(
     client,
     trade,
@@ -13791,6 +14202,8 @@ module.exports = {
     buildTradeValueObservations,
 
     getBoostValues,
+
+    sellBoostInventory,
 
     recordCompletedTradeBoostValues,
 
