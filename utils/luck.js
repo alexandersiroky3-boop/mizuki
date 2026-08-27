@@ -370,69 +370,89 @@ const COMMAND_LUCK_DROP_PERCENT = {
 // to find and customize.
 
 
-const OMEGA_ROLL_CHANCE_TABLES = {
+// Luck II and above use exact level-0 chance tables. This keeps the listed
+// percentages honest instead of running a second hidden "Mega Roll" lottery.
+// Permanent Rolling upgrades and Boost upgrades are applied to normalized
+// copies later; these source tables are never mutated.
+const LUCK_ROLL_CHANCE_TABLES = {
 
-    // Every user receives the same Ω table; Boost upgrades strengthen it
-    // through the personal roll-weight factor instead of display level.
-    universal: [
+    tier2: [
+        { chancePercent: 4, type: "neutral", min: -100, max: 100 },
+        { chancePercent: 0.75, type: "negative", min: -5000, max: -101 },
+        { chancePercent: 20, type: "positive", min: 100, max: 5000 },
+        { chancePercent: 0.15, type: "negative", min: -10000, max: -5000 },
+        { chancePercent: 50, type: "positive", min: 5000, max: 25000 },
+        { chancePercent: 20, type: "positive", min: 25000, max: 75000 },
+        { chancePercent: 3, type: "positive", min: 75000, max: 200000 },
+        { chancePercent: 1.5, type: "positive", min: 200000, max: 500000 },
+        { chancePercent: 0.4, type: "positive", min: 500000, max: 2000000 },
+        { chancePercent: 0.05, type: "negative", min: -100000, max: -10000 },
+        { chancePercent: 0.1495, type: "positive", min: 2000000, max: 10000000 },
+        { chancePercent: 0.00035, type: "positive", min: 10000001, max: 30000000 },
+        { chancePercent: 0.0001, type: "positive", min: 30000001, max: 50000000 },
+        { chancePercent: 0.00004, type: "positive", min: 50000001, max: 100000000 },
+        { chancePercent: 0.000009, type: "positive", min: 100000001, max: 250000000 },
+        { chancePercent: 0.000001, type: "positive", min: 250000001, max: 1500000000 }
+    ],
 
-        {
-            chancePercent: 55,
-            min: 200000,
-            max: 500000
-        },
+    tier3: [
+        { chancePercent: 1.5, type: "neutral", min: -100, max: 100 },
+        { chancePercent: 0.25, type: "negative", min: -5000, max: -101 },
+        { chancePercent: 20, type: "positive", min: 100, max: 5000 },
+        { chancePercent: 0.05, type: "negative", min: -10000, max: -5000 },
+        { chancePercent: 25, type: "positive", min: 5000, max: 25000 },
+        { chancePercent: 40, type: "positive", min: 25000, max: 75000 },
+        { chancePercent: 10, type: "positive", min: 75000, max: 200000 },
+        { chancePercent: 2.5, type: "positive", min: 200000, max: 500000 },
+        { chancePercent: 0.5, type: "positive", min: 500000, max: 2000000 },
+        { chancePercent: 0.01, type: "negative", min: -100000, max: -10000 },
+        { chancePercent: 0.185, type: "positive", min: 2000000, max: 10000000 },
+        { chancePercent: 0.0035, type: "positive", min: 10000001, max: 30000000 },
+        { chancePercent: 0.001, type: "positive", min: 30000001, max: 50000000 },
+        { chancePercent: 0.0004, type: "positive", min: 50000001, max: 100000000 },
+        { chancePercent: 0.00009, type: "positive", min: 100000001, max: 250000000 },
+        { chancePercent: 0.00001, type: "positive", min: 250000001, max: 1500000000 }
+    ],
 
-        {
-            chancePercent: 35,
-            min: 500000,
-            max: 2000000
-        },
+    max: [
+        { chancePercent: 0.25, type: "neutral", min: -100, max: 100 },
+        { chancePercent: 0.04, type: "negative", min: -5000, max: -101 },
+        { chancePercent: 2, type: "positive", min: 100, max: 5000 },
+        { chancePercent: 0.01, type: "negative", min: -10000, max: -5000 },
+        { chancePercent: 24, type: "positive", min: 5000, max: 25000 },
+        { chancePercent: 20, type: "positive", min: 25000, max: 75000 },
+        { chancePercent: 45, type: "positive", min: 75000, max: 200000 },
+        { chancePercent: 7, type: "positive", min: 200000, max: 500000 },
+        { chancePercent: 0.75, type: "positive", min: 500000, max: 2000000 },
+        { chancePercent: 0.002, type: "negative", min: -100000, max: -10000 },
+        { chancePercent: 0.923, type: "positive", min: 2000000, max: 10000000 },
+        { chancePercent: 0.0175, type: "positive", min: 10000001, max: 30000000 },
+        { chancePercent: 0.005, type: "positive", min: 30000001, max: 50000000 },
+        { chancePercent: 0.002, type: "positive", min: 50000001, max: 100000000 },
+        { chancePercent: 0.00045, type: "positive", min: 100000001, max: 250000000 },
+        { chancePercent: 0.00005, type: "positive", min: 250000001, max: 1500000000 }
+    ],
 
-        {
-            chancePercent: 10,
-            min: 2000000,
-            max: 10000000
-        }
-
+    omega: [
+        { chancePercent: 28.365, type: "positive", min: 200000, max: 500000 },
+        { chancePercent: 20, type: "positive", min: 500000, max: 2000000 },
+        { chancePercent: 45, type: "positive", min: 2000000, max: 10000000 },
+        { chancePercent: 5, type: "positive", min: 10000001, max: 30000000 },
+        { chancePercent: 1, type: "positive", min: 30000001, max: 50000000 },
+        { chancePercent: 0.5, type: "positive", min: 50000001, max: 100000000 },
+        { chancePercent: 0.1, type: "positive", min: 100000001, max: 250000000 },
+        { chancePercent: 0.035, type: "positive", min: 250000001, max: 1500000000 }
     ]
 
 };
 
 
-// =====================================================
-// LUCK-ONLY 10M-50M MEGA ROLLS
-// =====================================================
-//
-// These are exact, independent percentages. A Mega Roll is checked first;
-// when it misses, the universal Luck table is used exactly as before.
-// No active Luck Boost means a 0% chance at this special range.
-//
-// 0.0001 = 1 in 1,000,000 rolls
-// 0.001  = 1 in 100,000 rolls
-// 0.01   = 1 in 10,000 rolls
-// 0.05   = 1 in 2,000 rolls
-// 1      = 1 in 100 rolls
-const LUCK_MEGA_ROLL_SETTINGS = {
+const LUCK_MEGA_ROLL_MIN_XP =
+    10000001;
 
-    minXP:
-        10000001,
 
-    maxXP:
-        50000000,
-
-    chancePercent: {
-
-        universal: {
-            tier1: 0.0001,
-            tier2: 0.0005,
-            tier3: 0.005,
-            max: 0.025,
-            omega: 1
-        }
-
-    }
-
-};
+const LUCK_MEGA_ROLL_MAX_XP =
+    1500000000;
 
 
 function rollFromExactPercentTable(table){
@@ -595,9 +615,9 @@ function validateLuckSettings(){
 
 
     for(
-        const [tableName, table] of
+        const [tierName, table] of
         Object.entries(
-            OMEGA_ROLL_CHANCE_TABLES
+            LUCK_ROLL_CHANCE_TABLES
         )
     ){
 
@@ -615,7 +635,7 @@ function validateLuckSettings(){
         if(Math.abs(total - 100) > 0.000001){
 
             throw new Error(
-                `Luck Boost Ω ${tableName} roll chances must total 100%. Current total: ${total}%.`
+                `Luck Boost ${tierName} roll chances must total 100%. Current total: ${total}%.`
             );
 
         }
@@ -624,9 +644,27 @@ function validateLuckSettings(){
         for(const outcome of table){
 
             validatePercentage(
-                `Luck Boost Ω ${tableName}`,
+                `Luck Boost ${tierName}`,
                 outcome.chancePercent
             );
+
+
+            if(
+                !["neutral", "negative", "positive"]
+                    .includes(outcome.type)
+                ||
+                !Number.isFinite(Number(outcome.min))
+                ||
+                !Number.isFinite(Number(outcome.max))
+                ||
+                Number(outcome.max) < Number(outcome.min)
+            ){
+
+                throw new Error(
+                    `Luck Boost ${tierName} has an invalid roll outcome.`
+                );
+
+            }
 
         }
 
@@ -636,67 +674,25 @@ function validateLuckSettings(){
     if(
         !Number.isFinite(
             Number(
-                LUCK_MEGA_ROLL_SETTINGS.minXP
+                LUCK_MEGA_ROLL_MIN_XP
             )
         )
         ||
         !Number.isFinite(
             Number(
-                LUCK_MEGA_ROLL_SETTINGS.maxXP
+                LUCK_MEGA_ROLL_MAX_XP
             )
         )
         ||
-        Number(LUCK_MEGA_ROLL_SETTINGS.minXP) <= 10000000
+        Number(LUCK_MEGA_ROLL_MIN_XP) <= 10000000
         ||
-        Number(LUCK_MEGA_ROLL_SETTINGS.maxXP) <
-            Number(LUCK_MEGA_ROLL_SETTINGS.minXP)
+        Number(LUCK_MEGA_ROLL_MAX_XP) <
+            Number(LUCK_MEGA_ROLL_MIN_XP)
     ){
 
         throw new Error(
             "Luck Mega Roll range must start above 10,000,000 XP and have a valid maximum."
         );
-
-    }
-
-
-    for(
-        const [levelGroup, tierChances] of
-        Object.entries(
-            LUCK_MEGA_ROLL_SETTINGS.chancePercent
-        )
-    ){
-
-        for(
-            const tier of
-            [
-                "tier1",
-                "tier2",
-                "tier3",
-                "max",
-                "omega"
-            ]
-        ){
-
-            if(
-                !Object.prototype.hasOwnProperty.call(
-                    tierChances,
-                    tier
-                )
-            ){
-
-                throw new Error(
-                    `Missing ${levelGroup} ${tier} Luck Mega Roll chance.`
-                );
-
-            }
-
-
-            validatePercentage(
-                `${levelGroup} ${tier} Luck Mega Roll`,
-                tierChances[tier]
-            );
-
-        }
 
     }
 
@@ -1444,27 +1440,45 @@ function getAdjustedWeight(
             modifiers[weightType];
 
 
-        const positiveExponents = {
-
-            commonPositive:
-                0,
-
-            valuablePositive:
-                0.25,
-
-            rarePositive:
-                0.50,
-
-            jackpotPositive:
-                0.75
-
-        };
+        const maximumXP =
+            Number(outcome.max) || 0;
 
 
-        strengthExponent =
-            positiveExponents[
-                weightType
-            ] || 0;
+        // Boost upgrades strengthen the far end progressively. Keeping these
+        // bands separate matters for Ω, whose entire table is already rare.
+        if(maximumXP <= 5000){
+            strengthExponent = 0;
+        }
+        else if(maximumXP <= 25000){
+            strengthExponent = 0.25;
+        }
+        else if(maximumXP <= 200000){
+            strengthExponent = 0.50;
+        }
+        else if(maximumXP <= 500000){
+            strengthExponent = 0.75;
+        }
+        else if(maximumXP <= 2000000){
+            strengthExponent = 1;
+        }
+        else if(maximumXP <= 10000000){
+            strengthExponent = 1.25;
+        }
+        else if(maximumXP <= 30000000){
+            strengthExponent = 1.50;
+        }
+        else if(maximumXP <= 50000000){
+            strengthExponent = 1.75;
+        }
+        else if(maximumXP <= 100000000){
+            strengthExponent = 2;
+        }
+        else if(maximumXP <= 250000000){
+            strengthExponent = 2.25;
+        }
+        else{
+            strengthExponent = 2.50;
+        }
 
     }
 
@@ -1495,63 +1509,218 @@ function rollFromWeightedTable(
     profile
 ){
 
-    const weightedOutcomes =
-        table.map(outcome => ({
+    return rollFromExactPercentTable(
+        getWeightedChanceTable(
+            table,
+            profile
+        )
+    );
 
-            outcome,
+}
 
-            weight:
-                getAdjustedWeight(
-                    outcome,
-                    profile
-                )
 
-        }));
-
+function normalizeChanceTable(table){
 
     const totalWeight =
-        weightedOutcomes.reduce(
-
-            (total, entry) =>
-                total + entry.weight,
-
+        (table || []).reduce(
+            (total, outcome) =>
+                total +
+                Math.max(
+                    0,
+                    Number(outcome.chancePercent) || 0
+                ),
             0
-
         );
 
 
-    let randomWeight =
-        Math.random() *
-        totalWeight;
+    if(totalWeight <= 0){
 
-
-    for(const entry of weightedOutcomes){
-
-        randomWeight -=
-            entry.weight;
-
-
-        if(randomWeight <= 0){
-
-            return randomInteger(
-                entry.outcome.min,
-                entry.outcome.max
-            );
-
-        }
+        throw new Error(
+            "A roll chance table must have a positive total weight."
+        );
 
     }
 
 
-    const fallback =
-        weightedOutcomes[
-            weightedOutcomes.length - 1
-        ].outcome;
+    return table.map(outcome => ({
+        ...outcome,
+        chancePercent:
+            Math.max(
+                0,
+                Number(outcome.chancePercent) || 0
+            ) /
+            totalWeight *
+            100
+    }));
+
+}
 
 
-    return randomInteger(
-        fallback.min,
-        fallback.max
+function getWeightedChanceTable(
+    table,
+    profile
+){
+
+    const safeProfile =
+        profile ||
+        getNoLuckProfile();
+
+
+    return normalizeChanceTable(
+        table.map(outcome => ({
+            ...outcome,
+            chancePercent:
+                getAdjustedWeight(
+                    outcome,
+                    safeProfile
+                )
+        }))
+    );
+
+}
+
+
+const ROLLING_UPGRADE_WEIGHT_FACTORS = {
+    neutral: [1, 0.97, 0.90, 0.85, 0.75, 0.65, 0.50],
+    negative: [1, 0.80, 0.80, 0.55, 0.35, 0.30, 0.22],
+    common: [1, 1.15, 1.35, 1.50, 2, 2.20, 2.50],
+    fiveThousand: [1, 1.20, 2, 3, 4, 7, 8],
+    twentyFiveThousand: [1, 1.10, 1.40, 2.50, 3.50, 4, 8],
+    rare: [1, 1.12, 1.45, 2.70, 4, 5, 10],
+    mega: [1, 1.15, 1.55, 3, 4.50, 6, 12],
+    ultra: [1, 1.18, 1.70, 3.30, 5, 7, 14]
+};
+
+
+function getRollingUpgradeChanceTable(
+    baseTable,
+    rollingLevel
+){
+
+    if(
+        !Array.isArray(baseTable)
+        ||
+        baseTable.length === 0
+    ){
+
+        throw new Error(
+            "getRollingUpgradeChanceTable received an empty chance table."
+        );
+
+    }
+
+
+    const level =
+        Math.max(
+            0,
+            Math.min(
+                6,
+                Math.floor(
+                    Number(rollingLevel) || 0
+                )
+            )
+        );
+
+
+    return normalizeChanceTable(
+        baseTable.map(outcome => {
+            let group = "neutral";
+
+            if(outcome.type === "negative"){
+                group = "negative";
+            }
+            else if(outcome.type === "positive"){
+                if(Number(outcome.min) >= 50000001){
+                    group = "ultra";
+                }
+                else if(Number(outcome.min) >= 10000001){
+                    group = "mega";
+                }
+                else if(Number(outcome.min) >= 500000){
+                    group = "rare";
+                }
+                else if(Number(outcome.min) >= 25000){
+                    group = "twentyFiveThousand";
+                }
+                else if(Number(outcome.min) >= 5000){
+                    group = "fiveThousand";
+                }
+                else{
+                    group = "common";
+                }
+            }
+
+            return {
+                ...outcome,
+                chancePercent:
+                    Number(outcome.chancePercent) *
+                    ROLLING_UPGRADE_WEIGHT_FACTORS[group][level]
+            };
+        })
+    );
+
+}
+
+
+function getResolvedRollChanceTable(
+    rollChanceTable,
+    profile,
+    rollingLevel = 0
+){
+
+    const safeProfile =
+        profile ||
+        getNoLuckProfile();
+
+
+    const tier =
+        String(
+            safeProfile.tier || ""
+        ).toLowerCase();
+
+
+    const exactLuckTable =
+        LUCK_ROLL_CHANCE_TABLES[tier];
+
+
+    const upgradedTable =
+        getRollingUpgradeChanceTable(
+            exactLuckTable || rollChanceTable,
+            rollingLevel
+        );
+
+
+    // Tier II/III/MAX/Ω source tables already contain the exact Luck odds.
+    // Setting order to 0 prevents those tiers from being applied twice, while
+    // rollWeightFactor still lets permanent Boost upgrades improve the table.
+    const weightingProfile =
+        exactLuckTable
+            ? {
+                ...safeProfile,
+                order: 0
+            }
+            : safeProfile;
+
+
+    return getWeightedChanceTable(
+        upgradedTable,
+        weightingProfile
+    );
+
+}
+
+
+function getChanceAtOrAbove(
+    table,
+    minimumXP
+){
+
+    return (table || []).reduce(
+        (total, outcome) =>
+            Number(outcome.min) >= Number(minimumXP)
+                ? total + Number(outcome.chancePercent || 0)
+                : total,
+        0
     );
 
 }
@@ -1559,7 +1728,8 @@ function rollFromWeightedTable(
 
 function getLuckMegaRollChance(
     profile,
-    levelTableName
+    rollChanceTable,
+    rollingLevel = 0
 ){
 
     const tier =
@@ -1568,63 +1738,30 @@ function getLuckMegaRollChance(
         ).toLowerCase();
 
 
-    if(!tier){
+    const sourceTable =
+        rollChanceTable ||
+        LUCK_ROLL_CHANCE_TABLES[tier];
+
+
+    if(
+        !Array.isArray(sourceTable)
+        ||
+        sourceTable.length === 0
+    ){
 
         return 0;
 
     }
 
 
-    const tableName =
-        "universal";
-
-
-    return Math.max(
-        0,
-        Number(
-            LUCK_MEGA_ROLL_SETTINGS
-                .chancePercent[tableName]
-                ?.[tier]
-        ) || 0
-    );
-
-}
-
-
-function tryLuckMegaRoll(
-    profile,
-    levelTableName
-){
-
-    const chancePercent =
-        getLuckMegaRollChance(
+    return getChanceAtOrAbove(
+        getResolvedRollChanceTable(
+            sourceTable,
             profile,
-            levelTableName
-        );
-
-
-    if(
-        chancePercent <= 0
-        ||
-        !percentChance(
-            chancePercent
-        )
-    ){
-
-        return null;
-
-    }
-
-
-    return {
-        rolledXP:
-            randomInteger(
-                LUCK_MEGA_ROLL_SETTINGS.minXP,
-                LUCK_MEGA_ROLL_SETTINGS.maxXP
-            ),
-
-        chancePercent
-    };
+            rollingLevel
+        ),
+        LUCK_MEGA_ROLL_MIN_XP
+    );
 
 }
 
@@ -1633,8 +1770,9 @@ function tryLuckMegaRoll(
 async function rollWithLuck(
     member,
     rollChanceTable,
-    levelTableName = "base",
-    preparedProfile = null
+    _levelTableName = "base",
+    preparedProfile = null,
+    rollingLevel = 0
 ){
 
     if(
@@ -1661,29 +1799,25 @@ async function rollWithLuck(
         );
 
 
-    const megaRoll =
-        tryLuckMegaRoll(
+    const resolvedChanceTable =
+        getResolvedRollChanceTable(
+            rollChanceTable,
             profile,
-            levelTableName
+            rollingLevel
         );
 
 
     const rolledXP =
-        megaRoll
+        rollFromExactPercentTable(
+            resolvedChanceTable
+        );
 
-            ? megaRoll.rolledXP
 
-            : profile.tier === "omega"
-
-                ? rollFromExactPercentTable(
-                    OMEGA_ROLL_CHANCE_TABLES
-                        .universal
-                )
-
-                : rollFromWeightedTable(
-                    rollChanceTable,
-                    profile
-                );
+    const megaRollChancePercent =
+        getChanceAtOrAbove(
+            resolvedChanceTable,
+            LUCK_MEGA_ROLL_MIN_XP
+        );
 
 
     return {
@@ -1693,14 +1827,11 @@ async function rollWithLuck(
         profile,
 
         megaRoll:
-            Boolean(megaRoll),
+            rolledXP >=
+            LUCK_MEGA_ROLL_MIN_XP,
 
         megaRollChancePercent:
-            megaRoll?.chancePercent ||
-            getLuckMegaRollChance(
-                profile,
-                levelTableName
-            )
+            megaRollChancePercent
 
     };
 
@@ -1711,8 +1842,9 @@ function rollGuaranteedMinimumWithLuck(
     currentXP,
     minimumXP,
     rollChanceTable,
-    levelTableName = "base",
-    profile = null
+    _levelTableName = "base",
+    profile = null,
+    rollingLevel = 0
 ){
 
     const safeMinimum =
@@ -1736,10 +1868,11 @@ function rollGuaranteedMinimumWithLuck(
 
 
     const sourceTable =
-        String(profile?.tier || "").toLowerCase() === "omega"
-            ? OMEGA_ROLL_CHANCE_TABLES
-                .universal
-            : rollChanceTable;
+        getResolvedRollChanceTable(
+            rollChanceTable,
+            profile,
+            rollingLevel
+        );
 
 
     const eligibleTable =
@@ -1766,24 +1899,21 @@ function rollGuaranteedMinimumWithLuck(
 
     if(eligibleTable.length > 0){
 
-        return rollFromWeightedTable(
-            eligibleTable,
-            profile || {
-                order: 0,
-                rollWeightFactor: 1
-            }
+        return rollFromExactPercentTable(
+            normalizeChanceTable(
+                eligibleTable
+            )
         );
 
     }
 
 
-    // The normal tables end at 10m. Guarantees above that floor use the
-    // existing Luck-sensitive reward bias across the 10m-50m mega range.
+    // Safety fallback for a custom guarantee above every configured range.
     return rollCommandXP(
         safeMinimum,
         Math.max(
             safeMinimum,
-            LUCK_MEGA_ROLL_SETTINGS.maxXP
+            LUCK_MEGA_ROLL_MAX_XP
         ),
         profile
     );
@@ -3324,7 +3454,11 @@ module.exports = {
 
     LUCK_ROLES,
 
-    LUCK_MEGA_ROLL_SETTINGS,
+    LUCK_ROLL_CHANCE_TABLES,
+
+    LUCK_MEGA_ROLL_MIN_XP,
+
+    LUCK_MEGA_ROLL_MAX_XP,
 
     getMemberLuckProfile,
 
@@ -3341,6 +3475,10 @@ module.exports = {
     rollGuaranteedMinimumWithLuck,
 
     getLuckMegaRollChance,
+
+    getRollingUpgradeChanceTable,
+
+    getResolvedRollChanceTable,
 
     rollCommandOutcome,
 
