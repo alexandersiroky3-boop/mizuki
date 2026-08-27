@@ -42,7 +42,10 @@ const BOOST_EMOJIS = {
     "luck:tier2": "🍃",
     "luck:tier3": "☘️",
     "luck:max": "🍀",
-    "luck:omega": "👁️‍🗨️"
+    // Discord rejects the multi-codepoint 👁️‍🗨️ sequence inside select-menu
+    // option emoji fields. Keep the full Omega symbol in normal message text,
+    // but use its Discord-safe eye variant in the !sell dropdown.
+    "luck:omega": "👁️"
 };
 
 
