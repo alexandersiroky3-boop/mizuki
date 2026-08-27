@@ -5,6 +5,9 @@ const xp = require("../utils/xp");
 const boosts = require("../systems/boosts");
 const quests = require("../systems/quests");
 
+const economyLimits =
+    require("../utils/economyLimits");
+
 
 const COOLDOWN =
     5 * 60 * 60 * 1000; // 5 hours
@@ -27,43 +30,43 @@ const HUG_OUTCOMES = [
     {
         key: "common",
         chancePercent: 65,
-        min: 15000,
-        max: 30000,
+        min: 1000,
+        max: 5000,
         rarity: "💞 COMMON"
     },
     {
         key: "rare",
         chancePercent: 20,
-        min: 30000,
-        max: 75000,
+        min: 5000,
+        max: 15000,
         rarity: "💖 RARE"
     },
     {
         key: "epic",
         chancePercent: 10,
-        min: 75000,
-        max: 250000,
+        min: 15000,
+        max: 35000,
         rarity: "🌇 EPIC"
     },
     {
         key: "legendary",
         chancePercent: 3.9,
-        min: 250000,
-        max: 750000,
+        min: 35000,
+        max: 60000,
         rarity: "🪄 LEGENDARY"
     },
     {
         key: "mythic",
         chancePercent: 1,
-        min: 750000,
-        max: 3000000,
+        min: 60000,
+        max: 85000,
         rarity: "🌌 MYTHIC"
     },
     {
         key: "divine",
         chancePercent: 0.1,
-        min: 10000000,
-        max: 10000000,
+        min: 100000,
+        max: 100000,
         rarity: "✨ DIVINE"
     }
 ];
@@ -353,6 +356,19 @@ if(remaining > 0){
         );
 
 
+    const authorData =
+        await database.getUser(
+            guildID,
+            userID
+        );
+
+
+    const authorLevel =
+        xp.getLevel(
+            Number(authorData?.xp) || 0
+        );
+
+
     // ======================
     // HUG BOT
     // ======================
@@ -407,13 +423,16 @@ const luckExtra =
         if(success){
 
 
-            const botRewardRanges = [
-                { chancePercent: 65, min: 50000, max: 100000 },
-                { chancePercent: 20, min: 100000, max: 250000 },
-                { chancePercent: 10, min: 250000, max: 500000 },
-                { chancePercent: 4, min: 500000, max: 1500000 },
-                { chancePercent: 1, min: 1500000, max: 5000000 }
-            ];
+            const botRewardRanges =
+                authorLevel >= 100
+                    ? [
+                        { chancePercent: 65, min: 50000, max: 100000 },
+                        { chancePercent: 20, min: 100000, max: 250000 },
+                        { chancePercent: 10, min: 250000, max: 500000 },
+                        { chancePercent: 4, min: 500000, max: 1500000 },
+                        { chancePercent: 1, min: 1500000, max: 5000000 }
+                    ]
+                    : HUG_OUTCOMES;
 
 
             const botOutcome =
@@ -424,10 +443,14 @@ const luckExtra =
 
 
             const reward =
-                luck.rollCommandXP(
-                    botOutcome.min,
-                    botOutcome.max,
-                    activeLuck
+                economyLimits.capSocialXP(
+                    "hug",
+                    luck.rollCommandXP(
+                        botOutcome.min,
+                        botOutcome.max,
+                        activeLuck
+                    ),
+                    authorLevel
                 );
 
 
@@ -529,19 +552,6 @@ await syncAndTrackLevel(
     // NORMAL USER HUG
     // ======================
 
-    const authorData =
-        await database.getUser(
-            guildID,
-            userID
-        );
-
-
-    const authorLevel =
-        xp.getLevel(
-            Number(authorData?.xp) || 0
-        );
-
-
     const targetData =
         await database.getUser(
             guildID,
@@ -589,10 +599,14 @@ await syncAndTrackLevel(
 
 
     const reward =
-        luck.rollCommandXP(
-            outcome.min,
-            outcome.max,
-            commandLuck
+        economyLimits.capSocialXP(
+            "hug",
+            luck.rollCommandXP(
+                outcome.min,
+                outcome.max,
+                commandLuck
+            ),
+            authorLevel
         );
 
 
@@ -602,7 +616,7 @@ await syncAndTrackLevel(
 
     // The high-level author keeps their normal reward.
     // The protected Lv1-99 target only receives 10%.
-    const targetReward =
+    const protectedTargetReward =
         lowLevelTargetProtection
             ? Math.max(
                 1,
@@ -613,10 +627,24 @@ await syncAndTrackLevel(
             : reward;
 
 
+    const targetReward =
+        economyLimits.capSocialXP(
+            "hug",
+            protectedTargetReward,
+            targetLevel
+        );
+
+
+    const targetLevelCapApplied =
+        targetReward <
+        protectedTargetReward;
+
+
     const rewardSummary =
         lowLevelTargetProtection
             ? `💞 ${message.author} received **${reward.toLocaleString()} XP!**\n` +
-              `🛡️ ${target} received **${targetReward.toLocaleString()} XP** after **90% Lv1-99 protection**.`
+              `🛡️ ${target} received **${targetReward.toLocaleString()} XP** after **90% Lv1-99 protection**` +
+              `${targetLevelCapApplied ? " and the Level 1-99 reward cap" : ""}.`
             : `💞 Both users received **${reward.toLocaleString()} XP!**`;
 
 
@@ -808,6 +836,8 @@ ${rewardSummary}${usedLuckExtra}${luckExtra}`
 
 module.exports = {
 
-    execute
+    execute,
+    HUG_OUTCOMES,
+    LEVEL100_PLUS_HUG_OUTCOMES
 
 };
