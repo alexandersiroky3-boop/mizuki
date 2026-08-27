@@ -514,7 +514,7 @@ async function buildShopPanel(
             .setColor("#5865F2")
             .setTitle("Global Boost Shop")
             .setDescription(
-                "Stock is shared across the entire server. A purchased boost is added to your `!boost` inventory. Active quest discounts are applied automatically at checkout."
+                "Stock is shared across the entire server. A purchased boost is added to your `!boost` inventory. Quest rewards and permanent Shop upgrades are applied automatically at checkout."
             )
             .addFields(
                 {
@@ -606,7 +606,7 @@ async function buildMerchantShopPanel(
         embed
             .setDescription(
                 "💡 **Left = you pay • Right = you receive**\n" +
-                "Select a numbered deal below. Stock is global, and each successful purchase uses one stock. Each visit lasts **1 hour**; his offers and stock rotate every **30 minutes**."
+                "Select a numbered deal below. Stock is global, and each successful purchase uses one stock. Personal Merchant-upgrade XP discounts are calculated at checkout. Each visit lasts **1 hour**; his offers and stock rotate every **30 minutes**."
             )
             .addFields(
                 ...merchant.deals.map(deal => ({
@@ -719,7 +719,7 @@ function getShopPurchaseMessage(
 
         const discountText =
             Number(result.discountPercent) > 0
-                ? `\nQuest discount applied: **${result.discountPercent}% off** ` +
+                ? `\nPersonal discount applied: **${result.discountPercent}% off** ` +
                     `(normal price: ${Number(result.basePrice).toLocaleString()} XP)`
                 : "";
 
@@ -743,8 +743,14 @@ function getShopPurchaseMessage(
 
     const discountText =
         Number(result.discountPercent) > 0
-            ? `\nQuest discount: **${result.discountPercent}% off** ` +
+            ? `\nPersonal discount: **${result.discountPercent}% off** ` +
                 `(normal price: ${Number(result.basePrice).toLocaleString()} XP)`
+            : "";
+
+
+    const doubleText =
+        result.accidentalDouble
+            ? "\n🎁 **Checkout mistake! The shop accidentally gave you 2x.**"
             : "";
 
 
@@ -754,7 +760,8 @@ function getShopPurchaseMessage(
         `Inventory amount: **${result.inventoryAmount}**\n` +
         `Global stock remaining: **${result.remainingStock}**\n` +
         `XP balance: **${result.balance.toLocaleString()} XP**` +
-        discountText
+        discountText +
+        doubleText
     );
 
 }
@@ -827,11 +834,16 @@ function getMerchantPurchaseMessage(result){
         "!**\n" +
         "You received: " +
         merchantCommand.formatSide(
+            result.effectiveReward ||
             result.deal.reward
         ) +
         "\nYou paid: " +
         merchantCommand.formatSide(
-            result.deal.cost
+            {
+                ...result.deal.cost,
+                xp:
+                    result.costXP
+            }
         ) +
         "\nGlobal stock remaining: **" +
         formatNumber(
@@ -842,6 +854,16 @@ function getMerchantPurchaseMessage(result){
             result.balance
         ) +
         " XP**" +
+        (
+            Number(result.merchantXPDiscountPercent) > 0
+                ? `\n🛒 Merchant XP discount: **${Number(result.merchantXPDiscountPercent)}% off**`
+                : ""
+        ) +
+        (
+            result.accidentalDouble
+                ? "\n🎁 **The merchant accidentally doubled your reward!**"
+                : ""
+        ) +
         (
             result.entireMerchantSoldOut
                 ? "\n\n🏜️ **Every current merchant deal is now sold out.**"
