@@ -27,23 +27,24 @@ const WEEKLY_QUEST_COUNT =
     3;
 
 
-const QUEST_UNLOCK_LEVEL =
-    100;
+// These values are permanent Quest-upgrade tiers, not player levels.
+const QUEST_UPGRADE_ONE =
+    1;
 
 
-const ELITE_REWARD_LEVEL =
-    150;
+const QUEST_UPGRADE_TWO =
+    2;
 
 
 const QUEST_RULESET_VERSION =
-    10;
+    12;
 
 
 // Stored on every newly generated weekly reward. Active, unclaimed weekly
 // cycles from older builds are rerolled once so users see the new economy
 // immediately without losing any quest progress.
 const WEEKLY_REWARD_RULESET_VERSION =
-    2;
+    3;
 
 
 // Daily-only Luck Boost MAX quantities. Weekly Luck MAX rewards keep their
@@ -64,23 +65,12 @@ const CHAT_XP_QUEST_TARGETS = {
     },
 
     weekly: {
+        low: [50000, 150000, 300000],
         high: [250000, 750000, 1500000],
         elite: [1000000, 2500000, 5000000]
     }
 
 };
-
-
-// Luck Boost Omega is rolled independently from the normal elite weekly
-// extras. This is a real 5% chance, not an indirect shuffled-pool chance.
-const WEEKLY_ELITE_OMEGA_CHANCE =
-    0.05;
-
-
-// Level 150+ weekly quests independently have a real 5% chance to include
-// one XP Boost ထ. It can appear in the same week as Luck Boost Ω.
-const WEEKLY_ELITE_XP_INFINITY_CHANCE =
-    0.05;
 
 
 const QUEST_RESET_CONFIG =
@@ -101,11 +91,10 @@ function getQuestResetPrice(
 
 
 // =====================================================
-// LEVEL 1-99 DAILY QUESTS
+// BASE DAILY QUESTS (QUEST UPGRADE 0)
 // =====================================================
 //
-// Keep the existing lower-level quest difficulty.
-// Weekly quests are locked until Level 100.
+// Every player begins here regardless of display level.
 const DAILY_QUEST_POOL_LOW = [
 
     {
@@ -214,7 +203,7 @@ const DAILY_QUEST_POOL_LOW = [
 
 
 // =====================================================
-// LEVEL 100+ DAILY QUESTS
+// QUEST UPGRADE 1 DAILY QUESTS
 // =====================================================
 //
 // Only the quests requested by the owner are buffed.
@@ -337,7 +326,88 @@ const DAILY_QUEST_POOL_HIGH = [
 
 
 // =====================================================
-// LEVEL 100+ WEEKLY QUESTS
+// BASE WEEKLY QUESTS (QUEST UPGRADE 0)
+// =====================================================
+
+const WEEKLY_QUEST_POOL_LOW = [
+
+    {
+        type: "messages",
+        icon: "💬",
+        targets: [250, 500, 1000],
+        label: target => `Send ${target.toLocaleString()} messages`
+    },
+
+    {
+        type: "chat_xp",
+        icon: "💬✦",
+        targetsByLevelBand:
+            CHAT_XP_QUEST_TARGETS.weekly,
+        label: target =>
+            `Earn ${target.toLocaleString()} XP by chatting.`
+    },
+
+    {
+        type: "roll_xp",
+        icon: "🎲",
+        targets: [250000, 500000, 1000000],
+        label: target => `Roll a total of ${target.toLocaleString()} XP`
+    },
+
+    {
+        type: "earn_xp",
+        icon: "✦",
+        targets: [2500000, 5000000, 10000000],
+        label: target => `Earn ${target.toLocaleString()} XP`
+    },
+
+    {
+        type: "steal_xp",
+        icon: "💰",
+        targets: [100000, 250000, 500000],
+        label: target => `Steal ${target.toLocaleString()} XP`
+    },
+
+    {
+        type: "kiss_given",
+        icon: "💋",
+        targets: [15, 25, 40],
+        label: target => `Kiss someone ${target} times`
+    },
+
+    {
+        type: "kiss_received",
+        icon: "💋",
+        targets: [10, 15, 25],
+        label: target => `Get kissed ${target} times`
+    },
+
+    {
+        type: "roll_count",
+        icon: "🎲",
+        targets: [100, 200, 300],
+        label: target => `Use !roll ${target.toLocaleString()} times`
+    },
+
+    {
+        type: "new_best_critical_streak",
+        icon: "🏅",
+        targets: [1],
+        label: () => "Get a new highest Best critical streak"
+    },
+
+    {
+        type: "successful_trade",
+        icon: "🤝",
+        targets: [5, 10, 15],
+        label: target => `Successfully trade with someone ${target} times`
+    }
+
+];
+
+
+// =====================================================
+// QUEST UPGRADE 1+ WEEKLY QUESTS
 // =====================================================
 
 const WEEKLY_QUEST_POOL_HIGH = [
@@ -493,36 +563,36 @@ const WEEKLY_TARGET_MIGRATIONS = {
 };
 
 
-function isHighQuestLevel(level){
+function hasQuestUpgradeOne(level){
 
     return (
         Number(level) >=
-        QUEST_UNLOCK_LEVEL
+        QUEST_UPGRADE_ONE
     );
 
 }
 
 
-function isEliteRewardLevel(level){
+function hasQuestUpgradeTwo(level){
 
     return (
         Number(level) >=
-        ELITE_REWARD_LEVEL
+        QUEST_UPGRADE_TWO
     );
 
 }
 
 
-function getLevelBand(level){
+function getQuestUpgradeBand(level){
 
-    if(isEliteRewardLevel(level)){
+    if(hasQuestUpgradeTwo(level)){
 
         return "elite";
 
     }
 
 
-    return isHighQuestLevel(level)
+    return hasQuestUpgradeOne(level)
         ? "high"
         : "low";
 
@@ -574,6 +644,28 @@ function shuffle(values){
 }
 
 
+function getDefinitionTargets(
+    definition,
+    levelBand
+){
+
+    const targets =
+        definition?.targetsByLevelBand?.[
+            levelBand
+        ]
+        ||
+        definition?.targets
+        ||
+        [];
+
+
+    return Array.isArray(targets)
+        ? targets
+        : [];
+
+}
+
+
 function makeQuest(
     definition,
     slot,
@@ -581,11 +673,10 @@ function makeQuest(
 ){
 
     const availableTargets =
-        definition.targetsByLevelBand?.[
+        getDefinitionTargets(
+            definition,
             levelBand
-        ]
-        ||
-        definition.targets;
+        );
 
 
     const target =
@@ -636,20 +727,9 @@ function generateQuests(
 ){
 
     const highLevel =
-        isHighQuestLevel(
+        hasQuestUpgradeOne(
             level
         );
-
-
-    if(
-        cycleType === "weekly"
-        &&
-        !highLevel
-    ){
-
-        return [];
-
-    }
 
 
     const pool =
@@ -659,7 +739,11 @@ function generateQuests(
                     ? DAILY_QUEST_POOL_HIGH
                     : DAILY_QUEST_POOL_LOW
             )
-            : WEEKLY_QUEST_POOL_HIGH;
+            : (
+                highLevel
+                    ? WEEKLY_QUEST_POOL_HIGH
+                    : WEEKLY_QUEST_POOL_LOW
+            );
 
 
     const amount =
@@ -668,10 +752,13 @@ function generateQuests(
             : WEEKLY_QUEST_COUNT;
 
 
+    // Quest Upgrade 1 introduces the harder/expanded target pools. Quest
+    // Upgrades 2 and 3 improve rewards and reset perks without silently
+    // making those targets harder again.
     const band =
-        getLevelBand(
-            level
-        );
+        highLevel
+            ? "high"
+            : "low";
 
 
     return shuffle(pool)
@@ -684,6 +771,56 @@ function generateQuests(
                     band
                 )
         );
+
+}
+
+
+function generateWeeklyRewardsBase(){
+
+    const levelBand = "low";
+
+    return [
+        {
+            type: "xp",
+            amount:
+                randomChoice([
+                    500000,
+                    1000000,
+                    2500000
+                ]),
+            levelBand,
+            weeklyRewardRulesetVersion:
+                WEEKLY_REWARD_RULESET_VERSION
+        },
+        randomChoice([
+            {
+                type: "boost",
+                boostType: "luck",
+                tier: "tier3",
+                amount: randomChoice([1, 2, 3]),
+                levelBand,
+                weeklyRewardRulesetVersion:
+                    WEEKLY_REWARD_RULESET_VERSION
+            },
+            {
+                type: "boost",
+                boostType: "xp",
+                tier: "tier1",
+                amount: randomChoice([3, 5]),
+                levelBand,
+                weeklyRewardRulesetVersion:
+                    WEEKLY_REWARD_RULESET_VERSION
+            },
+            {
+                type: "guaranteed_roll_minimum",
+                minXP: 250000,
+                amount: 1,
+                levelBand,
+                weeklyRewardRulesetVersion:
+                    WEEKLY_REWARD_RULESET_VERSION
+            }
+        ])
+    ];
 
 }
 
@@ -998,7 +1135,9 @@ function generateWeeklyRewardsHigh(){
 }
 
 
-function generateWeeklyRewardsElite(){
+function generateWeeklyRewardsElite(
+    questUpgradeLevel = QUEST_UPGRADE_TWO
+){
 
     const levelBand =
         "elite";
@@ -1132,28 +1271,33 @@ function generateWeeklyRewardsElite(){
     );
 
 
-    if(Math.random() < WEEKLY_ELITE_OMEGA_CHANCE){
-
-        rewards.push({
-            type: "boost",
-            boostType: "luck",
-            tier: "omega",
-            amount: 1,
-            levelBand
-        });
-
-    }
+    const rareChance =
+        Number(questUpgradeLevel) >= 3
+            ? 0.25
+            : 0.10;
 
 
-    if(Math.random() < WEEKLY_ELITE_XP_INFINITY_CHANCE){
+    // Exactly one rare boost can appear from this roll. That keeps the
+    // advertised 10%/25% chance exact instead of accidentally allowing two.
+    if(Math.random() < rareChance){
 
-        rewards.push({
-            type: "boost",
-            boostType: "xp",
-            tier: "infinity",
-            amount: 1,
-            levelBand
-        });
+        rewards.push(
+            Math.random() < 0.5
+                ? {
+                    type: "boost",
+                    boostType: "luck",
+                    tier: "omega",
+                    amount: 1,
+                    levelBand
+                }
+                : {
+                    type: "boost",
+                    boostType: "xp",
+                    tier: "infinity",
+                    amount: 1,
+                    levelBand
+                }
+        );
 
     }
 
@@ -1169,37 +1313,124 @@ function generateWeeklyRewardsElite(){
 }
 
 
+function applyStrongestQuestRewardBuff(
+    rewards,
+    questUpgradeLevel
+){
+
+    if(Number(questUpgradeLevel) < 3){
+        return rewards;
+    }
+
+
+    return rewards.map(reward => {
+        const buffed = {
+            ...reward
+        };
+
+        if(reward.type === "xp"){
+            buffed.amount =
+                Math.floor(
+                    Number(reward.amount) * 1.5
+                );
+        }
+        else if(
+            reward.type === "boost"
+            &&
+            !["omega", "infinity"].includes(
+                String(reward.tier).toLowerCase()
+            )
+        ){
+            buffed.amount =
+                Math.max(
+                    1,
+                    Math.ceil(
+                        Number(reward.amount) * 1.5
+                    )
+                );
+        }
+        else if(reward.type === "guaranteed_roll_minimum"){
+            buffed.minXP =
+                Math.floor(
+                    Number(reward.minXP) * 1.5
+                );
+        }
+        else if(reward.type === "chat_xp_multiplier"){
+            buffed.multiplier =
+                Math.ceil(
+                    Number(reward.multiplier) * 1.25
+                );
+        }
+        else if(reward.type === "multi_roll"){
+            buffed.rollCount =
+                Math.ceil(
+                    Number(reward.rollCount) * 1.25
+                );
+        }
+
+        return buffed;
+    });
+
+}
+
+
 function generateRewards(
     cycleType,
     level
 ){
 
+    let rewards;
+
+
     if(cycleType === "daily"){
 
-        if(isEliteRewardLevel(level)){
+        if(hasQuestUpgradeTwo(level)){
 
-            return generateDailyRewardsElite();
+            rewards = applyStrongestQuestRewardBuff(
+                generateDailyRewardsElite(),
+                level
+            );
+
+        }
+        else{
+
+            rewards = hasQuestUpgradeOne(level)
+                ? generateDailyRewardsHigh()
+                : generateDailyRewardsLow();
 
         }
 
+    }
+    else if(hasQuestUpgradeTwo(level)){
 
-        return isHighQuestLevel(level)
-            ? generateDailyRewardsHigh()
-            : generateDailyRewardsLow();
+        rewards = applyStrongestQuestRewardBuff(
+            generateWeeklyRewardsElite(
+                level
+            ),
+            level
+        );
+
+    }
+    else{
+
+        rewards = hasQuestUpgradeOne(level)
+            ? generateWeeklyRewardsHigh()
+            : generateWeeklyRewardsBase();
 
     }
 
 
-    if(isEliteRewardLevel(level)){
-
-        return generateWeeklyRewardsElite();
-
-    }
-
-
-    return isHighQuestLevel(level)
-        ? generateWeeklyRewardsHigh()
-        : [];
+    return rewards.map(reward => ({
+        ...reward,
+        questUpgradeLevel:
+            Math.max(
+                0,
+                Math.min(
+                    3,
+                    Number(level) || 0
+                )
+            )
+    }));
 
 }
 
@@ -1412,11 +1643,11 @@ function isQuestCycleCompleted(cycle){
 function getQuestDefinition(
     cycleType,
     questType,
-    level = QUEST_UNLOCK_LEVEL
+    level = 0
 ){
 
     const highLevel =
-        isHighQuestLevel(
+        hasQuestUpgradeOne(
             level
         );
 
@@ -1435,7 +1666,9 @@ function getQuestDefinition(
     else{
 
         pool =
-            WEEKLY_QUEST_POOL_HIGH;
+            highLevel
+                ? WEEKLY_QUEST_POOL_HIGH
+                : WEEKLY_QUEST_POOL_LOW;
 
     }
 
@@ -1454,11 +1687,11 @@ function getQuestDefinition(
     }
 
 
-    // Cross-band fallback keeps an active quest readable if somebody
-    // crosses Level 100 in the middle of a cycle.
+    // Cross-pool fallback keeps active quests readable after an upgrade.
     const fallbackPools = [
         DAILY_QUEST_POOL_LOW,
         DAILY_QUEST_POOL_HIGH,
+        WEEKLY_QUEST_POOL_LOW,
         WEEKLY_QUEST_POOL_HIGH
     ];
 
@@ -1584,27 +1817,98 @@ function migrateQuestTarget(
         Number(quest.target) || 1;
 
 
-    if(cycleType === "daily"){
-
-        const mapping =
-            DAILY_TARGET_MIGRATIONS[
-                quest.type
-            ];
+    const upgraded =
+        hasQuestUpgradeOne(level);
 
 
-        if(!mapping){
+    const lowPool =
+        cycleType === "daily"
+            ? DAILY_QUEST_POOL_LOW
+            : WEEKLY_QUEST_POOL_LOW;
 
-            return target;
 
-        }
+    const highPool =
+        cycleType === "daily"
+            ? DAILY_QUEST_POOL_HIGH
+            : WEEKLY_QUEST_POOL_HIGH;
 
 
-        if(isHighQuestLevel(level)){
+    const fromPool =
+        upgraded
+            ? lowPool
+            : highPool;
+
+
+    const toPool =
+        upgraded
+            ? highPool
+            : lowPool;
+
+
+    const fromDefinition =
+        fromPool.find(
+            definition =>
+                definition.type === quest.type
+        );
+
+
+    const toDefinition =
+        toPool.find(
+            definition =>
+                definition.type === quest.type
+        );
+
+
+    const fromTargets =
+        getDefinitionTargets(
+            fromDefinition,
+            upgraded ? "low" : "high"
+        );
+
+
+    const toTargets =
+        getDefinitionTargets(
+            toDefinition,
+            upgraded ? "high" : "low"
+        );
+
+
+    if(
+        fromTargets.length > 0
+        &&
+        toTargets.length > 0
+    ){
+
+        return mapTargetByDifficulty(
+            target,
+            fromTargets,
+            toTargets
+        );
+
+    }
+
+
+    // Fallback mappings preserve compatibility with active quest versions
+    // whose old target arrays predate the current permanent-upgrade pools.
+    const legacyMapping =
+        cycleType === "daily"
+            ? DAILY_TARGET_MIGRATIONS[quest.type]
+            : WEEKLY_TARGET_MIGRATIONS[quest.type];
+
+
+    if(legacyMapping){
+
+        const oldTargets =
+            legacyMapping.low ||
+            legacyMapping.old;
+
+
+        if(upgraded){
 
             return mapTargetByDifficulty(
                 target,
-                mapping.low,
-                mapping.high
+                oldTargets,
+                legacyMapping.high
             );
 
         }
@@ -1612,34 +1916,9 @@ function migrateQuestTarget(
 
         return mapTargetByDifficulty(
             target,
-            mapping.high,
-            mapping.low
+            legacyMapping.high,
+            oldTargets
         );
-
-    }
-
-
-    if(
-        cycleType === "weekly"
-        &&
-        isHighQuestLevel(level)
-    ){
-
-        const mapping =
-            WEEKLY_TARGET_MIGRATIONS[
-                quest.type
-            ];
-
-
-        if(mapping){
-
-            return mapTargetByDifficulty(
-                target,
-                mapping.old,
-                mapping.high
-            );
-
-        }
 
     }
 
@@ -1649,19 +1928,19 @@ function migrateQuestTarget(
 }
 
 
-function migrateDailyRewardsForLevel(
+function migrateDailyRewardsForUpgrade(
     rewards,
     level
 ){
 
     const eliteLevel =
-        isEliteRewardLevel(
+        hasQuestUpgradeTwo(
             level
         );
 
 
     const highLevel =
-        isHighQuestLevel(
+        hasQuestUpgradeOne(
             level
         );
 
@@ -1679,9 +1958,9 @@ function migrateDailyRewardsForLevel(
         );
 
 
-    // Crossing the Level 150 boundary swaps the entire unclaimed reward
-    // set. This guarantees that old Level 100-149 rewards never leak into
-    // the separate Level 150+ pool (and vice versa after a level loss).
+    // Reaching Quest Upgrade 2 swaps the entire unclaimed reward set. This
+    // keeps rewards created by an older ruleset from leaking across upgrade
+    // tiers while preserving the user's quest progress.
     if(eliteLevel){
 
         const allElite =
@@ -1708,8 +1987,8 @@ function migrateDailyRewardsForLevel(
                     };
 
 
-                    // Move active, unclaimed Level 150+ daily XP rewards
-                    // from the old 2.5m/7m/14m pool to 2m/3.5m/5m.
+                    // Move active, unclaimed elite daily XP rewards from the
+                    // old 2.5m/7m/14m pool to 2m/3.5m/5m.
                     if(migrated.type === "xp"){
 
                         const dailyXPRewardMigration = {
@@ -1762,7 +2041,7 @@ function migrateDailyRewardsForLevel(
                     }
 
 
-                    // Old Level 150+ daily Luck III rewards used 5/10/15.
+                    // Old elite daily Luck III rewards used 5/10/15.
                     // 5 remains a legal new value; only the now-illegal
                     // quantities need changing to the new 3/5/7 pool.
                     if(
@@ -1799,7 +2078,10 @@ function migrateDailyRewardsForLevel(
 
                 }
             )
-            : generateDailyRewardsElite();
+            : applyStrongestQuestRewardBuff(
+                generateDailyRewardsElite(),
+                level
+            );
 
     }
 
@@ -1924,8 +2206,8 @@ function migrateDailyRewardsForLevel(
 
                 if(highLevel){
 
-                    // A reward that came from the low-level daily pool
-                    // upgrades to the normal Level 100+ daily quantity.
+                    // A reward that came from the base daily pool upgrades
+                    // to the Quest Upgrade 1 daily quantity.
                     if(
                         oldBand === "low"
                         ||
@@ -1943,8 +2225,7 @@ function migrateDailyRewardsForLevel(
                 }
                 else{
 
-                    // Lv1-99 daily boosts are ONLY Luck III / XP III,
-                    // in quantities of 1x or 2x.
+                    // Base-pool daily boosts stay in their entry quantities.
                     migrated.tier =
                         "tier3";
 
@@ -2004,7 +2285,7 @@ function migrateWeeklyRewards(
 
 
     const eliteLevel =
-        isEliteRewardLevel(
+        hasQuestUpgradeTwo(
             level
         );
 
@@ -2031,6 +2312,17 @@ function migrateWeeklyRewards(
         );
 
 
+    const allLow =
+        currentRewards.length > 0
+        &&
+        currentRewards.every(
+            reward =>
+                String(
+                    reward.levelBand || ""
+                ).toLowerCase() === "low"
+        );
+
+
     const currentRewardRuleset =
         currentRewards.length > 0
         &&
@@ -2051,18 +2343,36 @@ function migrateWeeklyRewards(
             currentRewardRuleset
         )
             ? currentRewards
-            : generateWeeklyRewardsElite();
+            : applyStrongestQuestRewardBuff(
+                generateWeeklyRewardsElite(
+                    level
+                ),
+                level
+            );
+
+    }
+
+
+    if(hasQuestUpgradeOne(level)){
+
+        return (
+            allHigh
+            &&
+            currentRewardRuleset
+        )
+            ? currentRewards
+            : generateWeeklyRewardsHigh();
 
     }
 
 
     return (
-        allHigh
+        allLow
         &&
         currentRewardRuleset
     )
         ? currentRewards
-        : generateWeeklyRewardsHigh();
+        : generateWeeklyRewardsBase();
 
 }
 
@@ -2102,37 +2412,15 @@ function removeRetiredXPBoostQuestRewards(
                 ).toLowerCase();
 
 
-            const amount =
-                Number(reward.amount);
-
-
-            if(isEliteRewardLevel(level)){
-
-                return (
-                    tier === "infinity"
-                    &&
-                    amount === 1
-                )
-                ||
-                (
-                    tier === "max"
-                    &&
-                    [6, 9, 12, 15].includes(amount)
-                );
-
-            }
-
-
             return (
-                tier === "tier2"
+                Number(reward.amount) > 0
                 &&
-                [3, 5, 7].includes(amount)
-            )
-            ||
-            (
-                tier === "max"
-                &&
-                [2, 3].includes(amount)
+                [
+                    "tier1",
+                    "tier2",
+                    "max",
+                    "infinity"
+                ].includes(tier)
             );
 
         }
@@ -2143,7 +2431,7 @@ function removeRetiredXPBoostQuestRewards(
 
 function migrateCycleData(
     cycle,
-    level = QUEST_UNLOCK_LEVEL
+    level = 0
 ){
 
     const normalized =
@@ -2151,22 +2439,6 @@ function migrateCycleData(
 
 
     if(!normalized){
-
-        return {
-            changed: false,
-            cycle: normalized
-        };
-
-    }
-
-
-    // Weekly quests are frozen/hidden for Lv1-99.
-    // Do not rewrite their saved quest progress while locked.
-    if(
-        normalized.cycletype === "weekly"
-        &&
-        !isHighQuestLevel(level)
-    ){
 
         return {
             changed: false,
@@ -2188,10 +2460,10 @@ function migrateCycleData(
         );
 
 
-    const band =
-        getLevelBand(
-            level
-        );
+    const questBand =
+        hasQuestUpgradeOne(level)
+            ? "high"
+            : "low";
 
 
     const quests =
@@ -2228,7 +2500,7 @@ function migrateCycleData(
                     QUEST_RULESET_VERSION;
 
                 migrated.levelBand =
-                    band;
+                    questBand;
 
 
                 const definition =
@@ -2311,7 +2583,7 @@ function migrateCycleData(
         ){
 
             rewards =
-                migrateDailyRewardsForLevel(
+                migrateDailyRewardsForUpgrade(
                     normalized.rewards,
                     level
                 );
@@ -2319,8 +2591,6 @@ function migrateCycleData(
         }
         else if(
             normalized.cycletype === "weekly"
-            &&
-            isHighQuestLevel(level)
         ){
 
             rewards =
@@ -2338,6 +2608,28 @@ function migrateCycleData(
                 normalized.cycletype,
                 level
             );
+
+
+        const rewardsMatchUpgrade =
+            rewards.length > 0
+            &&
+            rewards.every(
+                reward =>
+                    Number(
+                        reward.questUpgradeLevel
+                    ) === Number(level)
+            );
+
+
+        if(!rewardsMatchUpgrade){
+
+            rewards =
+                generateRewards(
+                    normalized.cycletype,
+                    level
+                );
+
+        }
 
     }
 
@@ -2376,7 +2668,7 @@ async function migrateActiveQuestCycles(
     let autoClaimedCount = 0;
 
 
-    const levelCache =
+    const upgradeCache =
         new Map();
 
 
@@ -2395,31 +2687,25 @@ async function migrateActiveQuestCycles(
 
 
         let level =
-            levelCache.get(
+            upgradeCache.get(
                 cacheKey
             );
 
 
-        if(!level){
+        if(level === undefined){
 
-            const user =
-                await database.getUser(
+            const effects =
+                await database.getUserUpgradeEffects(
                     guildID,
                     userID
                 );
 
 
-            const xpUtil =
-                require("../utils/xp");
-
-
             level =
-                xpUtil.getLevel(
-                    Number(user?.xp) || 0
-                );
+                effects.questLevel;
 
 
-            levelCache.set(
+            upgradeCache.set(
                 cacheKey,
                 level
             );
@@ -2431,12 +2717,6 @@ async function migrateActiveQuestCycles(
             normalizeCycle(
                 row
             );
-
-
-        const weeklyLocked =
-            normalizedRow.cycletype === "weekly"
-            &&
-            !isHighQuestLevel(level);
 
 
         const migrated =
@@ -2489,14 +2769,6 @@ async function migrateActiveQuestCycles(
                 changedCount++;
 
             }
-
-        }
-
-
-        // Weekly completion/rewards stay frozen for Lv1-99 until Level 100.
-        if(weeklyLocked){
-
-            continue;
 
         }
 
@@ -2692,21 +2964,15 @@ async function ensureUserQuests(
     userID
 ){
 
-    const user =
-        await database.getUser(
+    const upgradeEffects =
+        await database.getUserUpgradeEffects(
             guildID,
             userID
         );
 
 
-    const xpUtil =
-        require("../utils/xp");
-
-
     const level =
-        xpUtil.getLevel(
-            Number(user?.xp) || 0
-        );
+        upgradeEffects.questLevel;
 
 
     const daily =
@@ -2719,55 +2985,27 @@ async function ensureUserQuests(
 
 
     const weeklyLocked =
-        !isHighQuestLevel(
+        false;
+
+
+    const weekly =
+        await ensureCycle(
+            guildID,
+            userID,
+            "weekly",
             level
         );
-
-
-    let weekly = null;
-
-
-    if(weeklyLocked){
-
-        // Do NOT create or progress weekly quests for Lv1-99.
-        // If they had an older active weekly cycle, it remains saved
-        // untouched in PostgreSQL and resumes if they reach Level 100
-        // before the weekly reset.
-        const weeklyInfo =
-            getCycleInfo(
-                "weekly"
-            );
-
-
-        weekly =
-            normalizeCycle(
-                await database.getQuestCycle(
-                    guildID,
-                    userID,
-                    "weekly",
-                    weeklyInfo.cycleKey
-                )
-            );
-
-    }
-    else{
-
-        weekly =
-            await ensureCycle(
-                guildID,
-                userID,
-                "weekly",
-                level
-            );
-
-    }
 
 
     return {
         daily,
         weekly,
         weeklyLocked,
-        level
+        level,
+        questUpgradeLevel:
+            level,
+        questResetUnlocked:
+            upgradeEffects.questResetUnlocked
     };
 
 }
@@ -2868,23 +3106,17 @@ async function resetQuestCycle(
         );
 
 
-    if(
-        normalizedCycleType === "weekly"
-        &&
-        dashboard.weeklyLocked
-    ){
+    if(!dashboard.questResetUnlocked){
 
         return {
             success: false,
-            status: "weekly-locked",
+            status: "reset-upgrade-locked",
             cycleType:
                 normalizedCycleType,
-            level:
-                dashboard.level,
-            unlockLevel:
-                QUEST_UNLOCK_LEVEL,
-            price:
-                price,
+            questUpgradeLevel:
+                dashboard.questUpgradeLevel,
+            requiredQuestUpgradeLevel: 2,
+            price,
             maxResets:
                 config.maxResets
         };
@@ -3638,9 +3870,9 @@ async function consumeSocialCommandRepeat(
 
 module.exports = {
 
-    QUEST_UNLOCK_LEVEL,
+    QUEST_UPGRADE_ONE,
 
-    ELITE_REWARD_LEVEL,
+    QUEST_UPGRADE_TWO,
 
     QUEST_RESET_CONFIG,
 
@@ -3672,6 +3904,13 @@ module.exports = {
 
     consumeSocialCommandRepeat,
 
-    formatReward
+    formatReward,
+
+    // Pure helpers exported for startup/unit validation.
+    generateQuests,
+
+    generateRewards,
+
+    applyStrongestQuestRewardBuff
 
 };
