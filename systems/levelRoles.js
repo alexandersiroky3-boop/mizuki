@@ -8,6 +8,9 @@ const database =
 const xp =
     require("../utils/xp");
 
+const guildMembers =
+    require("../utils/guildMembers");
+
 
 // =====================================================
 // SETTINGS
@@ -71,6 +74,31 @@ const LEVEL_ROLE_IDS =
 
 const activeSystemSyncs =
     new Map();
+
+
+const GUILD_SYNC_BATCH_SIZE =
+    5;
+
+
+const GUILD_SYNC_CHANGE_DELAY_MS =
+    250;
+
+
+const activeGuildSyncs =
+    new Map();
+
+
+function wait(milliseconds){
+
+    return new Promise(
+        resolve =>
+            setTimeout(
+                resolve,
+                milliseconds
+            )
+    );
+
+}
 
 
 function getSyncKey(member){
@@ -424,54 +452,190 @@ async function syncGuildLevelRoles(
     guild
 ){
 
-    if(!guild)
-        return;
+    if(!guild){
 
-
-    const members =
-        await guild.members.fetch();
-
-
-    const realMembers =
-        [...members.values()]
-            .filter(
-                member =>
-                    !member.user.bot
-            );
-
-
-    const batchSize =
-        10;
-
-
-    for(
-        let i = 0;
-        i < realMembers.length;
-        i += batchSize
-    ){
-
-        const batch =
-            realMembers.slice(
-                i,
-                i + batchSize
-            );
-
-
-        await Promise.all(
-            batch.map(
-                member =>
-                    syncMemberLevelRole(
-                        member
-                    )
-            )
-        );
+        return {
+            synced: 0,
+            changed: 0,
+            pages: 0,
+            skipped: true
+        };
 
     }
 
 
-    console.log(
-        `Level roles synced for ${realMembers.length} members in ${guild.name}.`
+    const guildID =
+        String(guild.id);
+
+
+    // The startup repair can still be running when the five-minute backup
+    // fires on a large server. Reuse the same promise instead of starting a
+    // second member crawl and doubling role/database traffic.
+    const existingSync =
+        activeGuildSyncs.get(
+            guildID
+        );
+
+
+    if(existingSync){
+
+        console.log(
+            `Level-role sync is already running for ${guild.name}; reusing it.`
+        );
+
+
+        return existingSync;
+
+    }
+
+
+    const syncPromise =
+        (async () => {
+
+            let synced =
+                0;
+
+
+            let changed =
+                0;
+
+
+            let pages =
+                0;
+
+
+            for await(
+                const members of
+                guildMembers
+                    .iterateGuildMemberPages(
+                        guild,
+                        {
+                            cache: true
+                        }
+                    )
+            ){
+
+
+                pages++;
+
+
+                const pageMembers =
+                    [...members.values()];
+
+
+                const realMembers =
+                    pageMembers.filter(
+                        member =>
+                            !member.user.bot
+                    );
+
+
+                for(
+                    let index = 0;
+                    index < realMembers.length;
+                    index +=
+                        GUILD_SYNC_BATCH_SIZE
+                ){
+
+                    const batch =
+                        realMembers.slice(
+                            index,
+                            index +
+                                GUILD_SYNC_BATCH_SIZE
+                        );
+
+
+                    const results =
+                        await Promise.all(
+                            batch.map(
+                                member =>
+                                    syncMemberLevelRole(
+                                        member
+                                    )
+                            )
+                        );
+
+
+                    synced +=
+                        batch.length;
+
+
+                    const batchChanges =
+                        results.filter(
+                            result =>
+                                Boolean(
+                                    result?.changed
+                                )
+                        ).length;
+
+
+                    changed +=
+                        batchChanges;
+
+
+                    // Only pace batches that actually changed Discord roles.
+                    // Reads and already-correct members do not need a delay.
+                    if(
+                        batchChanges > 0
+                        &&
+                        index +
+                            GUILD_SYNC_BATCH_SIZE <
+                            realMembers.length
+                    ){
+
+                        await wait(
+                            GUILD_SYNC_CHANGE_DELAY_MS
+                        );
+
+                    }
+
+                }
+
+
+            }
+
+
+            console.log(
+                `Level roles checked for ${synced} members in ${guild.name}; ${changed} role assignments changed across ${pages} REST page(s).`
+            );
+
+
+            return {
+                synced,
+                changed,
+                pages,
+                skipped: false
+            };
+
+        })();
+
+
+    activeGuildSyncs.set(
+        guildID,
+        syncPromise
     );
+
+
+    try{
+
+        return await syncPromise;
+
+    }
+    finally{
+
+        if(
+            activeGuildSyncs.get(
+                guildID
+            ) === syncPromise
+        ){
+
+            activeGuildSyncs.delete(
+                guildID
+            );
+
+        }
+
+    }
 
 }
 
@@ -720,6 +884,12 @@ module.exports = {
     LEVEL_ROLES,
 
     LEVEL_ROLE_IDS,
+
+    GUILD_MEMBER_PAGE_SIZE:
+        guildMembers
+            .GUILD_MEMBER_PAGE_SIZE,
+
+    GUILD_SYNC_BATCH_SIZE,
 
     getRoleForLevel,
 
