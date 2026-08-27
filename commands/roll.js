@@ -62,7 +62,7 @@ const PERMANENT_ROLL_EDIT_ERROR_CODES =
 // These are the BASE chances before an active
 // Luck Boost changes the outcome weights.
 //
-// Each level table must add up to exactly 100%.
+// The universal base table must add up to exactly 100%.
 // The bot checks this automatically when it starts.
 
 const ROLL_SETTINGS = {
@@ -72,11 +72,10 @@ const ROLL_SETTINGS = {
 
     chanceTables: {
 
-        // ==========================
-        // LEVEL 1-99
-        // ==========================
+        // Every user begins with this same table. Rolling upgrades create a
+        // personal normalized copy without mutating these base chances.
 
-        level1To100: [
+        base: [
 
             {
                 chancePercent: 60.09,
@@ -155,92 +154,6 @@ const ROLL_SETTINGS = {
                 max: 10000000
             }
 
-        ],
-
-
-        // ==========================
-        // LEVEL 100+
-        // ==========================
-
-        level101Plus: [
-
-            {
-                chancePercent: 38.99,
-                type: "neutral",
-                min: -100,
-                max: 100
-            },
-
-            {
-                chancePercent: 5,
-                type: "negative",
-                min: -5000,
-                max: -101
-            },
-
-            {
-                chancePercent: 35,
-                type: "positive",
-                min: 100,
-                max: 5000
-            },
-
-            {
-                chancePercent: 1,
-                type: "negative",
-                min: -10000,
-                max: -5000
-            },
-
-            {
-                chancePercent: 15,
-                type: "positive",
-                min: 5000,
-                max: 25000
-            },
-
-            {
-                chancePercent: 4.60,
-                type: "positive",
-                min: 25000,
-                max: 75000
-            },
-
-            {
-                chancePercent: 0.3,
-                type: "positive",
-                min: 75000,
-                max: 200000
-            },
-
-            {
-                chancePercent: 0.09,
-                type: "positive",
-                min: 200000,
-                max: 500000
-            },
-
-            {
-                chancePercent: 0.009,
-                type: "positive",
-                min: 500000,
-                max: 2000000
-            },
-
-            {
-                chancePercent: 0.005,
-                type: "positive",
-                min: 2000000,
-                max: 10000000
-            },
-
-            {
-                chancePercent: 0.006,
-                type: "negative",
-                min: -10000000,
-                max: -2000000
-            }
-
         ]
 
     }
@@ -296,6 +209,85 @@ for(
         tableName,
         table
     );
+
+}
+
+
+// Upgrade weights are normalized into a fresh chance table, so every level
+// still totals exactly 100% and the shared base table never gets mutated.
+function getRollingUpgradeChanceTable(
+    baseTable,
+    rollingLevel
+){
+
+    const level =
+        Math.max(
+            0,
+            Math.min(
+                6,
+                Math.floor(
+                    Number(rollingLevel) || 0
+                )
+            )
+        );
+
+
+    const factors = {
+        neutral: [1, 0.97, 0.90, 0.85, 0.75, 0.65, 0.50],
+        negative: [1, 0.80, 0.80, 0.55, 0.35, 0.30, 0.22],
+        common: [1, 1.15, 1.35, 1.50, 2, 2.20, 2.50],
+        fiveThousand: [1, 1.20, 2, 3, 4, 7, 8],
+        twentyFiveThousand: [1, 1.10, 1.40, 2.50, 3.50, 4, 8],
+        rare: [1, 1.10, 1.25, 2, 3, 4, 8]
+    };
+
+
+    const weighted =
+        baseTable.map(outcome => {
+            let group = "neutral";
+
+            if(outcome.type === "negative"){
+                group = "negative";
+            }
+            else if(outcome.type === "positive"){
+                if(Number(outcome.min) >= 500000){
+                    group = "rare";
+                }
+                else if(Number(outcome.min) >= 25000){
+                    group = "twentyFiveThousand";
+                }
+                else if(Number(outcome.min) >= 5000){
+                    group = "fiveThousand";
+                }
+                else{
+                    group = "common";
+                }
+            }
+
+            return {
+                outcome,
+                weight:
+                    Number(outcome.chancePercent) *
+                    factors[group][level]
+            };
+        });
+
+
+    const totalWeight =
+        weighted.reduce(
+            (total, entry) =>
+                total + entry.weight,
+            0
+        );
+
+
+    return weighted.map(entry => ({
+        ...entry.outcome,
+        chancePercent:
+            entry.weight /
+            totalWeight *
+            100
+    }));
 
 }
 
@@ -995,30 +987,22 @@ async function execute(message, options = {}){
         message.author.id;
 
 
-    const user =
-        await database.getUser(
+    const upgradeEffects =
+        await database.getUserUpgradeEffects(
             message.guild.id,
             userID
         );
 
 
-    const currentLevel =
-        xp.getLevel(
-            Number(user.xp)
-        );
-
-
-    // The new split is exactly Level 1-99 vs. Level 100+.
     const levelTableName =
-        currentLevel >= 100
-            ? "level101Plus"
-            : "level1To100";
+        "base";
 
 
     const rollChanceTable =
-        ROLL_SETTINGS.chanceTables[
-            levelTableName
-        ];
+        getRollingUpgradeChanceTable(
+            ROLL_SETTINGS.chanceTables.base,
+            upgradeEffects.rollingLevel
+        );
 
 
     const activeLuckBoost =
@@ -1030,7 +1014,7 @@ async function execute(message, options = {}){
     const rollLuckProfile =
         luck.getRollLuckProfile(
             activeLuckBoost,
-            currentLevel
+            1
         );
 
 
@@ -1238,6 +1222,22 @@ if(rollGuarantee.guaranteed){
 }
 
 
+let rollingUpgradeDoubled =
+    false;
+
+
+if(
+    upgradeEffects.doubleTenMillionRolls
+    &&
+    rolledXP > 10000000
+){
+
+    rolledXP *= 2;
+    rollingUpgradeDoubled = true;
+
+}
+
+
 // This is the Luck Boost used
 // during the current roll.
 //
@@ -1374,6 +1374,12 @@ const megaRollExtra =
         : "";
 
 
+const rollingUpgradeExtra =
+    rollingUpgradeDoubled
+        ? "\n🎲 **Rolling Upgrade:** Your 10,000,000+ XP result was doubled."
+        : "";
+
+
 const rollExtras =
     luck.buildRollExtras(
         message,
@@ -1383,6 +1389,7 @@ const rollExtras =
     + xpBoostDropExtra
     + guaranteedRollExtra
     + megaRollExtra
+    + rollingUpgradeExtra
     + buildRollCooldownExtra(
         rollAccess
     );
@@ -1859,6 +1866,10 @@ module.exports = {
 
     sendMessageWithRollCountdown,
 
-    ROLL_READY_MESSAGE
+    ROLL_READY_MESSAGE,
+
+    getRollingUpgradeChanceTable,
+
+    ROLL_SETTINGS
 
 };
