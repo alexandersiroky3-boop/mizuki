@@ -1,5 +1,9 @@
 const { Pool } = require("pg");
 
+const upgrades = require("./utils/upgrades");
+
+const economyLimits = require("./utils/economyLimits");
+
 
 
 // =======================
@@ -150,24 +154,6 @@ const CACHE_TIME = 30000;
 // accidentally turn the gameplay cooldown into minutes or hours.
 const ROLL_COOLDOWN_MS =
     30 * 1000;
-
-
-// =====================================================
-// LEVEL 1-99 PROTECTION
-// =====================================================
-//
-// Current leveling formula reaches Level 100 at:
-// (100 - 1)^2 * 250 = 2,450,250 total XP.
-//
-// Kept here instead of importing utils/xp.js because
-// utils/xp.js -> utils/luck.js -> database.js would create
-// a circular dependency.
-const LEVEL_100_XP_THRESHOLD =
-    Math.pow(99, 2) * 250;
-
-
-const LOW_LEVEL_TRADE_INCOMING_XP_CAP =
-    100000;
 
 
 // =======================
@@ -1561,7 +1547,10 @@ function isTradeOfferEmpty(offer){
 }
 
 
-function calculateTradeFee(offer){
+function calculateTradeFee(
+    offer,
+    feeReductionPercent = 0
+){
 
     const normalized =
         normalizeTradeOffer(
@@ -1569,14 +1558,14 @@ function calculateTradeFee(offer){
         );
 
 
-    const xpFee =
+    const rawXPFee =
         Math.ceil(
             normalized.xp *
             TRADE_XP_FEE_RATE
         );
 
 
-    let boostFee = 0;
+    let rawBoostFee = 0;
 
     for(
         const [key, amount] of
@@ -1585,7 +1574,7 @@ function calculateTradeFee(offer){
         )
     ){
 
-        boostFee +=
+        rawBoostFee +=
             (
                 TRADE_BOOST_FEES[key] || 0
             ) *
@@ -1594,19 +1583,70 @@ function calculateTradeFee(offer){
     }
 
 
+    const reductionPercent =
+        Math.max(
+            0,
+            Math.min(
+                95,
+                Number(feeReductionPercent) || 0
+            )
+        );
+
+
+    const scale =
+        (100 - reductionPercent) /
+        100;
+
+
+    const baseFee =
+        Math.ceil(
+            TRADE_BASE_FEE * scale
+        );
+
+
+    const xpFee =
+        Math.ceil(
+            rawXPFee * scale
+        );
+
+
+    const boostFee =
+        Math.ceil(
+            rawBoostFee * scale
+        );
+
+
+    const rawTotal =
+        TRADE_BASE_FEE +
+        rawXPFee +
+        rawBoostFee;
+
+
     return {
 
         baseFee:
-            TRADE_BASE_FEE,
+            baseFee,
 
         xpFee,
 
         boostFee,
 
         total:
-            TRADE_BASE_FEE +
+            baseFee +
             xpFee +
-            boostFee
+            boostFee,
+
+        reductionPercent,
+
+        reductionAmount:
+            rawTotal -
+            (
+                baseFee +
+                xpFee +
+                boostFee
+            ),
+
+        rawTotal
 
     };
 
@@ -2556,6 +2596,48 @@ await db.query(`
             userID
         )
 
+    )
+
+`);
+
+
+// Permanent progression is independent from the user's display level.
+// One row per category makes each track safe to lock and purchase without
+// touching progress in the other tracks.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS user_upgrades (
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        category TEXT NOT NULL,
+
+        level INTEGER NOT NULL DEFAULT 0
+            CHECK(level >= 0),
+
+        updatedAt BIGINT NOT NULL DEFAULT 0,
+
+        PRIMARY KEY(
+            guildID,
+            userID,
+            category
+        )
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    user_upgrades_user_idx
+
+    ON user_upgrades(
+        guildID,
+        userID
     )
 
 `);
@@ -3647,6 +3729,456 @@ async function getUser(
 }
 
 
+// =====================================================
+// PERMANENT USER UPGRADES
+// =====================================================
+
+async function getUserUpgradeLevels(
+    guildID,
+    userID,
+    queryable = db
+){
+
+    const result =
+        await queryable.query(`
+
+            SELECT category, level
+
+            FROM user_upgrades
+
+            WHERE guildID=$1
+            AND userID=$2
+
+        `, [
+            String(guildID),
+            String(userID)
+        ]);
+
+
+    const levels = {};
+
+
+    for(const row of result.rows){
+
+        const category =
+            upgrades.normalizeCategory(
+                row.category
+            );
+
+
+        if(category){
+
+            levels[category] =
+                Number(row.level) || 0;
+
+        }
+
+    }
+
+
+    return upgrades.normalizeLevels(
+        levels
+    );
+
+}
+
+
+async function getUserUpgradeEffects(
+    guildID,
+    userID,
+    queryable = db
+){
+
+    return upgrades.getUpgradeEffects(
+        await getUserUpgradeLevels(
+            guildID,
+            userID,
+            queryable
+        )
+    );
+
+}
+
+
+async function purchaseUserUpgrade(
+    guildID,
+    userID,
+    requestedCategory
+){
+
+    const category =
+        upgrades.normalizeCategory(
+            requestedCategory
+        );
+
+
+    if(!category){
+
+        return {
+            success: false,
+            status: "invalid-category"
+        };
+
+    }
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        // The user row is the common lock for every category. This prevents
+        // two simultaneous buttons from spending the same XP or inventory.
+        await client.query(`
+
+            INSERT INTO users(
+                guildID,
+                userID
+            )
+
+            VALUES($1,$2)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            String(guildID),
+            String(userID)
+        ]);
+
+
+        const userResult =
+            await client.query(`
+
+                SELECT xp
+
+                FROM users
+
+                WHERE guildID=$1
+                AND userID=$2
+
+                FOR UPDATE
+
+            `, [
+                String(guildID),
+                String(userID)
+            ]);
+
+
+        await client.query(`
+
+            INSERT INTO user_upgrades(
+                guildID,
+                userID,
+                category,
+                level,
+                updatedAt
+            )
+
+            VALUES($1,$2,$3,0,$4)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            String(guildID),
+            String(userID),
+            category,
+            Date.now()
+        ]);
+
+
+        const upgradeResult =
+            await client.query(`
+
+                SELECT level
+
+                FROM user_upgrades
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND category=$3
+
+                FOR UPDATE
+
+            `, [
+                String(guildID),
+                String(userID),
+                category
+            ]);
+
+
+        const currentLevel =
+            Math.max(
+                0,
+                Number(
+                    upgradeResult.rows[0]?.level
+                ) || 0
+            );
+
+
+        const nextUpgrade =
+            upgrades.getNextUpgrade(
+                category,
+                currentLevel
+            );
+
+
+        if(!nextUpgrade){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "max-level",
+                category,
+                level: currentLevel,
+                maxLevel:
+                    upgrades.getMaxLevel(
+                        category
+                    )
+            };
+
+        }
+
+
+        const balance =
+            Math.max(
+                0,
+                Number(
+                    userResult.rows[0]?.xp
+                ) || 0
+            );
+
+
+        if(balance < nextUpgrade.cost.xp){
+
+            await client.query("COMMIT");
+
+            return {
+                success: false,
+                status: "not-enough-xp",
+                category,
+                level: currentLevel,
+                required: nextUpgrade.cost.xp,
+                available: balance,
+                missing:
+                    nextUpgrade.cost.xp -
+                    balance,
+                upgrade: nextUpgrade
+            };
+
+        }
+
+
+        const boostCosts =
+            [...nextUpgrade.cost.boosts]
+                .sort(
+                    (first, second) =>
+                        `${first.boostType}:${first.tier}`
+                            .localeCompare(
+                                `${second.boostType}:${second.tier}`
+                            )
+                );
+
+
+        for(const boostCost of boostCosts){
+
+            const inventoryResult =
+                await client.query(`
+
+                    SELECT amount
+
+                    FROM boost_inventory
+
+                    WHERE guildID=$1
+                    AND userID=$2
+                    AND boostType=$3
+                    AND tier=$4
+
+                    FOR UPDATE
+
+                `, [
+                    String(guildID),
+                    String(userID),
+                    boostCost.boostType,
+                    boostCost.tier
+                ]);
+
+
+            const available =
+                Math.max(
+                    0,
+                    Number(
+                        inventoryResult.rows[0]?.amount
+                    ) || 0
+                );
+
+
+            if(available < boostCost.amount){
+
+                await client.query("COMMIT");
+
+                return {
+                    success: false,
+                    status: "not-enough-boosts",
+                    category,
+                    level: currentLevel,
+                    boost: boostCost,
+                    required: boostCost.amount,
+                    available,
+                    missing:
+                        boostCost.amount -
+                        available,
+                    upgrade: nextUpgrade
+                };
+
+            }
+
+        }
+
+
+        if(nextUpgrade.cost.xp > 0){
+
+            await client.query(`
+
+                UPDATE users
+
+                SET xp = xp - $3
+
+                WHERE guildID=$1
+                AND userID=$2
+
+            `, [
+                String(guildID),
+                String(userID),
+                nextUpgrade.cost.xp
+            ]);
+
+        }
+
+
+        for(const boostCost of boostCosts){
+
+            await client.query(`
+
+                UPDATE boost_inventory
+
+                SET amount = amount - $5
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND boostType=$3
+                AND tier=$4
+
+            `, [
+                String(guildID),
+                String(userID),
+                boostCost.boostType,
+                boostCost.tier,
+                boostCost.amount
+            ]);
+
+
+            await client.query(`
+
+                DELETE FROM boost_inventory
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND boostType=$3
+                AND tier=$4
+                AND amount <= 0
+
+            `, [
+                String(guildID),
+                String(userID),
+                boostCost.boostType,
+                boostCost.tier
+            ]);
+
+        }
+
+
+        const updated =
+            await client.query(`
+
+                UPDATE user_upgrades
+
+                SET
+                    level=$4,
+                    updatedAt=$5
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND category=$3
+
+                RETURNING level
+
+            `, [
+                String(guildID),
+                String(userID),
+                category,
+                nextUpgrade.level,
+                Date.now()
+            ]);
+
+
+        const remainingBalance =
+            balance - nextUpgrade.cost.xp;
+
+
+        await client.query("COMMIT");
+
+
+        userCache.delete(
+            `${guildID}:${userID}`
+        );
+
+
+        const levels =
+            await getUserUpgradeLevels(
+                guildID,
+                userID
+            );
+
+
+        return {
+            success: true,
+            status: "purchased",
+            category,
+            level:
+                Number(
+                    updated.rows[0]?.level
+                ) || nextUpgrade.level,
+            maxLevel: nextUpgrade.maxLevel,
+            balance: remainingBalance,
+            upgrade: nextUpgrade,
+            levels,
+            effects:
+                upgrades.getUpgradeEffects(
+                    levels
+                )
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
 
 
 
@@ -4390,6 +4922,18 @@ await client.query(`
 
     WHERE guildID=$1
 
+    AND userID=$2
+
+`, [
+    guildID,
+    userID
+]);
+
+await client.query(`
+
+    DELETE FROM user_upgrades
+
+    WHERE guildID=$1
     AND userID=$2
 
 `, [
@@ -6034,9 +6578,35 @@ async function purchaseGlobalShopItem(
             discountResult.rows[0] || {};
 
 
-        const discountPercent =
+        const questDiscountPercent =
             resolveShopDiscount(
                 discountRow
+            );
+
+
+        const upgradeEffects =
+            await getUserUpgradeEffects(
+                guildID,
+                userID,
+                client
+            );
+
+
+        const upgradeDiscountPercent =
+            Math.max(
+                0,
+                Number(
+                    upgradeEffects
+                        .shopDiscountPercent
+                ) || 0
+            );
+
+
+        const discountPercent =
+            Math.min(
+                95,
+                questDiscountPercent +
+                upgradeDiscountPercent
             );
 
 
@@ -6165,6 +6735,20 @@ async function purchaseGlobalShopItem(
             ]);
 
 
+        const accidentalDouble =
+            Math.random() * 100 <
+            Number(
+                upgradeEffects
+                    .accidentalDoubleChance
+            );
+
+
+        const rewardAmount =
+            accidentalDouble
+                ? 2
+                : 1;
+
+
         const inventoryResult =
             await client.query(`
 
@@ -6178,7 +6762,7 @@ async function purchaseGlobalShopItem(
                 )
 
                 VALUES
-                ($1,$2,$3,$4,1)
+                ($1,$2,$3,$4,$5)
 
                 ON CONFLICT(
                     guildID,
@@ -6190,7 +6774,8 @@ async function purchaseGlobalShopItem(
                 DO UPDATE SET
 
                     amount =
-                        boost_inventory.amount + 1
+                        boost_inventory.amount +
+                        EXCLUDED.amount
 
                 RETURNING amount
 
@@ -6198,7 +6783,8 @@ async function purchaseGlobalShopItem(
                 guildID,
                 userID,
                 item.boostType,
-                item.tier
+                item.tier,
+                rewardAmount
             ]);
 
 
@@ -6240,6 +6826,10 @@ async function purchaseGlobalShopItem(
             price: currentPrice,
             basePrice,
             discountPercent,
+            questDiscountPercent,
+            upgradeDiscountPercent,
+            accidentalDouble,
+            rewardAmount,
             balance:
                 Number(
                     updatedUser.rows[0]?.xp || 0
@@ -7044,7 +7634,104 @@ async function purchaseTravelingMerchantDeal(
             );
 
 
-        if(currentXP < deal.cost.xp){
+        const upgradeEffects =
+            await getUserUpgradeEffects(
+                guildID,
+                userID,
+                client
+            );
+
+
+        const merchantXPDiscountPercent =
+            Math.max(
+                0,
+                Math.min(
+                    95,
+                    Number(
+                        upgradeEffects
+                            .merchantXPDiscountPercent
+                    ) || 0
+                )
+            );
+
+
+        const effectiveCostXP =
+            Math.max(
+                0,
+                Math.ceil(
+                    Number(deal.cost.xp) *
+                    (100 - merchantXPDiscountPercent) /
+                    100
+                )
+            );
+
+
+        const canAccidentallyDouble =
+            Number(deal.reward.xp) > 0
+            ||
+            deal.reward.boosts.length > 0
+            ||
+            [
+                "chat_xp_timed",
+                "multi_roll_timed"
+            ].includes(
+                String(
+                    deal.reward.perk?.type || ""
+                ).toLowerCase()
+            );
+
+
+        const accidentalDouble =
+            canAccidentallyDouble
+            &&
+            Math.random() * 100 <
+                Number(
+                    upgradeEffects
+                        .accidentalDoubleChance
+                );
+
+
+        const rewardMultiplier =
+            accidentalDouble
+                ? 2
+                : 1;
+
+
+        const effectiveReward = {
+            ...deal.reward,
+            xp:
+                Number(deal.reward.xp) *
+                rewardMultiplier,
+            boosts:
+                deal.reward.boosts.map(
+                    boost => ({
+                        ...boost,
+                        amount:
+                            Number(boost.amount) *
+                            rewardMultiplier
+                    })
+                ),
+            perk:
+                deal.reward.perk
+                    ? {
+                        ...deal.reward.perk,
+                        durationMs:
+                            Number(
+                                deal.reward.perk
+                                    .durationMs
+                            ) > 0
+                                ? Number(
+                                    deal.reward.perk
+                                        .durationMs
+                                ) * rewardMultiplier
+                                : deal.reward.perk
+                                    .durationMs
+                    }
+                    : null
+        };
+
+
+        if(currentXP < effectiveCostXP){
 
             await client.query("COMMIT");
 
@@ -7052,11 +7739,11 @@ async function purchaseTravelingMerchantDeal(
                 success: false,
                 status: "not-enough-xp",
                 required:
-                    deal.cost.xp,
+                    effectiveCostXP,
                 available:
                     currentXP,
                 missing:
-                    deal.cost.xp -
+                    effectiveCostXP -
                     currentXP
             };
 
@@ -7173,7 +7860,7 @@ async function purchaseTravelingMerchantDeal(
 
 
         const perk =
-            deal.reward.perk;
+            effectiveReward.perk;
 
 
         const alreadyOwned =
@@ -7274,8 +7961,8 @@ async function purchaseTravelingMerchantDeal(
             `, [
                 guildID,
                 userID,
-                deal.cost.xp,
-                deal.reward.xp
+                effectiveCostXP,
+                effectiveReward.xp
             ]);
 
 
@@ -7287,7 +7974,7 @@ async function purchaseTravelingMerchantDeal(
                 success: false,
                 status: "not-enough-xp",
                 required:
-                    deal.cost.xp,
+                    effectiveCostXP,
                 available:
                     currentXP
             };
@@ -7297,7 +7984,7 @@ async function purchaseTravelingMerchantDeal(
 
         for(
             const boostReward of
-            deal.reward.boosts
+            effectiveReward.boosts
         ){
 
             await client.query(`
@@ -7556,17 +8243,21 @@ async function purchaseTravelingMerchantDeal(
             status: "purchased",
             cycleID,
             deal,
+            effectiveReward,
+            accidentalDouble,
+            rewardMultiplier,
+            merchantXPDiscountPercent,
             balance:
                 Number(
                     updatedUser.rows[0]?.xp || 0
                 ),
             rewardXP:
-                deal.reward.xp,
+                effectiveReward.xp,
             costXP:
-                deal.cost.xp,
+                effectiveCostXP,
             xpChange:
-                deal.reward.xp -
-                deal.cost.xp,
+                effectiveReward.xp -
+                effectiveCostXP,
             remainingStock:
                 Number(
                     updatedStock
@@ -7599,21 +8290,11 @@ async function purchaseTravelingMerchantDeal(
 // QUEST SYSTEM
 // =====================================================
 
-const QUEST_RESET_LEVEL_THRESHOLD =
-    100;
-
-
 const QUEST_RESET_CONFIG =
     Object.freeze({
 
         daily:
             Object.freeze({
-                lowLevelPrice:
-                    50000,
-                highLevelPrice:
-                    25000000,
-                // Compatibility for older display code. New code must use
-                // getQuestResetPrice(cycleType, level).
                 price:
                     25000000,
                 maxResets:
@@ -7622,12 +8303,6 @@ const QUEST_RESET_CONFIG =
 
         weekly:
             Object.freeze({
-                lowLevelPrice:
-                    250000,
-                highLevelPrice:
-                    100000000,
-                // Compatibility for older display code. New code must use
-                // getQuestResetPrice(cycleType, level).
                 price:
                     100000000,
                 maxResets:
@@ -7639,7 +8314,7 @@ const QUEST_RESET_CONFIG =
 
 function getQuestResetPrice(
     cycleType,
-    level
+    questUpgradeLevel = 0
 ){
 
     const config =
@@ -7657,22 +8332,19 @@ function getQuestResetPrice(
     }
 
 
-    const numericLevel =
-        Number(level);
+    const scale =
+        Number(questUpgradeLevel) >= 3
+            ? 0.5
+            : 1;
 
 
-    // Unknown levels default to the higher price so an outdated internal
-    // caller can never accidentally grant the Level 1-99 discount.
-    const highLevel =
-        !Number.isFinite(numericLevel)
-        ||
-        numericLevel >=
-            QUEST_RESET_LEVEL_THRESHOLD;
-
-
-    return highLevel
-        ? Number(config.highLevelPrice)
-        : Number(config.lowLevelPrice);
+    return Math.max(
+        1,
+        Math.floor(
+            Number(config.price) *
+            scale
+        )
+    );
 
 }
 
@@ -7907,7 +8579,7 @@ async function resetQuestCycleWithXP(
     cycleKey,
     quests,
     rewards,
-    userLevel = QUEST_RESET_LEVEL_THRESHOLD
+    questUpgradeLevel = 0
 ){
 
     const normalizedCycleType =
@@ -7935,7 +8607,7 @@ async function resetQuestCycleWithXP(
     const price =
         getQuestResetPrice(
             normalizedCycleType,
-            userLevel
+            questUpgradeLevel
         );
 
 
@@ -9269,6 +9941,93 @@ async function consumeQuestGuaranteedCritical(
 
     return {
         forced: true,
+        remaining:
+            Number(
+                result.rows[0]
+                    ?.guaranteedcriticalsremaining || 0
+            )
+    };
+
+}
+
+
+async function tryStartUpgradeCriticalBurst(
+    guildID,
+    userID,
+    chancePercent,
+    amount = 10,
+    random = Math.random
+){
+
+    const chance =
+        Math.max(
+            0,
+            Math.min(
+                100,
+                Number(chancePercent) || 0
+            )
+        );
+
+
+    if(
+        chance <= 0
+        ||
+        Number(random()) * 100 >= chance
+    ){
+
+        return {
+            started: false,
+            remaining: 0
+        };
+
+    }
+
+
+    await db.query(`
+
+        INSERT INTO quest_effects(
+            guildID,
+            userID
+        )
+
+        VALUES($1,$2)
+
+        ON CONFLICT DO NOTHING
+
+    `, [
+        String(guildID),
+        String(userID)
+    ]);
+
+
+    // Only start a fresh burst. Existing guaranteed critical rewards are
+    // never overwritten or silently extended by a lucky chat roll.
+    const result =
+        await db.query(`
+
+            UPDATE quest_effects
+
+            SET guaranteedCriticalsRemaining=$3
+
+            WHERE guildID=$1
+            AND userID=$2
+            AND guaranteedCriticalsRemaining <= 0
+
+            RETURNING guaranteedCriticalsRemaining
+
+        `, [
+            String(guildID),
+            String(userID),
+            Math.max(
+                1,
+                Math.floor(Number(amount) || 10)
+            )
+        ]);
+
+
+    return {
+        started:
+            result.rowCount > 0,
         remaining:
             Number(
                 result.rows[0]
@@ -11735,7 +12494,7 @@ async function executeTradeTransaction(
 
         if(
             isTradeOfferEmpty(offer1)
-            &&
+            ||
             isTradeOfferEmpty(offer2)
         ){
 
@@ -11748,7 +12507,7 @@ async function executeTradeTransaction(
                         status='active',
                         user1Confirmed=FALSE,
                         user2Confirmed=FALSE,
-                        failureReason='The trade has no items.',
+                        failureReason='Gift trades are disabled. Both users must offer at least 1,000 XP or one boost.',
                         updatedAt=$2,
                         expiresAt=$3
 
@@ -11768,7 +12527,15 @@ async function executeTradeTransaction(
 
             return {
                 success: false,
-                status: "empty-trade",
+                status: "one-sided-trade",
+                emptyUserIDs: [
+                    isTradeOfferEmpty(offer1)
+                        ? String(trade.user1id)
+                        : null,
+                    isTradeOfferEmpty(offer2)
+                        ? String(trade.user2id)
+                        : null
+                ].filter(Boolean),
                 trade:
                     parseTradeRow(
                         reset.rows[0]
@@ -11778,14 +12545,103 @@ async function executeTradeTransaction(
         }
 
 
+        const minimumXPViolations = [
+            {
+                userID:
+                    String(trade.user1id),
+                amount:
+                    offer1.xp
+            },
+            {
+                userID:
+                    String(trade.user2id),
+                amount:
+                    offer2.xp
+            }
+        ].filter(
+            violation =>
+                !economyLimits
+                    .isValidTradeXPAmount(
+                        violation.amount
+                    )
+        );
+
+
+        if(minimumXPViolations.length > 0){
+
+            const reset =
+                await client.query(`
+
+                    UPDATE trades
+
+                    SET
+                        status='active',
+                        user1Confirmed=FALSE,
+                        user2Confirmed=FALSE,
+                        failureReason=$2,
+                        updatedAt=$3,
+                        expiresAt=$4
+
+                    WHERE id=$1
+
+                    RETURNING *
+
+                `, [
+                    Number(tradeID),
+                    `Every nonzero XP offer must be at least ${economyLimits.MINIMUM_TRADE_XP_OFFER.toLocaleString()} XP.`,
+                    Date.now(),
+                    Number(retryExpiresAt)
+                ]);
+
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status: "trade-xp-minimum",
+                minimumXP:
+                    economyLimits
+                        .MINIMUM_TRADE_XP_OFFER,
+                violations:
+                    minimumXPViolations,
+                trade:
+                    parseTradeRow(
+                        reset.rows[0]
+                    )
+            };
+
+        }
+
+
+        const upgradeEffects1 =
+            await getUserUpgradeEffects(
+                trade.guildid,
+                trade.user1id,
+                client
+            );
+
+
+        const upgradeEffects2 =
+            await getUserUpgradeEffects(
+                trade.guildid,
+                trade.user2id,
+                client
+            );
+
+
         const fee1 =
             calculateTradeFee(
-                offer1
+                offer1,
+                upgradeEffects1
+                    .tradeFeeReductionPercent
             );
 
         const fee2 =
             calculateTradeFee(
-                offer2
+                offer2,
+                upgradeEffects2
+                    .tradeFeeReductionPercent
             );
 
 
@@ -11858,29 +12714,26 @@ async function executeTradeTransaction(
             ) || 0;
 
 
-        // =====================================================
-        // LEVEL 1-99 TRADE XP PROTECTION
-        // =====================================================
-        //
-        // A player who is below Level 100 BEFORE this trade
-        // may receive at most 100,000 raw incoming XP from the
-        // other trader. This is checked inside the same locked
-        // PostgreSQL transaction so it cannot be bypassed by
-        // racing confirmations or changing XP at the same time.
-        const user1BelowLevel100 =
-            balance1 <
-            LEVEL_100_XP_THRESHOLD;
+        const tradeProtection1 =
+            economyLimits
+                .getTradeProtection(
+                    balance1
+                );
 
 
-        const user2BelowLevel100 =
-            balance2 <
-            LEVEL_100_XP_THRESHOLD;
+        const tradeProtection2 =
+            economyLimits
+                .getTradeProtection(
+                    balance2
+                );
 
 
-        const resetForLowLevelTradeCap =
+        const resetForTradeProtection =
             async (
+                status,
                 protectedUserID,
-                incomingXP
+                failureReason,
+                details = {}
             ) => {
 
                 const reset =
@@ -11902,7 +12755,7 @@ async function executeTradeTransaction(
 
                     `, [
                         Number(tradeID),
-                        `Level 1-99 protection: User ${protectedUserID} can receive at most ${LOW_LEVEL_TRADE_INCOMING_XP_CAP.toLocaleString()} XP per trade.`,
+                        String(failureReason),
                         Date.now(),
                         Number(retryExpiresAt)
                     ]);
@@ -11913,16 +12766,12 @@ async function executeTradeTransaction(
 
                 return {
                     success: false,
-                    status:
-                        "low-level-xp-cap",
+                    status,
                     userID:
                         String(
                             protectedUserID
                         ),
-                    incomingXP:
-                        Number(incomingXP) || 0,
-                    cap:
-                        LOW_LEVEL_TRADE_INCOMING_XP_CAP,
+                    ...details,
                     trade:
                         parseTradeRow(
                             reset.rows[0]
@@ -11932,33 +12781,89 @@ async function executeTradeTransaction(
             };
 
 
-        // User 1 receives the XP offered by User 2.
-        if(
-            user1BelowLevel100
-            &&
-            offer2.xp >
-                LOW_LEVEL_TRADE_INCOMING_XP_CAP
-        ){
+        if(!tradeProtection1.unlocked){
 
-            return resetForLowLevelTradeCap(
+            return resetForTradeProtection(
+                "trade-level-locked",
                 trade.user1id,
-                offer2.xp
+                `User ${trade.user1id} is below Level ${economyLimits.TRADE_UNLOCK_LEVEL}.`,
+                {
+                    level:
+                        tradeProtection1.level,
+                    requiredLevel:
+                        economyLimits
+                            .TRADE_UNLOCK_LEVEL
+                }
             );
 
         }
 
 
-        // User 2 receives the XP offered by User 1.
+        if(!tradeProtection2.unlocked){
+
+            return resetForTradeProtection(
+                "trade-level-locked",
+                trade.user2id,
+                `User ${trade.user2id} is below Level ${economyLimits.TRADE_UNLOCK_LEVEL}.`,
+                {
+                    level:
+                        tradeProtection2.level,
+                    requiredLevel:
+                        economyLimits
+                            .TRADE_UNLOCK_LEVEL
+                }
+            );
+
+        }
+
+
+        // Levels 50-99 may receive at most 500,000 raw XP from the
+        // other side. Level 100+ has no XP receiving cap.
         if(
-            user2BelowLevel100
+            !tradeProtection1.fullyUnlocked
             &&
-            offer1.xp >
-                LOW_LEVEL_TRADE_INCOMING_XP_CAP
+            offer2.xp >
+                tradeProtection1.incomingXPCap
         ){
 
-            return resetForLowLevelTradeCap(
+            return resetForTradeProtection(
+                "limited-level-xp-cap",
+                trade.user1id,
+                `Level 50-99 protection: User ${trade.user1id} can receive at most ${tradeProtection1.incomingXPCap.toLocaleString()} XP per trade.`,
+                {
+                    level:
+                        tradeProtection1.level,
+                    incomingXP:
+                        offer2.xp,
+                    cap:
+                        tradeProtection1
+                            .incomingXPCap
+                }
+            );
+
+        }
+
+
+        if(
+            !tradeProtection2.fullyUnlocked
+            &&
+            offer1.xp >
+                tradeProtection2.incomingXPCap
+        ){
+
+            return resetForTradeProtection(
+                "limited-level-xp-cap",
                 trade.user2id,
-                offer1.xp
+                `Level 50-99 protection: User ${trade.user2id} can receive at most ${tradeProtection2.incomingXPCap.toLocaleString()} XP per trade.`,
+                {
+                    level:
+                        tradeProtection2.level,
+                    incomingXP:
+                        offer1.xp,
+                    cap:
+                        tradeProtection2
+                            .incomingXPCap
+                }
             );
 
         }
@@ -12750,6 +13655,12 @@ module.exports = {
 
     getUser,
 
+    getUserUpgradeLevels,
+
+    getUserUpgradeEffects,
+
+    purchaseUserUpgrade,
+
     addXP,
 
     giveXP,
@@ -12847,6 +13758,8 @@ module.exports = {
     getQuestShopDiscount,
 
     consumeQuestGuaranteedCritical,
+
+    tryStartUpgradeCriticalBurst,
 
     getQuestSocialCommandRepeatCount,
 
