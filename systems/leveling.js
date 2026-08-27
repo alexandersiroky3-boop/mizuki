@@ -94,6 +94,13 @@ const currentLevel =
     );
 
 
+const upgradeEffects =
+    await database.getUserUpgradeEffects(
+        guildID,
+        userID
+    );
+
+
 const streakData =
     await database.getCriticalStreak(
         guildID,
@@ -111,6 +118,15 @@ const previousBestCriticalStreak =
     Number(
         streakData.best
     ) || 0;
+
+
+const upgradeCriticalBurst =
+    await database.tryStartUpgradeCriticalBurst(
+        guildID,
+        userID,
+        upgradeEffects.tenCriticalBurstChance,
+        10
+    );
 
 
 const guaranteedCritical =
@@ -133,16 +149,32 @@ const reward =
         currentLevel,
         {
             forcedCritical:
-                guaranteedCritical.forced
+                guaranteedCritical.forced,
+
+            upgradeEffects
         }
     );
 
 
-const chatXPMultiplier =
+const questChatXPMultiplier =
     await database.getQuestChatXPMultiplier(
         guildID,
         userID
     );
+
+
+const upgradeChatXPMultiplier =
+    Math.max(
+        1,
+        Number(
+            upgradeEffects.chatXPMultiplier
+        ) || 1
+    );
+
+
+const chatXPMultiplier =
+    questChatXPMultiplier *
+    upgradeChatXPMultiplier;
 
 
     const earnedXP =
@@ -275,7 +307,10 @@ await database.addXPLog(
             await boosts.tryXPBoostDrop(
                 message.member,
                 "chat",
-                "chat message"
+                "chat message",
+                Math.random,
+                upgradeEffects
+                    .chatXPBoostDropMultiplier
             );
 
     }
@@ -399,6 +434,20 @@ return {
 
     guaranteedCriticalsRemaining:
         guaranteedCritical.remaining,
+
+
+    upgradeCriticalBurstStarted:
+        upgradeCriticalBurst.started,
+
+
+    upgradeLevels:
+        upgradeEffects.levels,
+
+
+    upgradeChatXPMultiplier,
+
+
+    questChatXPMultiplier,
 
 
     chatXPMultiplier,
