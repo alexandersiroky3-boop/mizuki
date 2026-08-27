@@ -30,6 +30,7 @@ const commandsCommand = require("./commands/commands");
 const boostCommand = require("./commands/showboost");
 const valuesCommand = require("./commands/values");
 const muteCommand = require("./commands/mute");
+const upgradesCommand = require("./commands/upgrades");
 const shopCommand = require("./commands/shop");
 const merchantCommand =
     require("./commands/merchant");
@@ -961,6 +962,18 @@ if(
 if(
     message.content
         .trim()
+        .toLowerCase() === "!upgrades"
+){
+
+    return upgradesCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content
+        .trim()
         .toLowerCase() === "!quests"
 ){
 
@@ -1238,7 +1251,8 @@ if(result.critical){
 
     if(!criticalMessagesMuted){
 
-    // Critical streaks 50+ use the special 20x announcement.
+    // Critical streaks 50+ keep the special announcement; the actual streak
+    // XP multiplier now comes from the user's Chatting upgrades.
     if(result.criticalStreak >= 50){
 
         message.reply(
@@ -1272,7 +1286,7 @@ if(result.critical){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
 
         ).catch(() => {});
 
@@ -1306,7 +1320,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
 
     ).catch(() => {});
 
