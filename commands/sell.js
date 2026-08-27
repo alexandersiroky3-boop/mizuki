@@ -300,7 +300,7 @@ function buildSellMenuPayload(
                 hasInventory
                     ? (
                         "Choose a boost below, then enter how many you want to sell.\n\n" +
-                        "You receive **50% of its live `!values` midpoint**. " +
+                        "You receive **5% of its live `!values` midpoint**. " +
                         "The final price and your inventory are checked again when you confirm."
                     )
                     : "You do not currently own any boosts that can be sold."
@@ -677,7 +677,7 @@ async function handleInteraction(
                             inline: false
                         },
                         {
-                            name: "💵 Your 50% Sell Price",
+                            name: "💵 Your 5% Sell Payout",
                             value:
                                 `**${result.unitPayout.toLocaleString()} XP each**\n` +
                                 `Total received: **${result.totalPayout.toLocaleString()} XP**`,
