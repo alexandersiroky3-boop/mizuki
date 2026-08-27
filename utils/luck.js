@@ -186,7 +186,7 @@ const LUCK_ROLE_IDS =
 
 
 // =====================================================
-// LEVEL-BASED !ROLL LUCK
+// UNIVERSAL !ROLL LUCK
 // =====================================================
 //
 // These settings affect !roll only. They do not change:
@@ -194,8 +194,8 @@ const LUCK_ROLE_IDS =
 // - message critical chance
 // - !hug / !kiss / !steal balancing
 //
-// Level 1-99 keeps the existing roll multiplier exactly.
-// Level 100+ keeps its small roll-strength increase.
+// Levels no longer change Luck Boost strength. Permanent Boost upgrades
+// apply the user's personal multiplier scale instead.
 // Luck affects the roll odds only: every tier and level uses
 // the same fixed 30-second !roll cooldown.
 
@@ -205,7 +205,7 @@ const ROLL_COOLDOWN_MS =
 
 const ROLL_LUCK_LEVEL_SETTINGS = {
 
-    below100: {
+    universal: {
 
         tier1: {
             multiplier: 2,
@@ -229,36 +229,6 @@ const ROLL_LUCK_LEVEL_SETTINGS = {
 
         omega: {
             multiplier: 1000,
-            cooldownMs: ROLL_COOLDOWN_MS
-        }
-
-    },
-
-
-    level100Plus: {
-
-        tier1: {
-            multiplier: 2.5,
-            cooldownMs: ROLL_COOLDOWN_MS
-        },
-
-        tier2: {
-            multiplier: 12,
-            cooldownMs: ROLL_COOLDOWN_MS
-        },
-
-        tier3: {
-            multiplier: 24,
-            cooldownMs: ROLL_COOLDOWN_MS
-        },
-
-        max: {
-            multiplier: 60,
-            cooldownMs: ROLL_COOLDOWN_MS
-        },
-
-        omega: {
-            multiplier: 1200,
             cooldownMs: ROLL_COOLDOWN_MS
         }
 
@@ -391,8 +361,7 @@ const COMMAND_LUCK_DROP_PERCENT = {
 };
 
 
-// The XP roll tables for Level 1-99 and
-// Level 100+ are now at the top of:
+// The universal XP roll table is at the top of:
 //
 // commands/roll.js
 //
@@ -403,9 +372,9 @@ const COMMAND_LUCK_DROP_PERCENT = {
 
 const OMEGA_ROLL_CHANCE_TABLES = {
 
-    // Levels 1-99.
-    // Every range below 200,000 XP has exactly 0% chance.
-    level1To100: [
+    // Every user receives the same Ω table; Boost upgrades strengthen it
+    // through the personal roll-weight factor instead of display level.
+    universal: [
 
         {
             chancePercent: 55,
@@ -425,31 +394,6 @@ const OMEGA_ROLL_CHANCE_TABLES = {
             max: 10000000
         }
 
-    ],
-
-
-    // Levels 100+.
-    // Every range below 200,000 XP has exactly 0% chance.
-    level101Plus: [
-
-        {
-            chancePercent: 23,
-            min: 200000,
-            max: 500000
-        },
-
-        {
-            chancePercent: 60,
-            min: 500000,
-            max: 2000000
-        },
-
-        {
-            chancePercent: 17,
-            min: 2000000,
-            max: 10000000
-        }
-
     ]
 
 };
@@ -460,7 +404,7 @@ const OMEGA_ROLL_CHANCE_TABLES = {
 // =====================================================
 //
 // These are exact, independent percentages. A Mega Roll is checked first;
-// when it misses, the normal level/Luck table is used exactly as before.
+// when it misses, the universal Luck table is used exactly as before.
 // No active Luck Boost means a 0% chance at this special range.
 //
 // 0.0001 = 1 in 1,000,000 rolls
@@ -478,22 +422,12 @@ const LUCK_MEGA_ROLL_SETTINGS = {
 
     chancePercent: {
 
-        // Levels 1-99
-        level1To100: {
+        universal: {
             tier1: 0.0001,
             tier2: 0.0005,
             tier3: 0.005,
             max: 0.025,
             omega: 1
-        },
-
-        // Levels 100+
-        level101Plus: {
-            tier1: 0.0002,
-            tier2: 0.001,
-            tier3: 0.01,
-            max: 0.05,
-            omega: 2
         }
 
     }
@@ -1112,9 +1046,35 @@ async function getActiveLuckBoost(member){
     );
 
 
+    const upgradeEffects =
+        await database.getUserUpgradeEffects(
+            member.guild.id,
+            member.id
+        );
+
+
+    const boostMultiplierScale =
+        Math.max(
+            1,
+            Number(
+                upgradeEffects
+                    .boostMultiplierScale
+            ) || 1
+        );
+
+
     return {
 
         ...profile,
+
+        baseMultiplier:
+            profile.multiplier,
+
+        multiplier:
+            profile.multiplier *
+            boostMultiplierScale,
+
+        boostMultiplierScale,
 
         expiresAt
 
@@ -1125,7 +1085,7 @@ async function getActiveLuckBoost(member){
 
 function getRollLuckProfile(
     profile,
-    currentLevel
+    _legacyLevel
 ){
 
     const safeProfile =
@@ -1134,9 +1094,7 @@ function getRollLuckProfile(
 
 
     const levelGroup =
-        Number(currentLevel) >= 100
-            ? "level100Plus"
-            : "below100";
+        "universal";
 
 
     const tier =
@@ -1175,14 +1133,20 @@ function getRollLuckProfile(
         Math.max(
             1,
             Number(
+                safeProfile.baseMultiplier ||
                 safeProfile.multiplier
             ) || 1
         );
 
 
     const rollMultiplier =
-        Number(
-            settings.multiplier
+        Math.max(
+            1,
+            Number(
+                safeProfile.multiplier
+            ) ||
+                Number(settings.multiplier) ||
+                1
         );
 
 
@@ -1203,9 +1167,8 @@ function getRollLuckProfile(
                 settings.cooldownMs
             ),
 
-        // A value of 1 preserves the old roll chances exactly.
-        // Level 100+ gets only the small increase represented
-        // by its displayed roll multiplier.
+        // Boost Upgrade multipliers gently bias the normalized roll weights;
+        // user level is deliberately absent from this calculation.
         rollWeightFactor:
             Math.max(
                 1,
@@ -1441,7 +1404,7 @@ function getAdjustedWeight(
         ) || 0;
 
 
-    let level100PlusExponent =
+    let strengthExponent =
         0;
 
 
@@ -1451,7 +1414,7 @@ function getAdjustedWeight(
             modifiers.neutral;
 
 
-        level100PlusExponent =
+        strengthExponent =
             -0.25;
 
     }
@@ -1463,7 +1426,7 @@ function getAdjustedWeight(
             modifiers.negative;
 
 
-        level100PlusExponent =
+        strengthExponent =
             -0.50;
 
     }
@@ -1498,7 +1461,7 @@ function getAdjustedWeight(
         };
 
 
-        level100PlusExponent =
+        strengthExponent =
             positiveExponents[
                 weightType
             ] || 0;
@@ -1519,7 +1482,7 @@ function getAdjustedWeight(
         adjustedWeight *
         Math.pow(
             rollWeightFactor,
-            level100PlusExponent
+            strengthExponent
         )
     );
 
@@ -1613,9 +1576,7 @@ function getLuckMegaRollChance(
 
 
     const tableName =
-        levelTableName === "level101Plus"
-            ? "level101Plus"
-            : "level1To100";
+        "universal";
 
 
     return Math.max(
@@ -1672,7 +1633,7 @@ function tryLuckMegaRoll(
 async function rollWithLuck(
     member,
     rollChanceTable,
-    levelTableName = "level1To100",
+    levelTableName = "base",
     preparedProfile = null
 ){
 
@@ -1696,10 +1657,7 @@ async function rollWithLuck(
             await getActiveLuckBoost(
                 member
             ),
-            levelTableName ===
-                "level101Plus"
-                ? 100
-                : 1
+            1
         );
 
 
@@ -1718,11 +1676,8 @@ async function rollWithLuck(
             : profile.tier === "omega"
 
                 ? rollFromExactPercentTable(
-                    OMEGA_ROLL_CHANCE_TABLES[
-                        levelTableName === "level101Plus"
-                            ? "level101Plus"
-                            : "level1To100"
-                    ]
+                    OMEGA_ROLL_CHANCE_TABLES
+                        .universal
                 )
 
                 : rollFromWeightedTable(
@@ -1756,7 +1711,7 @@ function rollGuaranteedMinimumWithLuck(
     currentXP,
     minimumXP,
     rollChanceTable,
-    levelTableName = "level1To100",
+    levelTableName = "base",
     profile = null
 ){
 
@@ -1780,17 +1735,10 @@ function rollGuaranteedMinimumWithLuck(
     }
 
 
-    const normalizedTableName =
-        levelTableName === "level101Plus"
-            ? "level101Plus"
-            : "level1To100";
-
-
     const sourceTable =
         String(profile?.tier || "").toLowerCase() === "omega"
-            ? OMEGA_ROLL_CHANCE_TABLES[
-                normalizedTableName
-            ]
+            ? OMEGA_ROLL_CHANCE_TABLES
+                .universal
             : rollChanceTable;
 
 
@@ -1938,7 +1886,13 @@ function getLevel100PlusCommandLuckProfile(profile){
         ...profile,
 
         commandMultiplier:
-            balance.multiplier,
+            balance.multiplier *
+            Math.max(
+                1,
+                Number(
+                    profile.boostMultiplierScale
+                ) || 1
+            ),
 
         commandRewardBiasPower:
             balance.rewardBiasPower
@@ -2416,6 +2370,13 @@ async function activateLuckBoostFromInventory(
     }
 
 
+    const upgradeEffects =
+        await database.getUserUpgradeEffects(
+            member.guild.id,
+            member.id
+        );
+
+
     const consumed =
         await database.consumeBoostInventory(
             member.guild.id,
@@ -2449,9 +2410,22 @@ async function activateLuckBoostFromInventory(
         );
 
 
+    const upgradedDuration =
+        Math.floor(
+            selectedBoost.duration *
+            Math.max(
+                1,
+                Number(
+                    upgradeEffects
+                        .boostDurationScale
+                ) || 1
+            )
+        );
+
+
     const expiresAt =
         Date.now() +
-        selectedBoost.duration;
+        upgradedDuration;
 
 
     let status =
@@ -2559,6 +2533,9 @@ async function activateLuckBoostFromInventory(
         boost: {
 
             ...selectedBoost,
+
+            duration:
+                upgradedDuration,
 
             expiresAt
 
@@ -3137,9 +3114,25 @@ async function checkLuckBoostRole(
         }
 
 
+        const upgradeEffects =
+            await database.getUserUpgradeEffects(
+                newMember.guild.id,
+                newMember.id
+            );
+
+
         const expiresAt =
             Date.now() +
-            selectedRole.duration;
+            Math.floor(
+                selectedRole.duration *
+                Math.max(
+                    1,
+                    Number(
+                        upgradeEffects
+                            .boostDurationScale
+                    ) || 1
+                )
+            );
 
 
         // Save the owner's manual role
