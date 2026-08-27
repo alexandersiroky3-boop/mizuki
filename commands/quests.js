@@ -116,7 +116,7 @@ function getResetPrice(
 
     return quests.getQuestResetPrice(
         cycleType,
-        dashboard.level
+        dashboard.questUpgradeLevel
     );
 
 }
@@ -213,6 +213,16 @@ function formatResetOptions(dashboard){
         );
 
 
+    if(!dashboard.questResetUnlocked){
+
+        return (
+            "🔒 **Paid resets are locked.** Purchase **Quest Upgrade 2/3** through `!upgrades` to unlock them.\n\n" +
+            "Once unlocked, a paid reset only rerolls an **unfinished** section. It replaces that section's quests and rewards and erases **all current progress**."
+        );
+
+    }
+
+
     return (
         `🔄 **Daily:** ${dailyPrice.toLocaleString()} XP • ` +
         (
@@ -223,11 +233,9 @@ function formatResetOptions(dashboard){
         "\n" +
         `🔁 **Weekly:** ${weeklyPrice.toLocaleString()} XP • ` +
         (
-            dashboard.weeklyLocked
-                ? `Locked until Level ${quests.QUEST_UNLOCK_LEVEL}`
-                : weeklyCompleted
-                    ? "**Completed — reset unavailable**"
-                    : `**${Math.max(0, weeklyConfig.maxResets - weeklyUsed)}** reset(s) remaining this week`
+            weeklyCompleted
+                ? "**Completed — reset unavailable**"
+                : `**${Math.max(0, weeklyConfig.maxResets - weeklyUsed)}** reset(s) remaining this week`
         ) +
         "\n\nA paid reset only rerolls an **unfinished** section. It replaces that section's quests and rewards and erases **all current progress**. A completed section cannot be reset."
     );
@@ -294,7 +302,9 @@ function createResetButtons(
                         "quests_reset:daily"
                     )
                     .setLabel(
-                        dailyCompleted
+                        !dashboard.questResetUnlocked
+                            ? "Daily Reset - Requires Quest Upgrade 2"
+                            : dailyCompleted
                             ? "Daily Completed - Reset Locked"
                             : `Reset Daily - ${dailyPrice.toLocaleString()} XP (${dailyUsed}/${dailyConfig.maxResets})`
                     )
@@ -304,6 +314,8 @@ function createResetButtons(
                     )
                     .setDisabled(
                         disableAll
+                        ||
+                        !dashboard.questResetUnlocked
                         ||
                         dailyCompleted
                         ||
@@ -315,7 +327,9 @@ function createResetButtons(
                         "quests_reset:weekly"
                     )
                     .setLabel(
-                        weeklyCompleted
+                        !dashboard.questResetUnlocked
+                            ? "Weekly Reset - Requires Quest Upgrade 2"
+                            : weeklyCompleted
                             ? "Weekly Completed - Reset Locked"
                             : `Reset Weekly - ${weeklyPrice.toLocaleString()} XP (${weeklyUsed}/${weeklyConfig.maxResets})`
                     )
@@ -326,7 +340,7 @@ function createResetButtons(
                     .setDisabled(
                         disableAll
                         ||
-                        dashboard.weeklyLocked
+                        !dashboard.questResetUnlocked
                         ||
                         !dashboard.weekly
                         ||
@@ -364,9 +378,20 @@ async function buildQuestPanel(
                     user.displayAvatarURL()
             })
             .setDescription(
-                "Complete every quest in a section to receive all of its rewards automatically. Use the separate reset buttons only when you want to replace a section."
+                "Complete every quest in a section to receive all of its rewards automatically. Quest rewards now depend on your permanent **Quest Upgrade**, never your player level."
             )
             .addFields(
+                {
+                    name: "🧬 Quest Upgrade",
+                    value:
+                        `**${Number(dashboard.questUpgradeLevel) || 0}/3** • ` +
+                        (
+                            dashboard.questResetUnlocked
+                                ? "Paid unfinished-quest resets unlocked."
+                                : "Upgrade to **2/3** through `!upgrades` to unlock paid resets."
+                        ),
+                    inline: false
+                },
                 {
                     name: "Daily Quests",
                     value:
@@ -380,13 +405,11 @@ async function buildQuestPanel(
                 {
                     name: "Weekly Quests",
                     value:
-                        dashboard.weeklyLocked
-                            ? `**Get to Level ${quests.QUEST_UNLOCK_LEVEL} to unlock Weekly quests**`
-                            : formatCycle(
-                                dashboard.weekly,
-                                "Weekly",
-                                "weekly"
-                            ),
+                        formatCycle(
+                            dashboard.weekly,
+                            "Weekly",
+                            "weekly"
+                        ),
                     inline: false
                 },
                 {
@@ -400,9 +423,7 @@ async function buildQuestPanel(
             )
             .setFooter({
                 text:
-                    dashboard.weeklyLocked
-                        ? "Daily resets renew at 00:00 UTC. Weekly quests unlock at Level 100."
-                        : "Daily reset uses renew each day; weekly reset uses renew each Monday at 00:00 UTC."
+                    "Daily quests renew at 00:00 UTC; weekly quests renew each Monday at 00:00 UTC."
             })
             .setTimestamp();
 
@@ -495,11 +516,11 @@ function getResetResultMessage(
     }
 
 
-    if(result.status === "weekly-locked"){
+    if(result.status === "reset-upgrade-locked"){
 
         return (
-            `🔒 Weekly quests and resets unlock at **Level ${result.unlockLevel}**. ` +
-            `Your current level is **${result.level}**.`
+            "🔒 Paid quest resets require **Quest Upgrade 2/3**. " +
+            "Use `!upgrades` to unlock them."
         );
 
     }
