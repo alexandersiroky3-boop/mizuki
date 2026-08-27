@@ -1,5 +1,5 @@
 const BOOST_SELL_PAYOUT_RATE =
-    0.50;
+    0.05;
 
 
 // A single sale may still contain far more boosts than a normal player is
