@@ -5,12 +5,14 @@ const boosts = require("../systems/boosts");
 // CRITICAL SYSTEM
 // ======================
 //
-// Every level band has its own normal BASE critical chance.
+// Every user starts with the same BASE critical chance.
 // XP Boosts and Luck Boosts add separate exact bonuses.
 // Each consecutive critical adds +4% momentum
 // to the NEXT critical roll, up to +28%.
 // An active streak of 20+ adds another +3% chance.
-// Critical rewards receive 5x XP at 20-49 and 20x XP at 50+.
+// Permanent Chatting upgrades replace the old automatic level buffs.
+// Base streak rewards are 2x at 20+ and 5x at 50+; later upgrades raise
+// those values and unlock a 50x reward at 100+.
 // Final critical chance is normally capped at 95%, with two exact
 // Luck Boost Omega combinations receiving their own higher caps.
 
@@ -18,9 +20,9 @@ const CRITICAL_MOMENTUM_PER_STREAK = 4;
 const CRITICAL_MOMENTUM_CAP = 28;
 const CRITICAL_STREAK_BONUS_THRESHOLD = 20;
 const CRITICAL_STREAK_CHANCE_BONUS = 3;
-const CRITICAL_STREAK_XP_MULTIPLIER = 5;
+const CRITICAL_STREAK_XP_MULTIPLIER = 2;
 const CRITICAL_STREAK_SUPER_THRESHOLD = 50;
-const CRITICAL_STREAK_SUPER_XP_MULTIPLIER = 20;
+const CRITICAL_STREAK_SUPER_XP_MULTIPLIER = 5;
 const DEFAULT_CRITICAL_CHANCE_CAP = 95;
 const OMEGA_MAX_CRITICAL_CHANCE_CAP = 98;
 const OMEGA_INFINITY_CRITICAL_CHANCE_CAP = 99;
@@ -403,20 +405,31 @@ function randomXP(
 function getXPAmount(
     member,
     currentStreak = 0,
-    currentLevel = 1,
+    _currentLevel = 1,
     options = {}
 ){
 
 
-    const isAboveLevel100 =
-        Number(currentLevel) > 99;
+    const upgradeEffects =
+        options.upgradeEffects || {};
 
 
-    let min;
-    let max;
+    const min = 70;
+    const max = 200;
 
-    let baseCriticalChance;
-    let criticalBonus;
+
+    const baseCriticalChance =
+        3 +
+        Math.max(
+            0,
+            Number(
+                upgradeEffects
+                    .chatCriticalChanceBonus
+            ) || 0
+        );
+
+
+    const criticalBonus = 100;
 
 
     // First calculate the same normal message reward the user would receive
@@ -434,6 +447,13 @@ function getXPAmount(
             Number(
                 activeXPBoost.multiplier
             ) || 1
+        ) *
+        Math.max(
+            1,
+            Number(
+                upgradeEffects
+                    .boostMultiplierScale
+            ) || 1
         );
 
 
@@ -443,45 +463,14 @@ function getXPAmount(
             Number(
                 activeXPBoost.criticalChanceBonus
             ) || 0
+        ) *
+        Math.max(
+            1,
+            Number(
+                upgradeEffects
+                    .boostMultiplierScale
+            ) || 1
         );
-
-
-
-    // ======================
-    // LEVELS 100+
-    // ======================
-
-    if(isAboveLevel100){
-
-
-        min = 70;
-        max = 200;
-
-        baseCriticalChance = 7.5;
-        criticalBonus = 200;
-
-
-    }
-
-
-
-    // ======================
-    // LEVELS 1-100
-    // ======================
-
-    else{
-
-
-        min = 70;
-        max = 200;
-
-        baseCriticalChance = 3;
-        criticalBonus = 100;
-
-
-    }
-
-
 
     // ======================
     // NORMAL XP
@@ -515,7 +504,43 @@ function getXPAmount(
     const luckCriticalBonus =
         Number(
             activeLuckBoost?.criticalChanceBonus
+        ) *
+        Math.max(
+            1,
+            Number(
+                upgradeEffects
+                    .boostMultiplierScale
+            ) || 1
         ) || 0;
+
+
+    const critical20Multiplier =
+        Math.max(
+            1,
+            Number(
+                upgradeEffects
+                    .critical20Multiplier
+            ) ||
+                CRITICAL_STREAK_XP_MULTIPLIER
+        );
+
+
+    const critical50Multiplier =
+        Math.max(
+            critical20Multiplier,
+            Number(
+                upgradeEffects
+                    .critical50Multiplier
+            ) ||
+                CRITICAL_STREAK_SUPER_XP_MULTIPLIER
+        );
+
+
+    const critical100Multiplier =
+        Number(
+            upgradeEffects
+                .critical100Multiplier
+        ) || null;
 
 
     const criticalChanceCap =
@@ -585,12 +610,25 @@ function getXPAmount(
 
 
         if(
+            critical100Multiplier
+            &&
+            criticalStreak >= 100
+        ){
+
+            streakXPMultiplier =
+                critical100Multiplier;
+
+            earnedXP *=
+                streakXPMultiplier;
+
+        }
+        else if(
             criticalStreak >=
                 CRITICAL_STREAK_SUPER_THRESHOLD
         ){
 
             streakXPMultiplier =
-                CRITICAL_STREAK_SUPER_XP_MULTIPLIER;
+                critical50Multiplier;
 
             earnedXP *=
                 streakXPMultiplier;
@@ -602,7 +640,7 @@ function getXPAmount(
         ){
 
             streakXPMultiplier =
-                CRITICAL_STREAK_XP_MULTIPLIER;
+                critical20Multiplier;
 
             earnedXP *=
                 streakXPMultiplier;
@@ -715,9 +753,7 @@ function getXPAmount(
 
 
         levelGroup:
-            isAboveLevel100
-                ? "100+"
-                : "1-100"
+            "universal"
 
 
     };
