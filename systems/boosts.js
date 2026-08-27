@@ -640,6 +640,13 @@ async function activateXPBoostFromInventory(
     }
 
 
+    const upgradeEffects =
+        await database.getUserUpgradeEffects(
+            member.guild.id,
+            member.id
+        );
+
+
     const consumed =
         await database.consumeBoostInventory(
             member.guild.id,
@@ -673,9 +680,22 @@ async function activateXPBoostFromInventory(
         );
 
 
+    const upgradedDuration =
+        Math.floor(
+            selectedBoost.duration *
+            Math.max(
+                1,
+                Number(
+                    upgradeEffects
+                        .boostDurationScale
+                ) || 1
+            )
+        );
+
+
     const expiresAt =
         Date.now() +
-        selectedBoost.duration;
+        upgradedDuration;
 
 
     let status =
@@ -788,6 +808,9 @@ async function activateXPBoostFromInventory(
 
             ...selectedBoost,
 
+            duration:
+                upgradedDuration,
+
             expiresAt
 
         }
@@ -804,7 +827,8 @@ async function activateXPBoostFromInventory(
 
 function rollXPBoostDropTier(
     dropType,
-    random = Math.random
+    random = Math.random,
+    chanceMultiplier = 1
 ){
 
     const chances =
@@ -851,12 +875,20 @@ function rollXPBoostDropTier(
         0;
 
 
+    const safeChanceMultiplier =
+        Math.max(
+            1,
+            Number(chanceMultiplier) || 1
+        );
+
+
     for(const tier of orderedTiers){
 
         cumulativeChance +=
             Number(
                 chances[tier]
-            ) || 0;
+            ) *
+            safeChanceMultiplier || 0;
 
 
         if(roll < cumulativeChance){
@@ -875,13 +907,15 @@ async function tryXPBoostDrop(
     member,
     dropType,
     source = dropType,
-    random = Math.random
+    random = Math.random,
+    chanceMultiplier = 1
 ){
 
     const tier =
         rollXPBoostDropTier(
             dropType,
-            random
+            random,
+            chanceMultiplier
         );
 
 
