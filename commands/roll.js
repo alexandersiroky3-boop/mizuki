@@ -78,7 +78,7 @@ const ROLL_SETTINGS = {
         base: [
 
             {
-                chancePercent: 60.09,
+                chancePercent: 60.089824,
                 type: "neutral",
                 min: -100,
                 max: 100
@@ -152,6 +152,41 @@ const ROLL_SETTINGS = {
                 type: "positive",
                 min: 2000000,
                 max: 10000000
+            },
+
+            {
+                chancePercent: 0.0001,
+                type: "positive",
+                min: 10000001,
+                max: 30000000
+            },
+
+            {
+                chancePercent: 0.00005,
+                type: "positive",
+                min: 30000001,
+                max: 50000000
+            },
+
+            {
+                chancePercent: 0.00002,
+                type: "positive",
+                min: 50000001,
+                max: 100000000
+            },
+
+            {
+                chancePercent: 0.000005,
+                type: "positive",
+                min: 100000001,
+                max: 250000000
+            },
+
+            {
+                chancePercent: 0.000001,
+                type: "positive",
+                min: 250000001,
+                max: 1500000000
             }
 
         ]
@@ -220,74 +255,10 @@ function getRollingUpgradeChanceTable(
     rollingLevel
 ){
 
-    const level =
-        Math.max(
-            0,
-            Math.min(
-                6,
-                Math.floor(
-                    Number(rollingLevel) || 0
-                )
-            )
-        );
-
-
-    const factors = {
-        neutral: [1, 0.97, 0.90, 0.85, 0.75, 0.65, 0.50],
-        negative: [1, 0.80, 0.80, 0.55, 0.35, 0.30, 0.22],
-        common: [1, 1.15, 1.35, 1.50, 2, 2.20, 2.50],
-        fiveThousand: [1, 1.20, 2, 3, 4, 7, 8],
-        twentyFiveThousand: [1, 1.10, 1.40, 2.50, 3.50, 4, 8],
-        rare: [1, 1.10, 1.25, 2, 3, 4, 8]
-    };
-
-
-    const weighted =
-        baseTable.map(outcome => {
-            let group = "neutral";
-
-            if(outcome.type === "negative"){
-                group = "negative";
-            }
-            else if(outcome.type === "positive"){
-                if(Number(outcome.min) >= 500000){
-                    group = "rare";
-                }
-                else if(Number(outcome.min) >= 25000){
-                    group = "twentyFiveThousand";
-                }
-                else if(Number(outcome.min) >= 5000){
-                    group = "fiveThousand";
-                }
-                else{
-                    group = "common";
-                }
-            }
-
-            return {
-                outcome,
-                weight:
-                    Number(outcome.chancePercent) *
-                    factors[group][level]
-            };
-        });
-
-
-    const totalWeight =
-        weighted.reduce(
-            (total, entry) =>
-                total + entry.weight,
-            0
-        );
-
-
-    return weighted.map(entry => ({
-        ...entry.outcome,
-        chancePercent:
-            entry.weight /
-            totalWeight *
-            100
-    }));
+    return luck.getRollingUpgradeChanceTable(
+        baseTable,
+        rollingLevel
+    );
 
 }
 
@@ -999,10 +970,7 @@ async function execute(message, options = {}){
 
 
     const rollChanceTable =
-        getRollingUpgradeChanceTable(
-            ROLL_SETTINGS.chanceTables.base,
-            upgradeEffects.rollingLevel
-        );
+        ROLL_SETTINGS.chanceTables.base;
 
 
     const activeLuckBoost =
@@ -1142,7 +1110,8 @@ const luckResult =
         message.member,
         rollChanceTable,
         levelTableName,
-        rollLuckProfile
+        rollLuckProfile,
+        upgradeEffects.rollingLevel
     );
 
 
@@ -1191,7 +1160,8 @@ else if(
             ) || 0,
             rollChanceTable,
             levelTableName,
-            rollLuckProfile
+            rollLuckProfile,
+            upgradeEffects.rollingLevel
         );
 
 }
@@ -1216,7 +1186,8 @@ if(rollGuarantee.guaranteed){
             ROLL_GUARANTEE_MIN_XP,
             rollChanceTable,
             levelTableName,
-            rollLuckProfile
+            rollLuckProfile,
+            upgradeEffects.rollingLevel
         );
 
 }
@@ -1363,14 +1334,7 @@ const guaranteedRollExtra =
 
 const megaRollExtra =
     luckResult.megaRoll
-        ? (
-            `\n💎 **MEGA LUCK ROLL!** ` +
-            `Your active Luck Boost hit its **${Number(
-                luckResult.megaRollChancePercent
-            ).toLocaleString("en-US", {
-                maximumFractionDigits: 6
-            })}%** chance for **10,000,001–50,000,000 XP**.`
-        )
+        ? "\n💎 **MEGA ROLL!** This result landed in the **10,000,000+ XP** range."
         : "";
 
 
