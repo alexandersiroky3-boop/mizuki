@@ -1,6 +1,9 @@
 const database =
     require("../database");
 
+const guildMembers =
+    require("../utils/guildMembers");
+
 
 const OWNER_ID =
     "1239975819112353969";
@@ -51,14 +54,19 @@ async function execute(message){
     try{
 
 
-        // Fetch all current Discord members
-        const guildMembers =
-            await message.guild.members.fetch();
+        // Paginated REST listing avoids Discord Gateway opcode-8 limits.
+        const currentGuildMembers =
+            await guildMembers.listAllGuildMembers(
+                message.guild,
+                {
+                    cache: false
+                }
+            );
 
 
         const currentMemberIDs =
             new Set(
-                guildMembers.map(
+                currentGuildMembers.map(
                     member => member.id
                 )
             );
