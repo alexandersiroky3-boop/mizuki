@@ -7,9 +7,8 @@ const trades =
 const xp =
     require("../utils/xp");
 
-
-const TRADE_UNLOCK_LEVEL =
-    50;
+const economyLimits =
+    require("../utils/economyLimits");
 
 
 const TRADE_REQUEST_COOLDOWN =
@@ -46,17 +45,25 @@ async function execute(message){
         );
 
 
-    const senderLevel =
-        xp.getLevel(
-            Number(senderData?.xp) || 0
+    const senderXP =
+        Number(senderData?.xp) || 0;
+
+
+    const senderProtection =
+        economyLimits.getTradeProtection(
+            senderXP
         );
 
 
-    if(senderLevel < TRADE_UNLOCK_LEVEL){
+    if(!senderProtection.unlocked){
+
+        const senderLevel =
+            xp.getLevel(senderXP);
+
 
         return sendStarterFeedback(
             message,
-            `🔒 Trading unlocks at **Level ${TRADE_UNLOCK_LEVEL}**. You are currently **Level ${senderLevel}**.`
+            `🔒 Trading unlocks at **Level ${economyLimits.TRADE_UNLOCK_LEVEL}**. You are currently **Level ${senderLevel}**.`
         );
 
     }
@@ -151,17 +158,25 @@ async function execute(message){
         );
 
 
-    const targetLevel =
-        xp.getLevel(
-            Number(targetData?.xp) || 0
+    const targetXP =
+        Number(targetData?.xp) || 0;
+
+
+    const targetProtection =
+        economyLimits.getTradeProtection(
+            targetXP
         );
 
 
-    if(targetLevel < TRADE_UNLOCK_LEVEL){
+    if(!targetProtection.unlocked){
+
+        const targetLevel =
+            xp.getLevel(targetXP);
+
 
         return sendStarterFeedback(
             message,
-            `🔒 ${target} cannot receive trades yet. Trading unlocks at **Level ${TRADE_UNLOCK_LEVEL}**, and they are currently **Level ${targetLevel}**.`
+            `🔒 ${target} cannot receive trades yet. Trading unlocks at **Level ${economyLimits.TRADE_UNLOCK_LEVEL}**, and they are currently **Level ${targetLevel}**.`
         );
 
     }
