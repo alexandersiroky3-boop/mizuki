@@ -1,6 +1,9 @@
 const database =
     require("../database");
 
+const guildMembers =
+    require("../utils/guildMembers");
+
 
 // =====================================
 // SETTINGS
@@ -1399,29 +1402,44 @@ async function restoreBoosts(client){
     // database boost when the bot restarted.
     for(const guild of client.guilds.cache.values()){
 
-        const members =
-            await guild.members.fetch()
-                .catch(() => null);
+        try{
 
-
-        if(!members){
-            continue;
-        }
-
-
-        for(const member of members.values()){
-
-            if(
-                member.roles.cache.has(
-                    LEGACY_XP_BOOST_III_ROLE_ID
-                )
+            for await(
+                const members of
+                guildMembers
+                    .iterateGuildMemberPages(
+                        guild,
+                        {
+                            cache: true
+                        }
+                    )
             ){
 
-                await getActiveBoost(
-                    member
-                ).catch(console.error);
+                for(const member of members.values()){
+
+                    if(
+                        member.roles.cache.has(
+                            LEGACY_XP_BOOST_III_ROLE_ID
+                        )
+                    ){
+
+                        await getActiveBoost(
+                            member
+                        ).catch(console.error);
+
+                    }
+
+                }
 
             }
+
+        }
+        catch(error){
+
+            console.error(
+                `Could not complete legacy XP Boost III cleanup in ${guild.name}:`,
+                error
+            );
 
         }
 
