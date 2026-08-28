@@ -548,17 +548,7 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
         variants: [
             {
                 cost: merchantSide({
-                    xp: 50000000
-                }),
-                reward: merchantSide({
-                    boosts: [
-                        merchantBoost("luck", "omega", 1)
-                    ]
-                })
-            },
-            {
-                cost: merchantSide({
-                    xp: 100000000
+                    xp: 125000000
                 }),
                 reward: merchantSide({
                     boosts: [
@@ -569,6 +559,16 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
             {
                 cost: merchantSide({
                     xp: 250000000
+                }),
+                reward: merchantSide({
+                    boosts: [
+                        merchantBoost("luck", "omega", 1)
+                    ]
+                })
+            },
+            {
+                cost: merchantSide({
+                    xp: 300000000
                 }),
                 reward: merchantSide({
                     boosts: [
