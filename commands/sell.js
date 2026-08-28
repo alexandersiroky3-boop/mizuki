@@ -33,6 +33,13 @@ const SELL_CUSTOM_ID_PREFIX =
     "boost-sell";
 
 
+const BOOST_SELL_PAYOUT_PERCENT =
+    Math.round(
+        boostSell.BOOST_SELL_PAYOUT_RATE *
+        100
+    );
+
+
 const BOOST_EMOJIS = {
     "xp:tier1": "⚡",
     "xp:tier2": "⚡",
@@ -300,7 +307,7 @@ function buildSellMenuPayload(
                 hasInventory
                     ? (
                         "Choose a boost below, then enter how many you want to sell.\n\n" +
-                        "You receive **5% of its live `!values` midpoint**. " +
+                        `You receive **${BOOST_SELL_PAYOUT_PERCENT}% of its live \`!values\` midpoint**. ` +
                         "The final price and your inventory are checked again when you confirm."
                     )
                     : "You do not currently own any boosts that can be sold."
@@ -677,7 +684,8 @@ async function handleInteraction(
                             inline: false
                         },
                         {
-                            name: "💵 Your 5% Sell Payout",
+                            name:
+                                `💵 Your ${BOOST_SELL_PAYOUT_PERCENT}% Sell Price`,
                             value:
                                 `**${result.unitPayout.toLocaleString()} XP each**\n` +
                                 `Total received: **${result.totalPayout.toLocaleString()} XP**`,
