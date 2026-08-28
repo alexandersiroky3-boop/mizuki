@@ -32,6 +32,7 @@ const valuesCommand = require("./commands/values");
 const sellCommand = require("./commands/sell");
 const muteCommand = require("./commands/mute");
 const upgradesCommand = require("./commands/upgrades");
+const setUpgradeCommand = require("./commands/setupgrade");
 const shopCommand = require("./commands/shop");
 const merchantCommand =
     require("./commands/merchant");
@@ -1046,6 +1047,18 @@ if(
 ){
 
     return muteCommand.execute(
+        message
+    );
+
+}
+
+if(
+    /^!setupgrade(?:\s|$)/i.test(
+        message.content.trim()
+    )
+){
+
+    return setUpgradeCommand.execute(
         message
     );
 
