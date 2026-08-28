@@ -13,6 +13,9 @@ const boosts = require("../systems/boosts");
 // Permanent Chatting upgrades replace the old automatic level buffs.
 // Base streak rewards are 2x at 20+ and 5x at 50+; later upgrades raise
 // those values and unlock a 50x reward at 100+.
+// XP Boost Infinity already multiplies the completed message reward by 500x,
+// so it does not also multiply with the special 20+/50+/100+ streak reward.
+// The normal critical reward (including +100 XP per streak) still applies.
 // Final critical chance is normally capped at 95%, with two exact
 // Luck Boost Omega combinations receiving their own higher caps.
 
@@ -588,6 +591,12 @@ function getXPAmount(
     let streakXPMultiplier = 1;
 
 
+    let configuredStreakXPMultiplier = 1;
+
+
+    let streakBonusSuppressedByInfinity = false;
+
+
     let criticalStreak =
         startingStreak;
 
@@ -615,11 +624,8 @@ function getXPAmount(
             criticalStreak >= 100
         ){
 
-            streakXPMultiplier =
+            configuredStreakXPMultiplier =
                 critical100Multiplier;
-
-            earnedXP *=
-                streakXPMultiplier;
 
         }
         else if(
@@ -627,11 +633,8 @@ function getXPAmount(
                 CRITICAL_STREAK_SUPER_THRESHOLD
         ){
 
-            streakXPMultiplier =
+            configuredStreakXPMultiplier =
                 critical50Multiplier;
-
-            earnedXP *=
-                streakXPMultiplier;
 
         }
         else if(
@@ -639,13 +642,26 @@ function getXPAmount(
                 CRITICAL_STREAK_BONUS_THRESHOLD
         ){
 
-            streakXPMultiplier =
+            configuredStreakXPMultiplier =
                 critical20Multiplier;
 
-            earnedXP *=
-                streakXPMultiplier;
-
         }
+
+
+        streakBonusSuppressedByInfinity =
+            activeXPBoost.tier === "infinity"
+            &&
+            configuredStreakXPMultiplier > 1;
+
+
+        streakXPMultiplier =
+            streakBonusSuppressedByInfinity
+                ? 1
+                : configuredStreakXPMultiplier;
+
+
+        earnedXP *=
+            streakXPMultiplier;
 
 
     }
@@ -747,6 +763,12 @@ function getXPAmount(
 
 
         streakXPMultiplier,
+
+
+        configuredStreakXPMultiplier,
+
+
+        streakBonusSuppressedByInfinity,
 
 
         criticalStreak,
