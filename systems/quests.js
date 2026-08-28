@@ -53,6 +53,60 @@ const DAILY_LUCK_MAX_AMOUNTS =
     [1, 2, 3];
 
 
+// Quest chat-XP rewards deliberately stop at 2x. Merchant chat-XP deals are
+// a separate system and keep their own stronger 8x/12x/15x reward pool.
+const QUEST_CHAT_XP_MULTIPLIERS =
+    Object.freeze([1.5, 1.75, 2]);
+
+
+function normalizeQuestChatXPMultiplier(
+    multiplier
+){
+
+    const safeMultiplier =
+        Number(multiplier) ||
+        QUEST_CHAT_XP_MULTIPLIERS[0];
+
+
+    return (
+        QUEST_CHAT_XP_MULTIPLIERS.find(
+            tier => safeMultiplier <= tier
+        )
+        ||
+        QUEST_CHAT_XP_MULTIPLIERS[
+            QUEST_CHAT_XP_MULTIPLIERS.length - 1
+        ]
+    );
+
+}
+
+
+function upgradeQuestChatXPMultiplier(
+    multiplier
+){
+
+    const normalized =
+        normalizeQuestChatXPMultiplier(
+            multiplier
+        );
+
+
+    const currentIndex =
+        QUEST_CHAT_XP_MULTIPLIERS.indexOf(
+            normalized
+        );
+
+
+    return QUEST_CHAT_XP_MULTIPLIERS[
+        Math.min(
+            currentIndex + 1,
+            QUEST_CHAT_XP_MULTIPLIERS.length - 1
+        )
+    ];
+
+}
+
+
 // Easy-to-edit targets for the chat-only XP quest. Only XP awarded by
 // leveling.giveXP(message) counts; rolls, quest rewards, trades, and admin
 // XP do not advance this quest.
@@ -990,7 +1044,7 @@ function generateDailyRewardsElite(){
 
         {
             type: "chat_xp_multiplier",
-            multiplier: 2,
+            multiplier: 1.5,
             durationMs:
                 24 * 60 * 60 * 1000,
             levelBand
@@ -1059,7 +1113,7 @@ function generateWeeklyRewardsHigh(){
             {
                 type: "chat_xp_multiplier",
                 multiplier:
-                    randomChoice([2, 3]),
+                    randomChoice([1.5, 1.75]),
                 durationMs:
                     24 * 60 * 60 * 1000,
                 levelBand: "high"
@@ -1221,7 +1275,9 @@ function generateWeeklyRewardsElite(
             {
                 type: "chat_xp_multiplier",
                 multiplier:
-                    randomChoice([5, 7, 10]),
+                    randomChoice(
+                        QUEST_CHAT_XP_MULTIPLIERS
+                    ),
                 durationMs:
                     randomChoice([
                         12 * 60 * 60 * 1000,
@@ -1357,8 +1413,8 @@ function applyStrongestQuestRewardBuff(
         }
         else if(reward.type === "chat_xp_multiplier"){
             buffed.multiplier =
-                Math.ceil(
-                    Number(reward.multiplier) * 1.25
+                upgradeQuestChatXPMultiplier(
+                    reward.multiplier
                 );
         }
         else if(reward.type === "multi_roll"){
@@ -3389,7 +3445,7 @@ function formatReward(reward){
     if(reward.type === "chat_xp_multiplier"){
 
         return (
-            `Earn **${Number(reward.multiplier)}x chat XP** for ` +
+            `Earn **${normalizeQuestChatXPMultiplier(reward.multiplier)}x chat XP** for ` +
             `**${formatRewardDuration(reward.durationMs)}**`
         );
 
@@ -3911,6 +3967,10 @@ module.exports = {
 
     generateRewards,
 
-    applyStrongestQuestRewardBuff
+    applyStrongestQuestRewardBuff,
+
+    normalizeQuestChatXPMultiplier,
+
+    upgradeQuestChatXPMultiplier
 
 };
