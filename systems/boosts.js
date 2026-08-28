@@ -14,9 +14,9 @@ const BOOST_DURATION =
 
 
 // Infinity stays the strongest XP Boost, but its much larger multiplier now
-// runs for half as long as the regular tiers.
+// has a much shorter base activation window than the regular tiers.
 const INFINITY_BOOST_DURATION =
-    30 * 60 * 1000;
+    15 * 60 * 1000;
 
 
 const botRoleChanges =
@@ -149,7 +149,7 @@ const BOOST_PROFILES = {
             INFINITY_BOOST_DURATION,
 
         durationText:
-            "30 minutes",
+            "15 minutes",
 
         multiplier:
             350,
