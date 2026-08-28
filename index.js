@@ -196,15 +196,77 @@ const http = require("http");
 
 const PORT = process.env.PORT || 3000;
 
-http.createServer((request, response) => {
-    response.writeHead(200, {
-        "Content-Type": "text/plain"
+const serviceState = {
+    databaseReady: false,
+    discordReady: false,
+    shuttingDown: false
+};
+
+
+function isServiceReady(){
+
+    return (
+        serviceState.databaseReady
+        &&
+        serviceState.discordReady
+        &&
+        !serviceState.shuttingDown
+    );
+
+}
+
+
+const healthServer =
+    http.createServer((request, response) => {
+
+        const ready =
+            isServiceReady();
+
+
+        response.writeHead(
+            ready ? 200 : 503,
+            {
+                "Content-Type":
+                    "text/plain; charset=utf-8",
+                "Cache-Control":
+                    "no-store"
+            }
+        );
+
+
+        response.end(
+            ready
+                ? "Mizuki is online!"
+                : serviceState.shuttingDown
+                    ? "Mizuki is shutting down."
+                    : "Mizuki is starting up."
+        );
+
     });
 
-    response.end("Mizuki is online!");
-}).listen(PORT, () => {
-    console.log(`Health server running on port ${PORT}`);
+
+healthServer.on("error", error => {
+
+    console.error(
+        "Health server failed:",
+        error
+    );
+
+
+    process.exit(1);
+
 });
+
+
+healthServer.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+        console.log(
+            `Health server listening on port ${PORT}; waiting for PostgreSQL and Discord.`
+        );
+    }
+);
 
 
 
@@ -243,6 +305,12 @@ partials:[
 
 
 client.once("clientReady", async () => {
+
+
+    // Discord is connected. Render may now mark the service healthy once
+    // PostgreSQL is ready too; startup restore jobs can continue afterward.
+    serviceState.discordReady =
+        true;
 
 
     await resolveMainGuild();
@@ -1480,14 +1548,118 @@ async function startBot(){
     await database.initDatabase();
 
 
+    serviceState.databaseReady =
+        true;
+
+
+    const token =
+        String(
+            process.env.TOKEN || ""
+        ).trim();
+
+
+    if(!token){
+
+        throw new Error(
+            "TOKEN is missing. Add the Discord bot token to Render's environment variables."
+        );
+
+    }
+
+
     await client.login(
-        process.env.TOKEN
+        token
     );
 
 }
 
 
+let shutdownStarted =
+    false;
+
+
+function shutdownApplication(
+    reason,
+    exitCode = 0
+){
+
+    if(shutdownStarted){
+        return;
+    }
+
+
+    shutdownStarted =
+        true;
+
+
+    serviceState.shuttingDown =
+        true;
+
+    serviceState.discordReady =
+        false;
+
+
+    console.log(
+        `Mizuki is shutting down (${reason}).`
+    );
+
+
+    try{
+        client.destroy();
+    }
+    catch(error){
+        console.error(
+            "Discord shutdown failed:",
+            error
+        );
+    }
+
+
+    const exit = () => {
+        process.exit(exitCode);
+    };
+
+
+    healthServer.close(exit);
+
+
+    const forcedExit =
+        setTimeout(
+            exit,
+            5000
+        );
+
+
+    forcedExit.unref();
+
+}
+
+
+process.once(
+    "SIGTERM",
+    () => shutdownApplication(
+        "Render sent SIGTERM",
+        0
+    )
+);
+
+
+process.once(
+    "SIGINT",
+    () => shutdownApplication(
+        "SIGINT",
+        0
+    )
+);
+
+
 startBot().catch(error => {
+
+    serviceState.databaseReady =
+        false;
+
+    serviceState.discordReady =
+        false;
 
     console.error(
         "Mizuki could not start:"
@@ -1497,6 +1669,9 @@ startBot().catch(error => {
         error
     );
 
-    process.exitCode = 1;
+    shutdownApplication(
+        "startup failure",
+        1
+    );
 
 });
