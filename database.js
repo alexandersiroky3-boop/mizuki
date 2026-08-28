@@ -4263,6 +4263,234 @@ async function purchaseUserUpgrade(
 }
 
 
+// Owner-command backend. Unlike a normal purchase, this changes exactly one
+// upgrade track without charging XP or Boost inventory. The shared user row is
+// locked first so it cannot race a normal !upgrades purchase.
+async function setUserUpgradeLevel(
+    guildID,
+    userID,
+    requestedCategory,
+    requestedLevel
+){
+
+    const category =
+        upgrades.normalizeCategory(
+            requestedCategory
+        );
+
+
+    if(!category){
+
+        return {
+            success: false,
+            status: "invalid-category"
+        };
+
+    }
+
+
+    const numericLevel =
+        Number(requestedLevel);
+
+
+    const maxLevel =
+        upgrades.getMaxLevel(
+            category
+        );
+
+
+    if(
+        !Number.isInteger(numericLevel)
+        ||
+        numericLevel < 0
+        ||
+        numericLevel > maxLevel
+    ){
+
+        return {
+            success: false,
+            status: "invalid-level",
+            category,
+            requestedLevel,
+            maxLevel
+        };
+
+    }
+
+
+    const normalizedGuildID =
+        String(guildID);
+
+
+    const normalizedUserID =
+        String(userID);
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        await client.query(`
+
+            INSERT INTO users(
+                guildID,
+                userID
+            )
+
+            VALUES($1,$2)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID
+        ]);
+
+
+        // This is the same common lock used by purchaseUserUpgrade().
+        await client.query(`
+
+            SELECT xp
+
+            FROM users
+
+            WHERE guildID=$1
+            AND userID=$2
+
+            FOR UPDATE
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID
+        ]);
+
+
+        await client.query(`
+
+            INSERT INTO user_upgrades(
+                guildID,
+                userID,
+                category,
+                level,
+                updatedAt
+            )
+
+            VALUES($1,$2,$3,0,$4)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            category,
+            Date.now()
+        ]);
+
+
+        const currentResult =
+            await client.query(`
+
+                SELECT level
+
+                FROM user_upgrades
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND category=$3
+
+                FOR UPDATE
+
+            `, [
+                normalizedGuildID,
+                normalizedUserID,
+                category
+            ]);
+
+
+        const previousLevel =
+            Math.max(
+                0,
+                Number(
+                    currentResult.rows[0]?.level
+                ) || 0
+            );
+
+
+        await client.query(`
+
+            UPDATE user_upgrades
+
+            SET
+                level=$4,
+                updatedAt=$5
+
+            WHERE guildID=$1
+            AND userID=$2
+            AND category=$3
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            category,
+            numericLevel,
+            Date.now()
+        ]);
+
+
+        const levels =
+            await getUserUpgradeLevels(
+                normalizedGuildID,
+                normalizedUserID,
+                client
+            );
+
+
+        await client.query("COMMIT");
+
+
+        userCache.delete(
+            `${normalizedGuildID}:${normalizedUserID}`
+        );
+
+
+        return {
+            success: true,
+            status:
+                previousLevel === numericLevel
+                    ? "unchanged"
+                    : "set",
+            category,
+            previousLevel,
+            level: numericLevel,
+            maxLevel,
+            levels,
+            effects:
+                upgrades.getUpgradeEffects(
+                    levels
+                )
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
 
 
 
@@ -14121,6 +14349,8 @@ module.exports = {
     getUserUpgradeEffects,
 
     purchaseUserUpgrade,
+
+    setUserUpgradeLevel,
 
     addXP,
 
