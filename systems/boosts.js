@@ -152,7 +152,7 @@ const BOOST_PROFILES = {
             "30 minutes",
 
         multiplier:
-            500,
+            350,
 
         criticalChanceBonus:
             30,
