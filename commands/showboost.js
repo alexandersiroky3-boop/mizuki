@@ -4,11 +4,16 @@ const {
     ButtonStyle,
     ComponentType,
     EmbedBuilder,
-    MessageFlags
+    MessageFlags,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
 } = require("discord.js");
 
 const database = require("../database");
 const boosts = require("../systems/boosts");
+const leveling = require("../systems/leveling");
+const powerRunes = require("../systems/powerRunes");
 const luck = require("../utils/luck");
 
 
@@ -43,6 +48,10 @@ const LUCK_TIERS =
         "max",
         "omega"
     ];
+
+
+const POWER_RUNE_TIERS =
+    powerRunes.POWER_RUNE_TIERS;
 
 
 function inventoryMap(rows){
@@ -144,6 +153,34 @@ function buildLuckInventoryLines(inventory){
 }
 
 
+function buildPowerRuneInventoryLines(inventory){
+
+    return POWER_RUNE_TIERS.map(tier => {
+
+        const profile =
+            powerRunes
+                .POWER_RUNE_PROFILES[tier];
+
+
+        const amount =
+            getInventoryAmount(
+                inventory,
+                "rune",
+                tier
+            );
+
+
+        return (
+            `• <@&${profile.roleID}> — **x${amount.toLocaleString()}** — ` +
+            `**${profile.xp.toLocaleString()} XP each** — ` +
+            `**${profile.chance}%** per XP-earning chat message`
+        );
+
+    });
+
+}
+
+
 function buildButtons(
     inventory,
     disabled = false
@@ -227,9 +264,50 @@ function buildButtons(
     }
 
 
+    const powerRuneRow =
+        new ActionRowBuilder();
+
+
+    for(const tier of POWER_RUNE_TIERS){
+
+        const profile =
+            powerRunes
+                .POWER_RUNE_PROFILES[tier];
+
+
+        const amount =
+            getInventoryAmount(
+                inventory,
+                "rune",
+                tier
+            );
+
+
+        powerRuneRow.addComponents(
+            new ButtonBuilder()
+                .setCustomId(`activate_rune_${tier}`)
+                .setLabel(
+                    `${profile.name} (x${amount.toLocaleString()})`
+                )
+                .setStyle(
+                    tier === "tier3"
+                        ? ButtonStyle.Danger
+                        : tier === "tier2"
+                            ? ButtonStyle.Success
+                            : ButtonStyle.Primary
+                )
+                .setDisabled(
+                    disabled || amount <= 0
+                )
+        );
+
+    }
+
+
     return [
         xpRow,
-        luckRow
+        luckRow,
+        powerRuneRow
     ];
 
 }
@@ -282,7 +360,10 @@ async function buildBoostPanel(
         "**⚔️ XP Boosts**\n" +
         `${buildXPInventoryLines(inventory).join("\n")}\n\n` +
         "**🌿 Luck Boosts**\n" +
-        `${buildLuckInventoryLines(inventory).join("\n")}` +
+        `${buildLuckInventoryLines(inventory).join("\n")}\n\n` +
+        "**🔷 Power Runes**\n" +
+        "*Chat-only drops • Click a Rune below and enter how many to use*\n" +
+        `${buildPowerRuneInventoryLines(inventory).join("\n")}` +
         (notice ? `\n\n${notice}` : "");
 
 
@@ -296,7 +377,7 @@ async function buildBoostPanel(
                         : PANEL_COLORS.active
             )
             .setTitle(
-                "⚡ Boost Inventory"
+                "⚡ Boost & Power Rune Inventory"
             )
             .setDescription(
                 description
@@ -305,7 +386,7 @@ async function buildBoostPanel(
                 text:
                     disabled
                         ? "Panel expired • Run !boost to open it again"
-                        : "Choose a boost below • Only you can use these buttons"
+                        : "Choose a boost or Power Rune below • Only you can use these buttons"
             });
 
 
@@ -346,6 +427,88 @@ function activationFailureMessage(result){
 }
 
 
+function powerRuneFailureMessage(result){
+
+    if(
+        result?.status ===
+            "insufficient-inventory"
+    ){
+
+        return (
+            `You only have **${Number(result.available || 0).toLocaleString()}** ` +
+            `${result.rune?.name || "Power Runes"} available.`
+        );
+
+    }
+
+
+    if(
+        result?.status ===
+            "invalid-quantity"
+        ||
+        result?.status ===
+            "invalid-redemption"
+    ){
+
+        return (
+            "Enter a positive whole number no larger than " +
+            `**${powerRunes.MAX_POWER_RUNE_REDEEM_QUANTITY.toLocaleString()}**.`
+        );
+
+    }
+
+
+    return "That Power Rune could not be activated.";
+
+}
+
+
+function buildPowerRuneModal(
+    profile,
+    available,
+    customID
+){
+
+    const modal =
+        new ModalBuilder()
+            .setCustomId(customID)
+            .setTitle(
+                `Use ${profile.name}`
+            );
+
+
+    const amountInput =
+        new TextInputBuilder()
+            .setCustomId(
+                "power_rune_amount"
+            )
+            .setLabel(
+                "How much do you want to use?"
+            )
+            .setPlaceholder(
+                `You own ${Number(available).toLocaleString()}`
+            )
+            .setStyle(
+                TextInputStyle.Short
+            )
+            .setRequired(true)
+            .setMinLength(1)
+            .setMaxLength(7);
+
+
+    modal.addComponents(
+        new ActionRowBuilder()
+            .addComponents(
+                amountInput
+            )
+    );
+
+
+    return modal;
+
+}
+
+
 async function execute(message){
 
     if(!message.guild || !message.member){
@@ -354,6 +517,20 @@ async function execute(message){
 
 
     let lastNotice = "";
+
+
+    await powerRunes
+        .syncMemberPowerRuneRoles(
+            message.member
+        )
+        .catch(error => {
+
+            console.error(
+                "Could not synchronize Power Rune roles while opening !boost:",
+                error
+            );
+
+        });
 
 
     const panel =
@@ -385,6 +562,195 @@ async function execute(message){
                 flags:
                     MessageFlags.Ephemeral
             }).catch(() => {});
+
+
+            return;
+
+        }
+
+
+        const powerRuneMatch =
+            /^activate_rune_(tier1|tier2|tier3)$/
+                .exec(
+                    interaction.customId
+                );
+
+
+        if(powerRuneMatch){
+
+            const tier =
+                powerRuneMatch[1];
+
+
+            const profile =
+                powerRunes
+                    .getPowerRuneProfile(
+                        tier
+                    );
+
+
+            const available =
+                await database
+                    .getBoostInventoryAmount(
+                        message.guild.id,
+                        message.author.id,
+                        "rune",
+                        tier
+                    );
+
+
+            if(!profile || available <= 0){
+
+                await interaction.reply({
+                    content:
+                        "That Power Rune is no longer in your inventory.",
+                    flags:
+                        MessageFlags.Ephemeral
+                });
+
+
+                await panel.edit(
+                    await buildBoostPanel(
+                        message.member,
+                        false,
+                        lastNotice
+                    )
+                ).catch(() => {});
+
+
+                return;
+
+            }
+
+
+            const modalCustomID =
+                `power_rune_redeem:${tier}:${interaction.id}`;
+
+
+            await interaction.showModal(
+                buildPowerRuneModal(
+                    profile,
+                    available,
+                    modalCustomID
+                )
+            );
+
+
+            const submission =
+                await interaction.awaitModalSubmit({
+                    time:
+                        2 * 60 * 1000,
+                    filter:
+                        modalInteraction =>
+                            modalInteraction.user.id ===
+                                message.author.id
+                            &&
+                            modalInteraction.customId ===
+                                modalCustomID
+                }).catch(() => null);
+
+
+            if(!submission){
+                return;
+            }
+
+
+            const quantityText =
+                submission.fields
+                    .getTextInputValue(
+                        "power_rune_amount"
+                    );
+
+
+            const quantity =
+                powerRunes
+                    .parsePowerRuneQuantity(
+                        quantityText
+                    );
+
+
+            if(!quantity){
+
+                await submission.reply({
+                    content:
+                        powerRuneFailureMessage({
+                            status:
+                                "invalid-quantity"
+                        }),
+                    flags:
+                        MessageFlags.Ephemeral
+                });
+
+
+                return;
+
+            }
+
+
+            await submission.deferUpdate();
+
+
+            const result =
+                await powerRunes.redeemPowerRunes(
+                    message.member,
+                    tier,
+                    quantity
+                );
+
+
+            if(!result.success){
+
+                await submission.followUp({
+                    content:
+                        powerRuneFailureMessage(
+                            result
+                        ),
+                    flags:
+                        MessageFlags.Ephemeral
+                }).catch(() => {});
+
+
+                await panel.edit(
+                    await buildBoostPanel(
+                        message.member,
+                        false,
+                        lastNotice
+                    )
+                ).catch(() => {});
+
+
+                return;
+
+            }
+
+
+            await leveling.syncLevelAndAnnounce(
+                message.client,
+                message.guild.id,
+                message.author.id
+            ).catch(error => {
+
+                console.error(
+                    "Could not synchronize level after Power Rune redemption:",
+                    error
+                );
+
+            });
+
+
+            lastNotice =
+                `✅ Used **${quantity.toLocaleString()}x** <@&${profile.roleID}> ` +
+                `and received **${Number(result.totalXP).toLocaleString()} XP**. ` +
+                `Inventory remaining: **x${Number(result.remaining).toLocaleString()}**.`;
+
+
+            await panel.edit(
+                await buildBoostPanel(
+                    message.member,
+                    false,
+                    lastNotice
+                )
+            );
 
 
             return;
