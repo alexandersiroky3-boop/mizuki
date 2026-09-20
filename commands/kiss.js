@@ -11,11 +11,14 @@ const quests =
 const boosts =
     require("../systems/boosts");
 
+const trolls =
+    require("../systems/trolls");
+
 const economyLimits =
     require("../utils/economyLimits");
 
 
-// 1 hour cooldown
+// 15-minute cooldown
 const COOLDOWN =
     15 * 60 * 1000;
 
@@ -35,92 +38,108 @@ function random(min, max){
 }
 
 
-const KISS_TABLES = {
+const KISS_TABLES = Object.freeze({
 
-    level1To100: [
+    level1To99: Object.freeze([
         {
             key: "common",
-            chancePercent: 65.009,
-            min: 1000,
-            max: 4000,
-            rarity: "💖 COMMON KISS"
+            chancePercent: 75,
+            min: 2000,
+            max: 10000,
+            rarity: "COMMON"
+        },
+        {
+            key: "uncommon",
+            chancePercent: 22,
+            min: 10000,
+            max: 25000,
+            rarity: "UNCOMMON"
         },
         {
             key: "rare",
-            chancePercent: 20,
-            min: 4000,
-            max: 8000,
-            rarity: "💜 RARE KISS"
+            chancePercent: 2.2,
+            min: 25000,
+            max: 75000,
+            rarity: "RARE"
         },
         {
             key: "epic",
-            chancePercent: 12.89,
-            min: 8000,
-            max: 15000,
-            rarity: "🌌 EPIC KISS"
+            chancePercent: 0.75,
+            min: 75000,
+            max: 150000,
+            rarity: "EPIC"
         },
         {
             key: "legendary",
-            chancePercent: 2,
-            min: 15000,
-            max: 25000,
-            rarity: "✨ LEGENDARY KISS"
+            chancePercent: 0.049,
+            min: 150000,
+            max: 300000,
+            rarity: "LEGENDARY"
         },
         {
             key: "mythic",
-            chancePercent: 0.1,
-            min: 25000,
-            max: 40000,
-            rarity: "🔮 MYTHIC KISS"
-        },
-        {
-            key: "divine",
             chancePercent: 0.001,
-            min: 50000,
-            max: 50000,
-            rarity: "🌠 DIVINE KISS"
+            min: 300000,
+            max: 1000000,
+            rarity: "MYTHIC"
         }
-    ],
+    ]),
 
-    level101Plus: [
+    level100Plus: Object.freeze([
         {
             key: "common",
-            chancePercent: 40.995,
-            min: 5000,
-            max: 15000,
-            rarity: "💖 COMMON KISS"
+            chancePercent: 70,
+            min: 15000,
+            max: 75000,
+            rarity: "COMMON"
+        },
+        {
+            key: "uncommon",
+            chancePercent: 25,
+            min: 75000,
+            max: 200000,
+            rarity: "UNCOMMON"
         },
         {
             key: "rare",
-            chancePercent: 50,
-            min: 15000,
-            max: 50000,
-            rarity: "💜 RARE KISS"
+            chancePercent: 4,
+            min: 200000,
+            max: 750000,
+            rarity: "RARE"
         },
         {
             key: "epic",
-            chancePercent: 7,
-            min: 50000,
-            max: 300000,
-            rarity: "🌌 EPIC KISS"
+            chancePercent: 0.89,
+            min: 750000,
+            max: 3000000,
+            rarity: "EPIC"
         },
         {
             key: "legendary",
-            chancePercent: 2,
-            min: 300000,
-            max: 1500000,
-            rarity: "✨ LEGENDARY KISS"
+            chancePercent: 0.1,
+            min: 3000000,
+            max: 12500000,
+            rarity: "LEGENDARY"
         },
         {
-            key: "divine",
-            chancePercent: 0.005,
-            min: 2000000,
-            max: 7500000,
-            rarity: "🌠 DIVINE KISS"
+            key: "mythic",
+            chancePercent: 0.01,
+            min: 12500000,
+            max: 75000000,
+            rarity: "MYTHIC"
         }
-    ]
+    ])
 
-};
+});
+
+
+function getKissTableForLevel(level){
+
+    return Number(level) >= 100
+        ? KISS_TABLES.level100Plus
+        : KISS_TABLES.level1To99;
+
+}
 
 
 const KISS_BOT_RANGES =
@@ -150,293 +169,500 @@ const KISS_BOT_RANGES =
 
     });
 
-// =====================================================
-// LEVEL 1-99 EXACT KISS CHANCES FOR LUCK II / III / MAX
-// =====================================================
-//
-// These are intentionally MUCH weaker than the Level 101+
-// tables. Lower-level players still benefit from Luck, but
-// they should not jump straight into Legendary/Mythic/Divine
-// outcomes too often.
-//
-// No Luck, Luck I and Luck Ω remain unchanged.
-const LEVEL1_TO99_EXACT_LUCK_TABLES = {
-
-    tier2: [
-        {
-            key: "common",
-            chancePercent: 35
-        },
-        {
-            key: "rare",
-            chancePercent: 45
-        },
-        {
-            key: "epic",
-            chancePercent: 17
-        },
-        {
-            key: "legendary",
-            chancePercent: 2.5
-        },
-        {
-            key: "mythic",
-            chancePercent: 0.45
-        },
-        {
-            key: "divine",
-            chancePercent: 0.05
-        }
-    ],
-
-    tier3: [
-        {
-            key: "common",
-            chancePercent: 27
-        },
-        {
-            key: "rare",
-            chancePercent: 42
-        },
-        {
-            key: "epic",
-            chancePercent: 25
-        },
-        {
-            key: "legendary",
-            chancePercent: 5
-        },
-        {
-            key: "mythic",
-            chancePercent: 0.9
-        },
-        {
-            key: "divine",
-            chancePercent: 0.1
-        }
-    ],
-
-    max: [
-        {
-            key: "common",
-            chancePercent: 18
-        },
-        {
-            key: "rare",
-            chancePercent: 36
-        },
-        {
-            key: "epic",
-            chancePercent: 34
-        },
-        {
-            key: "legendary",
-            chancePercent: 10
-        },
-        {
-            key: "mythic",
-            chancePercent: 1.85
-        },
-        {
-            key: "divine",
-            chancePercent: 0.15
-        }
-    ]
-
-};
-
-
-// =====================================================
-// LEVEL 101+ EXACT KISS CHANCES FOR LUCK II / III / MAX
-// =====================================================
-//
-// These are direct final percentages for !kiss only.
-// They do NOT affect !hug, !steal, !roll, etc.
-//
-// No Luck, Luck I and Luck Ω still use the normal
-// command-luck weighting system unchanged.
-const LEVEL101_PLUS_EXACT_LUCK_TABLES = {
-
-    tier2: [
-        {
-            key: "common",
-            chancePercent: 15
-        },
-        {
-            key: "rare",
-            chancePercent: 60
-        },
-        {
-            key: "epic",
-            chancePercent: 20
-        },
-        {
-            key: "legendary",
-            chancePercent: 4.9
-        },
-        {
-            key: "divine",
-            chancePercent: 0.1
-        }
-    ],
-
-    tier3: [
-        {
-            key: "common",
-            chancePercent: 18
-        },
-        {
-            key: "rare",
-            chancePercent: 52
-        },
-        {
-            key: "epic",
-            chancePercent: 24
-        },
-        {
-            key: "legendary",
-            chancePercent: 5.8
-        },
-        {
-            key: "divine",
-            chancePercent: 0.2
-        }
-    ],
-
-    max: [
-        {
-            key: "common",
-            chancePercent: 10
-        },
-        {
-            key: "rare",
-            chancePercent: 45
-        },
-        {
-            key: "epic",
-            chancePercent: 32
-        },
-        {
-            key: "legendary",
-            chancePercent: 12.7
-        },
-        {
-            key: "divine",
-            chancePercent: 0.3
-        }
-    ]
-
-};
-
-
-function rollExactKissOutcome(
-    baseTable,
-    exactChanceTable
+function getCustomEmoji(
+    guild,
+    name,
+    fallback
 ){
 
-    let roll =
-        Math.random() * 100;
+    const emoji =
+        guild?.emojis?.cache?.find?.(
+            entry => entry.name === name
+        );
 
 
-    for(const entry of exactChanceTable){
+    return emoji
+        ? emoji.toString()
+        : fallback;
 
-        roll -=
-            Number(
-                entry.chancePercent
-            );
+}
 
 
-        if(roll < 0){
+function getKissEmojis(guild){
 
-            return (
-                baseTable.find(
-                    outcome =>
-                        outcome.key ===
-                        entry.key
-                )
-                ||
-                baseTable[0]
-            );
+    return {
+        heartpulse:
+            getCustomEmoji(
+                guild,
+                "heartpulse",
+                "💗"
+            ),
+
+        kiss:
+            getCustomEmoji(
+                guild,
+                "kiss",
+                "💋"
+            ),
+
+        heartExclamation:
+            getCustomEmoji(
+                guild,
+                "heart_exclamation",
+                "❣️"
+            ),
+
+        twoHearts:
+            getCustomEmoji(
+                guild,
+                "two_hearts",
+                "💕"
+            ),
+
+        halfGoldenHeart:
+            getCustomEmoji(
+                guild,
+                "half_golden_heart",
+                "💖"
+            ),
+
+        cupid:
+            getCustomEmoji(
+                guild,
+                "cupid",
+                "💘"
+            ),
+
+        revolvingHearts:
+            getCustomEmoji(
+                guild,
+                "revolving_hearts",
+                "💞"
+            ),
+
+        goldenHeart:
+            getCustomEmoji(
+                guild,
+                "golden_heart",
+                "💛"
+            ),
+
+        mythicHeart:
+            getCustomEmoji(
+                guild,
+                "mythic_heart",
+                "💜"
+            )
+    };
+
+}
+
+
+function splitLongMessage(
+    content,
+    maxLength = 1900
+){
+
+    const paragraphs =
+        String(content || "")
+            .split("\n\n");
+
+    const chunks = [];
+    let chunk = "";
+
+
+    for(const paragraph of paragraphs){
+
+        const candidate =
+            chunk
+                ? `${chunk}\n\n${paragraph}`
+                : paragraph;
+
+
+        if(
+            candidate.length > maxLength
+            &&
+            chunk
+        ){
+
+            chunks.push(chunk);
+            chunk = paragraph;
+
+        }
+        else{
+
+            chunk = candidate;
 
         }
 
     }
 
 
-    return baseTable[
-        baseTable.length - 1
-    ];
+    if(chunk){
+        chunks.push(chunk);
+    }
+
+
+    return chunks;
 
 }
 
 
-
-function getKissDialogue(
-    key,
-    author,
-    target
+async function sendLongDialogue(
+    channel,
+    content,
+    allowedUserIDs = []
 ){
 
-    const dialogues = {
+    const chunks =
+        splitLongMessage(content);
 
-        common:
-`*${author} leans toward ${target} and gives them a quick kiss before pulling away with a grin.*
+    let sentMessage = null;
 
-*Mizuki notices and quietly giggles.*
 
-*"Awww... that was actually kinda cute~"*`,
+    for(
+        let index = 0;
+        index < chunks.length;
+        index++
+    ){
 
-        rare:
-`*${author} gently pulls ${target} closer and gives them a warm kiss.*
+        sentMessage =
+            await channel.send({
+                content:
+                    chunks[index],
 
-*For a moment, soft purple hearts float around them while Mizuki watches with a surprised smile.*
+                allowedMentions: {
+                    users:
+                        index === 0
+                            ? allowedUserIDs
+                            : [],
 
-*"Okayyy... that one had some feeling behind it~"*`,
+                    repliedUser: false
+                }
+            });
 
-        epic:
-`*The moment ${author} kisses ${target}, the air around them flashes violet.*
+    }
 
-*Tiny stars and glowing hearts begin orbiting them as time seems to slow for a few seconds.*
 
-*Mizuki blinks twice.*
+    return sentMessage;
 
-*"U-Uh... kisses aren't normally supposed to do that."*`,
+}
 
-        legendary:
-`*${author} steps toward ${target} as the sky suddenly turns deep purple.*
 
-*Their kiss releases a wave of energy that shakes the ground and sends glowing particles across the horizon.*
+function calculateKissRewards(
+    targetReward,
+    discountPercent = random(10, 20)
+){
 
-*Mizuki shields her face from the blast.*
+    const safeTargetReward =
+        Math.max(
+            0,
+            Math.floor(
+                Number(targetReward) || 0
+            )
+        );
 
-*"WHAT KIND OF KISS WAS THAT?!"*`,
+    const safeDiscountPercent =
+        Math.max(
+            10,
+            Math.min(
+                20,
+                Math.floor(
+                    Number(discountPercent) || 10
+                )
+            )
+        );
 
-        mythic:
-`*${author} kisses ${target} and reality bends around them.*
 
-*A gigantic purple galaxy forms overhead while constellations begin spinning around the two of them.*
+    return {
+        targetReward:
+            safeTargetReward,
 
-*For several seconds, gravity itself seems to forget what it is supposed to do.*
+        kisserReward:
+            Math.floor(
+                safeTargetReward *
+                (100 - safeDiscountPercent) /
+                100
+            ),
 
-*Mizuki stares upward in silence.*
+        discountPercent:
+            safeDiscountPercent,
 
-*"...That kiss just reached another universe."*`,
-
-        divine:
-`*Everything stops the instant ${author} kisses ${target}.*
-
-*Sound disappears. The stars freeze. A violet light spreads through every visible corner of reality.*
-
-*Entire constellations rearrange themselves into a glowing heart above them before exploding into cosmic dust.*
-
-*Mizuki slowly lowers her hands, completely speechless.*
-
-*"The universe itself just approved that kiss..."*`
-
+        everyoneReward:
+            Math.floor(
+                safeTargetReward * 0.20
+            )
     };
 
+}
 
-    return dialogues[key] || dialogues.common;
+
+function buildKissDialogue(
+    rarity,
+    author,
+    target,
+    rewards,
+    extras = "",
+    guild = null
+){
+
+    const emojis =
+        getKissEmojis(guild);
+
+    const user =
+        author.username;
+
+    const user2 =
+        target.username;
+
+    const userReward =
+        rewards.kisserReward
+            .toLocaleString();
+
+    const user2Reward =
+        rewards.targetReward
+            .toLocaleString();
+
+    const everyoneReward =
+        rewards.everyoneReward
+            .toLocaleString();
+
+    const commonEnding =
+`**${emojis.kiss} ${user} kissed ${user2} ${emojis.heartExclamation}**
+
+**${emojis.heartpulse} ${user} received ${userReward} XP ${emojis.heartExclamation}**
+
+**${emojis.twoHearts} ${user2} received ${user2Reward} XP ${emojis.heartExclamation}**${extras}`;
+
+    switch(String(rarity || "").toUpperCase()){
+
+        case "UNCOMMON":
+            return `${emojis.heartpulse} **UNCOMMON** 🍃
+
+*${target} was just walking until ${author} showed up, quickly kissed ${target}, and disappeared as if nothing happened.*
+
+**“H-huh...”**
+
+*${target} looked around in confusion, blushing.*
+
+${commonEnding}`;
+
+
+        case "RARE":
+            return `${emojis.heartpulse} **RARE** 💫
+
+*${target} was getting slightly annoyed by ${author} constantly kissing them.*
+
+*Now ${target} kept their guard up whenever ${author} was around.*
+
+*${target} was walking around the block when ${author} appeared.*
+
+**“Heeeeeeeeeey!! How are you doiiing?!”**
+
+*${author} could see that ${target} was guarded... and smiled.*
+
+*${author} leaned in and tried to kiss ${target}, but ${target} dodged.*
+
+*${author} blinked.*
+
+*${target} blinked too.*
+
+*${author} tried again—this time gently pulling ${target} closer before giving them a quick, warm kiss.*
+
+${commonEnding}`;
+
+
+        case "EPIC":
+            return `${emojis.halfGoldenHeart} **EPIC** ✨
+
+### The Group Kiss
+
+*The crew—shadow067972, beyondborder_08386, kdc, thezdrink, gorjezz, ${author}, and ${target}—were chilling together on the couch in their apartment.*
+
+*Then gorjezz spoke.*
+
+**“Um... guys... Haven't you seen Kape, Mrhacker and Mizuki?”**
+
+*Thezdrink answered:*
+
+**“They're probably just... goofing around...”**
+
+*Gorjezz looked at thezdrink, then looked away.*
+
+**“It's just that... they disappeared all of a sudden. I hope they're okay...”**
+
+*${author} noticed that she was nervous and sighed.*
+
+**“Don't be nervous, gorjezz... let's have a group kiss, and it'll be okay.”**
+
+*${target} nodded in agreement. Then the whole crew nodded.*
+
+*They all kissed, but only for five seconds before pulling away.*
+
+*Suddenly ${target} spoke.*
+
+**“You guys promised we could Netflix and chill today, so I'll bring some popcorn!”**
+
+*${target} ran away just like that. Even though ${target} had kind of betrayed them, they were still friends.*
+
+*Then ${author} received a message from Mrhacker: “Meet me at the park...”*
+
+**${emojis.kiss} The crew kissed each other ${emojis.heartExclamation}**
+
+**${emojis.cupid} ${user} received ${userReward} XP ${emojis.heartExclamation}**
+
+**${emojis.revolvingHearts} ${user2} received ${user2Reward} XP ${emojis.heartExclamation}**${extras}`;
+
+
+        case "LEGENDARY":
+            return `${emojis.goldenHeart} **LEGENDARY** 🌠
+
+### Kape's & Mizuki's Stunning Kiss...
+
+*Kape visited the crew's apartment.*
+
+*He saw Mizuki, shadow067972, beyondborder_08386, kdc, thezdrink and gorjezz sitting on the couch.*
+
+**“Heeey, Kape... come and join us!”**
+
+*Kape greeted them. As soon as he sat down, beyondborder_08386 whispered so the others couldn't hear.*
+
+**“Hey, can I have a little chat with you, Kape?”**
+
+*Kape looked slightly annoyed.*
+
+**“I just sat down! Alright, alright...”**
+
+*Kape and beyondborder_08386 went into another room. Beyondborder_08386 spoke quietly and coldly.*
+
+**“I think your daughter... uh... Mizuki is somewhat broken.”**
+
+*Kape blinked in confusion.*
+
+**“What do you mean... broken?”**
+
+*Beyondborder_08386 nodded.*
+
+**“Yes, broken. She sometimes glitches in a really weird way.”**
+
+*He paused before adding:*
+
+**“You ask her a question, and she answers differently from how she's supposed to.”**
+
+*Kape sighed and put a hand on beyondborder_08386's shoulder.*
+
+**“Calm down. I think she just wants to be more like you guys.”**
+
+*Kape smiled slightly.*
+
+**“I'll try speaking to her, though...”**
+
+*They returned to the crew—and watched in disbelief.*
+
+*${author} and ${target} were suddenly dancing on the table with cringe music playing.*
+
+*Kape ignored it and walked over to Mizuki.*
+
+**“Hey, Mizuki? Are you alright?”**
+
+*Mizuki looked up at Kape with a bright—perhaps too bright—smile.*
+
+**“Yeah! I'm alright, my sweet little pancake!”**
+
+*Kape blinked at her, slowly turned toward beyondborder_08386, then looked at ${author} and ${target}. He realized that something probably was broken, but decided to ignore it.*
+
+**“Alright...”**
+
+*Kape calmly kissed Mizuki on the forehead.*
+
+*The kiss was so stunning and powerful that it gave the whole crew XP.*
+
+**“Okay, guys... I'm sorry, but I have to go. Sorry I can't stay for Netflix and chill. Bye!”**
+
+*Kape left. Then gorjezz suddenly asked:*
+
+**“Where even is Mrnoob?”**
+
+*Thezdrink shrugged.*
+
+**“He told me he's working on his ‘important’ and great plan...”**
+
+*Thezdrink paused and continued.*
+
+**“Also, call him Mrhacker. He evolved from a noob to a hacker—and he'd send you to Mars if you called him Mrnoob.”**
+
+**${emojis.kiss} Kape kissed Mizuki ${emojis.heartExclamation}**
+
+**The kiss overflowed to everyone.**
+
+**${emojis.cupid} ${user} received ${userReward} XP ${emojis.heartExclamation}**
+
+**${emojis.revolvingHearts} ${user2} received ${user2Reward} XP ${emojis.heartExclamation}**${extras}`;
+
+
+        case "MYTHIC":
+            return `${emojis.mythicHeart} **MYTHIC** 🌃
+
+### The Aftermath of Mrhacker's Snap
+
+*After Mrhacker snapped his fingers, the Gauntlet overheated as if it had exploded.*
+
+*The injured crew watched Mrhacker in disbelief.*
+
+*Then Kape, injured as well, slowly walked toward him.*
+
+**“W-what did you do...?”**
+
+*Kape paused before repeating himself.*
+
+**“WHAT DID YOU DO?!”**
+
+*Mrhacker breathed loudly, looked at Kape and tilted his head—but before he could answer, the power and XP of shadow067972, beyondborder_08386, kdc, thezdrink, gorjezz and ${target} began transferring into Mrhacker.*
+
+*Almost all of everyone's power simply disappeared into him.*
+
+*Even Kape's XP transferred to Mrhacker.*
+
+*Everyone lost 90% of their power, only making Mrhacker stronger.*
+
+*Kape dropped to his knees.*
+
+*Without his powers, Kape was no longer an admin. He was simply like everyone else.*
+
+*The only person who ruled the world now was Mrhacker... or was he?*
+
+*Gorjezz suddenly walked up to Mrhacker and kissed him.*
+
+*But Mrhacker simply ignored it.*
+
+*Even so, it was one of the most powerful kisses ever—and its energy flooded literally everyone.*
+
+*Mrhacker used the Space Stone to teleport away with Mizuki and ${author}.*
+
+**${emojis.kiss} Gorjezz kissed Mrhacker ${emojis.heartExclamation}**
+
+**${emojis.mythicHeart} The kiss was one of the most powerful kisses in the world... It flooded everyone... ${emojis.mythicHeart}**
+
+**${emojis.cupid} ${user} received ${userReward} XP ${emojis.heartExclamation}**
+
+**${emojis.revolvingHearts} ${user2} received ${user2Reward} XP ${emojis.heartExclamation}**
+
+**${emojis.heartExclamation} ${emojis.heartExclamation} Everyone else received ${everyoneReward} XP ${emojis.heartExclamation} ${emojis.heartExclamation}**${extras}`;
+
+
+        case "COMMON":
+        default:
+            return `${emojis.heartpulse} **COMMON** 🌿
+
+*${target} was just walking until ${author} showed up, quickly kissed ${target}, and disappeared as if nothing happened.*
+
+**“H-huh...”**
+
+*${target} looked around in confusion, blushing.*
+
+${commonEnding}`;
+
+    }
 
 }
 
@@ -768,6 +994,13 @@ await database.giveXP(
     reward
 );
 
+const trollShare =
+    await trolls.applyKissShare(
+        guildID,
+        userID,
+        reward
+    );
+
 await quests.recordEvent(
     message,
     "earn_xp",
@@ -778,6 +1011,13 @@ await syncAndTrackLevel(
     message,
     userID
 );
+
+if(trollShare?.sourceUserID){
+    await syncAndTrackLevel(
+        message,
+        trollShare.sourceUserID
+    );
+}
 
 
 
@@ -1005,9 +1245,9 @@ const lowLevelTargetProtection =
 
 
 const kissTable =
-    currentLevel >= 100
-        ? KISS_TABLES.level101Plus
-        : KISS_TABLES.level1To100;
+    getKissTableForLevel(
+        currentLevel
+    );
 
 
 // Level 100+ keeps Luck useful, but II / III / MAX
@@ -1020,47 +1260,18 @@ const commandLuck =
         : activeLuck;
 
 
-const activeLuckTier =
-    String(
-        activeLuck?.tier || ""
-    ).toLowerCase();
-
-
-const exactLuckTable =
-    currentLevel < 100
-        ? LEVEL1_TO99_EXACT_LUCK_TABLES[
-            activeLuckTier
-        ]
-        : (
-            currentLevel >= 100
-                ? LEVEL101_PLUS_EXACT_LUCK_TABLES[
-                    activeLuckTier
-                ]
-                : null
-        );
-
-
 const outcome =
-    exactLuckTable
-        ? rollExactKissOutcome(
-            kissTable,
-            exactLuckTable
-        )
-        : luck.rollCommandOutcome(
-            kissTable,
-            commandLuck
-        );
+    luck.rollCommandOutcome(
+        kissTable,
+        commandLuck
+    );
 
 
-const reward =
-    economyLimits.capSocialXP(
-        "kiss",
-        luck.rollCommandXP(
-            outcome.min,
-            outcome.max,
-            commandLuck
-        ),
-        currentLevel
+const rolledReward =
+    luck.rollCommandXP(
+        outcome.min,
+        outcome.max,
+        commandLuck
     );
 
 
@@ -1071,10 +1282,10 @@ const protectedTargetReward =
         ? Math.max(
             1,
             Math.floor(
-                reward * 0.10
+                rolledReward * 0.10
             )
         )
-        : reward;
+        : rolledReward;
 
 
 const targetReward =
@@ -1090,35 +1301,70 @@ const targetLevelCapApplied =
     protectedTargetReward;
 
 
-await database.giveXP(
-    message.guild.id,
-    target.id,
-    targetReward
-);
-
-
-// The kisser receives 15% less XP than the kissed user.
-const kisserReward =
-    economyLimits.capSocialXP(
-        "kiss",
-        Math.floor(
-            reward * 0.85
-        ),
-        currentLevel
+const calculatedRewards =
+    calculateKissRewards(
+        targetReward
     );
 
 
-await database.giveXP(
-    message.guild.id,
-    userID,
-    kisserReward
-);
+const kissRewards = {
+    ...calculatedRewards,
+
+    kisserReward:
+        economyLimits.capSocialXP(
+            "kiss",
+            calculatedRewards.kisserReward,
+            currentLevel
+        )
+};
+
+
+if(outcome.key === "mythic"){
+
+    // Mythic is one transaction: user2 receives the complete rolled reward,
+    // the kisser receives 10-20% less, and every other registered player
+    // receives 20% of user2's reward. The two command participants are
+    // excluded from the server-wide part so nobody is paid twice.
+    await database.performMythicKissReward(
+        guildID,
+        userID,
+        target.id,
+        kissRewards.kisserReward,
+        kissRewards.targetReward,
+        kissRewards.everyoneReward
+    );
+
+}
+else{
+
+    await database.giveXP(
+        guildID,
+        target.id,
+        kissRewards.targetReward
+    );
+
+
+    await database.giveXP(
+        guildID,
+        userID,
+        kissRewards.kisserReward
+    );
+
+}
+
+
+const trollShare =
+    await trolls.applyKissShare(
+        guildID,
+        userID,
+        kissRewards.kisserReward
+    );
 
 
 await quests.recordEvent(
     message,
     "earn_xp",
-    targetReward,
+    kissRewards.targetReward,
     {
         userID: target.id
     }
@@ -1128,7 +1374,7 @@ await quests.recordEvent(
 await quests.recordEvent(
     message,
     "earn_xp",
-    kisserReward,
+    kissRewards.kisserReward,
     {
         userID
     }
@@ -1147,6 +1393,14 @@ await syncAndTrackLevel(
 );
 
 
+if(trollShare?.sourceUserID){
+    await syncAndTrackLevel(
+        message,
+        trollShare.sourceUserID
+    );
+}
+
+
 const wonLuckBoost =
     await luck.tryCommandLuckBoostDrop(
         message.member,
@@ -1162,26 +1416,29 @@ const luckExtra =
     );
 
 
+const protectionExtra =
+    `${lowLevelTargetProtection ? "\n🛡️ **Level 1-99 protection:** the kissed user received 10% of the original high-level roll." : ""}` +
+    `${targetLevelCapApplied ? "\n🛡️ **Level 1-99 reward cap applied.**" : ""}`;
+
+
 const dialogue =
-    getKissDialogue(
-        outcome.key,
+    buildKissDialogue(
+        outcome.rarity,
         message.author,
-        target
+        target,
+        kissRewards,
+        `${usedLuckExtra}${luckExtra}${protectionExtra}`,
+        message.guild
     );
 
 
-return message.channel.send(
-
-`${outcome.rarity}
-
-${dialogue}
-
-💋 **${message.author.username} kissed ${target.username}!**
-
-💖 **${target.username} received +${targetReward.toLocaleString()} XP!**${lowLevelTargetProtection ? " 🛡️ *(90% Lv1-99 protection applied)*" : ""}${targetLevelCapApplied ? " 🛡️ *(Level 1-99 reward cap applied)*" : ""}
-
-💕 **${message.author.username} received +${kisserReward.toLocaleString()} XP!**${usedLuckExtra}${luckExtra}`
-
+return sendLongDialogue(
+    message.channel,
+    dialogue,
+    [
+        message.author.id,
+        target.id
+    ]
 );
 
 
@@ -1194,6 +1451,13 @@ module.exports = {
 
     execute,
     KISS_TABLES,
-    KISS_BOT_RANGES
+    KISS_BOT_RANGES,
+    getKissTableForLevel,
+    getCustomEmoji,
+    getKissEmojis,
+    splitLongMessage,
+    sendLongDialogue,
+    calculateKissRewards,
+    buildKissDialogue
 
 };
