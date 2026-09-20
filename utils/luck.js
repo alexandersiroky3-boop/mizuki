@@ -3,6 +3,9 @@
 const database =
     require("../database");
 
+const trolls =
+    require("../systems/trolls");
+
 
 const {
     AuditLogEvent
@@ -759,11 +762,17 @@ function getNoLuckProfile(){
         roleID:
             null,
 
+        tier:
+            null,
+
         name:
             "No Luck Boost",
 
         multiplier:
             1,
+
+        criticalChanceBonus:
+            0,
 
         duration:
             0,
@@ -790,6 +799,118 @@ function getLuckRoleByID(roleID){
             role.roleID === roleID
 
     ) || null;
+
+}
+
+
+async function applyTrollLuckModifiers(
+    member,
+    ownProfile
+){
+
+    const modifiers = await trolls.getLuckModifiers(
+        member.guild.id,
+        member.id
+    );
+
+    const profiles = [];
+
+    if(
+        !modifiers.suppressed
+        && ownProfile?.roleID
+    ){
+        profiles.push(ownProfile);
+    }
+
+    for(const roleID of modifiers.bonusRoleIDs){
+        const bonusProfile = getLuckRoleByID(roleID);
+        if(bonusProfile){
+            profiles.push(bonusProfile);
+        }
+    }
+
+
+    if(profiles.length === 0){
+        return {
+            ...getNoLuckProfile(),
+            suppressedByTroll: modifiers.suppressed,
+            trollStackCount: 0
+        };
+    }
+
+
+    const upgradeEffects =
+        await database.getUserUpgradeEffects(
+            member.guild.id,
+            member.id
+        );
+
+    const boostMultiplierScale = Math.max(
+        1,
+        Number(upgradeEffects.boostMultiplierScale) || 1
+    );
+
+    const highestProfile = profiles.reduce(
+        (best, profile) =>
+            Number(profile.order) > Number(best.order)
+                ? profile
+                : best
+    );
+
+    const combinedBaseMultiplier = profiles.reduce(
+        (sum, profile) =>
+            sum + Math.max(
+                1,
+                Number(
+                    profile.baseMultiplier
+                    ?? profile.multiplier
+                ) || 1
+            ),
+        0
+    );
+
+    const highestBaseMultiplier = profiles.reduce(
+        (highest, profile) =>
+            Math.max(
+                highest,
+                Number(
+                    profile.baseMultiplier
+                    ?? profile.multiplier
+                ) || 1
+            ),
+        1
+    );
+
+    const combinedCriticalBonus = profiles.reduce(
+        (sum, profile) =>
+            sum + Math.max(
+                0,
+                Number(profile.criticalChanceBonus) || 0
+            ),
+        0
+    );
+
+
+    return {
+        ...highestProfile,
+        name: profiles.length > 1
+            ? "Stacked Luck Boosts"
+            : highestProfile.name,
+        baseMultiplier: highestBaseMultiplier,
+        multiplier:
+            combinedBaseMultiplier *
+            boostMultiplierScale,
+        criticalChanceBonus: combinedCriticalBonus,
+        boostMultiplierScale,
+        expiresAt: Math.max(
+            ...profiles.map(profile =>
+                Number(profile.expiresAt) || 0
+            )
+        ) || null,
+        suppressedByTroll: modifiers.suppressed,
+        trollStackCount: modifiers.bonusRoleIDs.length,
+        stackedBaseMultiplier: combinedBaseMultiplier
+    };
 
 }
 
@@ -965,7 +1086,10 @@ async function syncMemberLuckRoles(
 // GET ACTIVE LUCK BOOST
 // ==============================
 
-async function getActiveLuckBoost(member){
+async function getActiveLuckBoost(
+    member,
+    options = {}
+){
 
     const savedBoost =
         await database.getLuckBoost(
@@ -981,7 +1105,13 @@ async function getActiveLuckBoost(member){
             null
         );
 
-        return getNoLuckProfile();
+        const noLuck = getNoLuckProfile();
+        return options.ignoreTrolls
+            ? noLuck
+            : applyTrollLuckModifiers(
+                member,
+                noLuck
+            );
 
     }
 
@@ -1006,7 +1136,13 @@ async function getActiveLuckBoost(member){
         );
 
 
-        return getNoLuckProfile();
+        const noLuck = getNoLuckProfile();
+        return options.ignoreTrolls
+            ? noLuck
+            : applyTrollLuckModifiers(
+                member,
+                noLuck
+            );
 
     }
 
@@ -1031,7 +1167,13 @@ async function getActiveLuckBoost(member){
         );
 
 
-        return getNoLuckProfile();
+        const noLuck = getNoLuckProfile();
+        return options.ignoreTrolls
+            ? noLuck
+            : applyTrollLuckModifiers(
+                member,
+                noLuck
+            );
 
     }
 
@@ -1059,7 +1201,7 @@ async function getActiveLuckBoost(member){
         );
 
 
-    return {
+    const activeProfile = {
 
         ...profile,
 
@@ -1075,6 +1217,14 @@ async function getActiveLuckBoost(member){
         expiresAt
 
     };
+
+
+    return options.ignoreTrolls
+        ? activeProfile
+        : applyTrollLuckModifiers(
+            member,
+            activeProfile
+        );
 
 }
 
@@ -2022,6 +2172,20 @@ function getLevel100PlusCommandLuckProfile(profile){
                 Number(
                     profile.boostMultiplierScale
                 ) || 1
+            ) *
+            Math.max(
+                1,
+                (
+                    Number(
+                        profile.stackedBaseMultiplier
+                    ) ||
+                    Number(profile.baseMultiplier) ||
+                    1
+                ) /
+                Math.max(
+                    1,
+                    Number(profile.baseMultiplier) || 1
+                )
             ),
 
         commandRewardBiasPower:
@@ -2472,7 +2636,8 @@ async function activateLuckBoostFromInventory(
 
     const currentBoost =
         await getActiveLuckBoost(
-            member
+            member,
+            {ignoreTrolls: true}
         );
 
 
@@ -2600,6 +2765,18 @@ async function activateLuckBoostFromInventory(
             member,
             selectedBoost.roleID
         );
+
+
+        await trolls.activatePendingLuckTransfer(
+            member.guild.id,
+            member.id,
+            selectedBoost.roleID
+        ).catch(error => {
+            console.error(
+                "Could not activate pending troll Luck transfer:",
+                error
+            );
+        });
 
     }
     catch(error){
@@ -3283,6 +3460,18 @@ async function checkLuckBoostRole(
         );
 
 
+        await trolls.activatePendingLuckTransfer(
+            newMember.guild.id,
+            newMember.id,
+            selectedRole.roleID
+        ).catch(error => {
+            console.error(
+                "Could not activate pending troll Luck transfer:",
+                error
+            );
+        });
+
+
         console.log(
 
             `Owner manually gave ${selectedRole.name} to ${newMember.user.tag}`
@@ -3461,6 +3650,8 @@ module.exports = {
     LUCK_MEGA_ROLL_MAX_XP,
 
     getMemberLuckProfile,
+
+    applyTrollLuckModifiers,
 
     getCriticalChanceBonus,
 
