@@ -1,6 +1,9 @@
 const database = require("../database");
 const xp = require("../utils/xp");
+const luck = require("../utils/luck");
 const boosts = require("./boosts");
+const powerRunes = require("./powerRunes");
+const trolls = require("./trolls");
 const levelRoles =
     require("./levelRoles");
 const XP_LOG_CHANNEL =
@@ -136,6 +139,19 @@ const guaranteedCritical =
     );
 
 
+const trollChatEffect =
+    await trolls.getChatEffect(
+        guildID,
+        userID
+    );
+
+
+const activeLuckBoost =
+    await luck.getActiveLuckBoost(
+        message.member
+    );
+
+
 
     // ======================
     // Calculate XP
@@ -150,6 +166,18 @@ const reward =
         {
             forcedCritical:
                 guaranteedCritical.forced,
+
+            forcedCriticalFailure:
+                trollChatEffect?.effectType ===
+                    trolls.EFFECTS.CRITICAL_FAIL,
+
+            criticalChanceMultiplier:
+                trollChatEffect?.effectType ===
+                    trolls.EFFECTS.CRITICAL_HALF
+                        ? 0.5
+                        : 1,
+
+            activeLuckBoost,
 
             upgradeEffects
         }
@@ -177,11 +205,26 @@ const chatXPMultiplier =
     upgradeChatXPMultiplier;
 
 
-    const earnedXP =
+    const earnedXPBeforeTroll =
         Math.floor(
             reward.xp *
             chatXPMultiplier
         );
+
+
+const trollResolution =
+    trolls.resolveChatEffect(
+        trollChatEffect,
+        earnedXPBeforeTroll
+    );
+
+
+const earnedXP =
+    trollResolution.targetXP;
+
+
+const redirectedXP =
+    trollResolution.redirectedXP;
 
 
 const newBestCriticalStreak =
@@ -252,6 +295,38 @@ else{
         earnedXP
 
     );
+
+
+if(
+    redirectedXP > 0
+    && trollChatEffect
+){
+
+    await database.giveXP(
+        guildID,
+        trollChatEffect.sourceUserID,
+        redirectedXP
+    );
+
+
+    await database.addXPLog(
+        guildID,
+        trollChatEffect.sourceUserID,
+        redirectedXP,
+        reward.critical,
+        reward.criticalStreak,
+        reward.criticalMultiplier,
+        "troll"
+    );
+
+}
+
+
+if(trollChatEffect){
+    await trolls.consumeChatEffect(
+        trollChatEffect
+    );
+}
 
 
 await database.addXPLog(
@@ -326,6 +401,42 @@ await database.addXPLog(
     }
 
 
+    // ======================
+    // RANDOM POWER RUNE DROP
+    // ======================
+    // Power Runes only roll when the user actually receives positive chat XP.
+    // Their fixed 3%, 0.5% and 0.08% chances are not affected by upgrades or
+    // Luck Boosts.
+
+    let powerRuneDrop = null;
+
+
+    if(earnedXP > 0){
+
+        try{
+
+            powerRuneDrop =
+                await powerRunes.tryPowerRuneDrop(
+                    message.member,
+                    "chat message",
+                    Math.random
+                );
+
+        }
+        catch(error){
+
+            // The message XP has already been committed. A temporary Rune
+            // inventory or role error must not hide or reverse that reward.
+            console.error(
+                "Could not award chat Power Rune drop:",
+                error
+            );
+
+        }
+
+    }
+
+
 
 
 
@@ -393,6 +504,18 @@ await database.addXPLog(
     );
 
 
+if(
+    redirectedXP > 0
+    && trollChatEffect
+){
+    await syncLevelAndAnnounce(
+        message.client,
+        guildID,
+        trollChatEffect.sourceUserID
+    );
+}
+
+
 
 
 
@@ -403,6 +526,16 @@ return {
 
 
     earnedXP,
+
+
+    earnedXPBeforeTroll,
+
+
+    redirectedXP,
+
+
+    trollEffectType:
+        trollChatEffect?.effectType || null,
 
 
     xpBeforeBoost:
@@ -422,6 +555,9 @@ return {
 
 
     xpBoostDrop,
+
+
+    powerRuneDrop,
 
 
     critical:
