@@ -54,12 +54,12 @@ const UPGRADE_DEFINITIONS = Object.freeze({
             upgrade(freezeCost(50000), "Gain +20% chat XP."),
             upgrade(freezeCost(200000), "Gain another +30% chat XP and improve the base critical chance."),
             upgrade(freezeCost(1250000), "Improve critical odds again and buff chat XP Boost drops."),
-            upgrade(freezeCost(7500000), "Gain another +50% chat XP; 20+ critical streaks now award 5x streak XP instead of 2x."),
+            upgrade(freezeCost(7500000), "Gain another +50% chat XP."),
             upgrade(
                 freezeCost(50000000, [
                     { boostType: "luck", tier: "max", amount: 3 }
                 ]),
-                "Gain another +75% chat XP, unlock a 2% ten-critical burst, and make 50+ streaks award 20x instead of 5x."
+                "Gain another +75% chat XP and unlock a 2% ten-critical burst."
             ),
             upgrade(
                 freezeCost(500000000, [
@@ -76,7 +76,7 @@ const UPGRADE_DEFINITIONS = Object.freeze({
             ),
             upgrade(
                 freezeCost(5000000000),
-                "Gain another +500% chat XP, improve critical odds and XP Boost drops, and make 100+ streaks award 50x."
+                "Gain another +500% chat XP and improve critical odds and XP Boost drops."
             )
         ])
     }),
@@ -265,9 +265,6 @@ function getUpgradeEffects(levels = {}){
         chatCriticalChanceBonus: criticalChanceByLevel[chat],
         chatXPBoostDropMultiplier: chatDropByLevel[chat],
         tenCriticalBurstChance: burstChanceByLevel[chat],
-        critical20Multiplier: chat >= 4 ? 5 : 2,
-        critical50Multiplier: chat >= 5 ? 20 : 5,
-        critical100Multiplier: chat >= 8 ? 50 : null,
 
         rollingLevel: roll,
         doubleTenMillionRolls: roll >= 5,
