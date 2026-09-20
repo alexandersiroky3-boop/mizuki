@@ -4,6 +4,8 @@ const xp = require("../utils/xp");
 const leveling = require("../systems/leveling");
 const luck =
     require("../utils/luck");
+const trolls =
+    require("../systems/trolls");
 
 const quests =
     require("../systems/quests");
@@ -35,6 +37,14 @@ const ROLL_EDIT_RETRY_DELAY_MS =
 
 const ROLL_FINAL_EDIT_RETRY_WINDOW_MS =
     30_000;
+
+
+const ROLL_REVEAL_FRAME_DELAY_MS =
+    1000;
+
+
+const ROLL_MESSAGE_MAX_LENGTH =
+    1900;
 
 
 const PERMANENT_ROLL_EDIT_ERROR_CODES =
@@ -196,6 +206,41 @@ const ROLL_SETTINGS = {
 };
 
 
+function rollGuaranteedNegative(
+    chanceTable = ROLL_SETTINGS.chanceTables.base,
+    random = Math.random
+){
+
+    const negativeOutcomes = chanceTable.filter(outcome =>
+        outcome.type === "negative"
+        && Number(outcome.max) < 0
+    );
+
+    const totalWeight = negativeOutcomes.reduce(
+        (sum, outcome) =>
+            sum + Math.max(0, Number(outcome.chancePercent) || 0),
+        0
+    );
+
+    let cursor = random() * totalWeight;
+    let selected = negativeOutcomes[negativeOutcomes.length - 1];
+
+    for(const outcome of negativeOutcomes){
+        cursor -= Math.max(0, Number(outcome.chancePercent) || 0);
+        if(cursor < 0){
+            selected = outcome;
+            break;
+        }
+    }
+
+    const min = Math.ceil(Math.min(selected.min, selected.max));
+    const max = Math.floor(Math.max(selected.min, selected.max));
+
+    return Math.floor(random() * (max - min + 1)) + min;
+
+}
+
+
 function validateRollChanceTable(
     tableName,
     table
@@ -294,7 +339,7 @@ function buildRollGuaranteeFooter(
 
 
     return (
-        `\n\n🎯 **100-Roll Guarantee:** ${progress}/${threshold}`
+        `\n\n🎯 100 Rolls Guarantee: ${progress}/${threshold}`
         +
         (
             rollGuarantee?.guaranteed
@@ -497,16 +542,29 @@ function getRollCountdownEndsAt(
         ) - now;
 
 
+    const hasStoredDeadline =
+        Number.isFinite(
+            Number(
+                rollAccess?.cooldownEndsAt
+            )
+        )
+        &&
+        Number(
+            rollAccess?.cooldownEndsAt
+        ) > 0;
+
+
     const requestedRemaining =
         Number.isFinite(explicitRemaining)
         &&
         explicitRemaining >= 0
             ? explicitRemaining
             : (
-                Number.isFinite(storedRemaining)
-                &&
-                storedRemaining >= 0
-                    ? storedRemaining
+                hasStoredDeadline
+                    ? Math.max(
+                        0,
+                        storedRemaining
+                    )
                     : ROLL_COOLDOWN_MS
             );
 
@@ -860,10 +918,14 @@ async function sendMessageWithRollCountdown(
 
 
     const initialContent =
-        replaceRollCountdown(
-            content,
-            seconds
-        );
+        seconds <= 0
+            ? replaceRollCountdownWithReady(
+                content
+            )
+            : replaceRollCountdown(
+                content,
+                seconds
+            );
 
 
     const sentMessage =
@@ -884,20 +946,883 @@ async function sendMessageWithRollCountdown(
 }
 
 
-function sendRollResultMessage(
+function getCustomEmoji(
+    guild,
+    name,
+    fallback
+){
+
+    const emoji =
+        guild?.emojis?.cache?.find?.(
+            entry => entry.name === name
+        );
+
+
+    return emoji
+        ? emoji.toString()
+        : fallback;
+
+}
+
+
+function getRollEmojis(guild){
+
+    return {
+        roll:
+            getCustomEmoji(
+                guild,
+                "roll",
+                "🎲"
+            ),
+
+        halfGoldenRoll:
+            getCustomEmoji(
+                guild,
+                "half_golden_roll",
+                "✨"
+            ),
+
+        goldenRoll:
+            getCustomEmoji(
+                guild,
+                "golden_roll",
+                "🌠"
+            ),
+
+        mythicRoll:
+            getCustomEmoji(
+                guild,
+                "mythic_roll",
+                "🌃"
+            ),
+
+        giftHeart:
+            getCustomEmoji(
+                guild,
+                "gift_heart",
+                "💝"
+            ),
+
+        halfGoldenHeart:
+            getCustomEmoji(
+                guild,
+                "half_golden_heart",
+                "💖"
+            ),
+
+        goldenHeart:
+            getCustomEmoji(
+                guild,
+                "golden_heart",
+                "💛"
+            ),
+
+        mythicHeart:
+            getCustomEmoji(
+                guild,
+                "mythic_heart",
+                "💜"
+            ),
+
+        inevitableGalaxy:
+            getCustomEmoji(
+                guild,
+                "inevitable_galaxy",
+                "🌌"
+            )
+    };
+
+}
+
+
+function getRollRevealEmojiSequence(
+    rolledXP,
+    guild
+){
+
+    const safeXP =
+        Number(rolledXP) || 0;
+
+
+    if(safeXP <= 25000){
+        return [];
+    }
+
+
+    const emojis =
+        getRollEmojis(guild);
+
+    const sequence = [
+        emojis.roll
+    ];
+
+
+    if(safeXP > 100000){
+        sequence.push(
+            emojis.halfGoldenRoll
+        );
+    }
+
+
+    if(safeXP > 500000){
+        sequence.push(
+            emojis.goldenRoll
+        );
+    }
+
+
+    if(safeXP > 5000000){
+        sequence.push(
+            emojis.mythicRoll
+        );
+    }
+
+
+    return sequence;
+
+}
+
+
+function waitForRollReveal(milliseconds){
+
+    return new Promise(
+        resolve =>
+            setTimeout(
+                resolve,
+                Math.max(
+                    0,
+                    Number(milliseconds) || 0
+                )
+            )
+    );
+
+}
+
+
+function buildRollRevealText(
+    emoji,
+    dotCount = 3
+){
+
+    const safeDotCount =
+        Math.max(
+            1,
+            Math.min(
+                3,
+                Math.floor(
+                    Number(dotCount) || 1
+                )
+            )
+        );
+
+
+    return (
+        `${emoji} Rolling` +
+        ".".repeat(
+            safeDotCount
+        )
+    );
+
+}
+
+
+async function playRollReveal(
+    message,
+    rolledXP,
+    wait = waitForRollReveal
+){
+
+    const emojiSequence =
+        getRollRevealEmojiSequence(
+            rolledXP,
+            message.guild
+        );
+
+
+    if(emojiSequence.length === 0){
+        return null;
+    }
+
+
+    const waitFunction =
+        typeof wait === "function"
+            ? wait
+            : waitForRollReveal;
+
+    let revealMessage = null;
+
+
+    try{
+
+        revealMessage =
+            await message.reply({
+                content:
+                    buildRollRevealText(
+                        emojiSequence[0],
+                        3
+                    ),
+
+                allowedMentions: {
+                    repliedUser: false,
+                    parse: []
+                }
+            });
+
+
+        if(
+            !revealMessage
+            ||
+            typeof revealMessage.edit !==
+                "function"
+        ){
+
+            return revealMessage;
+
+        }
+
+
+        for(
+            let emojiIndex = 0;
+            emojiIndex < emojiSequence.length;
+            emojiIndex++
+        ){
+
+            const emoji =
+                emojiSequence[emojiIndex];
+
+
+            if(emojiIndex > 0){
+
+                await revealMessage.edit({
+                    content:
+                        buildRollRevealText(
+                            emoji,
+                            3
+                        ),
+                    allowedMentions: {
+                        parse: []
+                    }
+                });
+
+            }
+
+
+            await waitFunction(
+                ROLL_REVEAL_FRAME_DELAY_MS
+            );
+
+
+            for(
+                let dotCount = 1;
+                dotCount <= 3;
+                dotCount++
+            ){
+
+                await revealMessage.edit({
+                    content:
+                        buildRollRevealText(
+                            emoji,
+                            dotCount
+                        ),
+                    allowedMentions: {
+                        parse: []
+                    }
+                });
+
+
+                await waitFunction(
+                    ROLL_REVEAL_FRAME_DELAY_MS
+                );
+
+            }
+
+        }
+
+    }
+    catch(_error){
+
+        // A missing permission, a deleted loading message, or a temporary
+        // Discord edit failure must never prevent the real roll result.
+
+    }
+    finally{
+
+        if(
+            revealMessage
+            &&
+            typeof revealMessage.delete ===
+                "function"
+        ){
+
+            try{
+                await revealMessage.delete();
+            }
+            catch(_error){
+                // The final roll result still needs to be sent.
+            }
+
+        }
+
+    }
+
+
+    return revealMessage;
+
+}
+
+
+function splitLongMessage(
+    content,
+    maxLength = ROLL_MESSAGE_MAX_LENGTH
+){
+
+    const paragraphs =
+        String(content || "")
+            .split("\n\n");
+
+    const chunks = [];
+    let chunk = "";
+
+
+    function pushPiece(piece){
+
+        const candidate =
+            chunk
+                ? `${chunk}\n\n${piece}`
+                : piece;
+
+
+        if(candidate.length <= maxLength){
+            chunk = candidate;
+            return;
+        }
+
+
+        if(chunk){
+            chunks.push(chunk);
+            chunk = "";
+        }
+
+
+        if(piece.length <= maxLength){
+            chunk = piece;
+            return;
+        }
+
+
+        for(
+            let start = 0;
+            start < piece.length;
+            start += maxLength
+        ){
+
+            const slice =
+                piece.slice(
+                    start,
+                    start + maxLength
+                );
+
+
+            if(slice.length === maxLength){
+                chunks.push(slice);
+            }
+            else{
+                chunk = slice;
+            }
+
+        }
+
+    }
+
+
+    for(const paragraph of paragraphs){
+        pushPiece(paragraph);
+    }
+
+
+    if(chunk){
+        chunks.push(chunk);
+    }
+
+
+    return chunks;
+
+}
+
+
+async function sendRollResultMessage(
     message,
     rollAccess,
     content
 ){
 
-    return sendMessageWithRollCountdown(
-        value =>
-            message.channel.send(
-                value
-            ),
-        content,
-        rollAccess
+    const cooldownEndsAt =
+        getRollCountdownEndsAt(
+            rollAccess
+        );
+
+    const seconds =
+        getDisplayedCooldownSeconds(
+            cooldownEndsAt -
+            Date.now()
+        );
+
+    const preparedContent =
+        seconds <= 0
+            ? replaceRollCountdownWithReady(
+                content
+            )
+            : replaceRollCountdown(
+                content,
+                seconds
+            );
+
+    const chunks =
+        splitLongMessage(
+            preparedContent
+        );
+
+    let lastSentMessage = null;
+
+
+    for(
+        let index = 0;
+        index < chunks.length;
+        index++
+    ){
+
+        const chunk =
+            chunks[index];
+
+
+        lastSentMessage =
+            await message.channel.send({
+                content: chunk,
+
+                allowedMentions: {
+                    users:
+                        index === 0
+                            ? [message.author.id]
+                            : [],
+                    roles: [],
+                    repliedUser: false
+                }
+            });
+
+
+        if(
+            ROLL_COUNTDOWN_PATTERN.test(
+                chunk
+            )
+        ){
+
+            startRollMessageCountdown(
+                lastSentMessage,
+                chunk,
+                cooldownEndsAt
+            );
+
+        }
+
+    }
+
+
+    return lastSentMessage;
+
+}
+
+
+function getRollBonusPercentRange(
+    rolledXP
+){
+
+    const safeXP =
+        Number(rolledXP) || 0;
+
+
+    if(safeXP > 5000000){
+        return {
+            minimumPercentLess: 15,
+            maximumPercentLess: 50
+        };
+    }
+
+
+    if(safeXP > 500000){
+        return {
+            minimumPercentLess: 15,
+            maximumPercentLess: 50
+        };
+    }
+
+
+    if(safeXP > 100000){
+        return {
+            minimumPercentLess: 10,
+            maximumPercentLess: 30
+        };
+    }
+
+
+    if(safeXP > 25000){
+        return {
+            minimumPercentLess: 15,
+            maximumPercentLess: 50
+        };
+    }
+
+
+    return null;
+
+}
+
+
+function rollPercentageLessBonus(
+    rolledXP,
+    minimumPercentLess,
+    maximumPercentLess,
+    random = Math.random
+){
+
+    const safeXP =
+        Math.max(
+            0,
+            Math.floor(
+                Number(rolledXP) || 0
+            )
+        );
+
+    const safeMinimumPercentLess =
+        Math.max(
+            0,
+            Math.min(
+                100,
+                Number(minimumPercentLess) || 0
+            )
+        );
+
+    const safeMaximumPercentLess =
+        Math.max(
+            safeMinimumPercentLess,
+            Math.min(
+                100,
+                Number(maximumPercentLess) || 0
+            )
+        );
+
+    const minimumBonus =
+        Math.floor(
+            safeXP *
+            (
+                100 -
+                safeMaximumPercentLess
+            ) /
+            100
+        );
+
+    const maximumBonus =
+        Math.floor(
+            safeXP *
+            (
+                100 -
+                safeMinimumPercentLess
+            ) /
+            100
+        );
+
+
+    if(maximumBonus <= minimumBonus){
+        return minimumBonus;
+    }
+
+
+    const position =
+        Math.max(
+            0,
+            Math.min(
+                0.999999999999,
+                Number(random()) || 0
+            )
+        );
+
+
+    return (
+        minimumBonus +
+        Math.floor(
+            position *
+            (
+                maximumBonus -
+                minimumBonus +
+                1
+            )
+        )
     );
+
+}
+
+
+function buildPositiveRollDialogue({
+    message,
+    rolledXP,
+    bonusXP = 0,
+    rollCooldownExtra = "",
+    rollContextExtras = "",
+    rollGuaranteeFooter = ""
+}){
+
+    const author =
+        message.author;
+
+    const emojis =
+        getRollEmojis(
+            message.guild
+        );
+
+    const formattedRolledXP =
+        Number(rolledXP)
+            .toLocaleString();
+
+    const formattedBonusXP =
+        Number(bonusXP)
+            .toLocaleString();
+
+    const resultExtras =
+        rollCooldownExtra +
+        rollContextExtras;
+
+
+    if(rolledXP > 5000000){
+
+        return `${emojis.mythicRoll} ${author} rolled **+${formattedRolledXP} XP!** 🌃${resultExtras}
+
+### The Great Ruler
+
+*When Kape was selected and chosen to be the next administrator, Kape needed a weapon...
+
+You see, every administrator has their own weapon, so Kape not having one meant he wasn't truly an administrator yet...
+
+One day, after Kape had already heard the news about being chosen as the next administrator, a really powerful unknown person wearing a black hood that hid his face approached him...
+
+Kape was wandering around the streets before a dark portal appeared in front of him and the unknown person reappeared once more...*
+
+"You'll have to come with me, Kape..." *the unknown person said.*
+
+*Kape had no option but to agree and follow him. They walked through the portal and entered a strange white parallel universe, with every object floating around them. They walked on slightly transparent ground, as if they were far away from every living planet—at the edge of the universe...
+
+As they walked, Kape decided to ask questions...*
+
+"So... uh... Since you know my name... can I at least know your name, sir...?"
+
+*The powerful unknown person looked at Kape while walking, then looked ahead.*
+
+"Call me... Frampto."
+
+*Frampto simply said. Kape nodded and remembered that name for the future...
+
+They reached someone sitting upon a throne. Kape sensed his immense power. It was unlike anything Kape had ever felt before—something truly unfathomable...*
+
+"Thy Great Ruler, I bring the Chosen One..." *Frampto said as he got on his knees, showing respect for The Great Ruler.*
+
+*Meanwhile, Kape was still standing there...
+
+The Great Ruler, seated upon the throne, looked at Kape as a red glint shone from his pupils...
+
+Then The Great Ruler stood up and looked down at Kape.*
+
+"As you have been informed, you have been chosen to be the new administrator..."
+
+*The Great Ruler paused.*
+
+"Are you sure you're ready to bring peace and ensure that the people are safe with your new, inevitable abilities...?"
+
+*Kape kept looking at The Great Ruler and answered:*
+
+"Yes..."
+
+*The Great Ruler watched Kape for a second before speaking.*
+
+"Great..."
+
+*The Great Ruler paused before snapping his fingers, spawning an Infinity Gauntlet in his hands. He continued to speak:*
+
+"Please accept my unfathomable gift, made especially for you..."
+
+*Kape smiled slightly and took the Gauntlet from The Great Ruler.
+
+Before equipping it, Kape bowed to The Great Ruler as a sign of respect...
+
+Then Kape finally equipped it and felt the bonus, unfathomable power coursing through his veins...*
+
+"Alright, and that's the end of the story..." *Kape said to the crew while they were sitting on the couch.*
+
+*Some had even slept through the story: gorjezz nodded while saying "wow," thezdrink acknowledged it by saying "nices," beyondborder_08386 listened carefully and coldly, and Mrnoob simply blinked at Kape before asking:*
+
+"And uh... What's The Great Ruler's name?"
+
+*Kape blinked back at Mrnoob and answered:*
+
+"Uh... I-I... don't know that yet..."
+
+*Mrnoob just blinked back at Kape while ${author}, shadow067972, and kdc were sleeping and snoring loudly...*
+
+**${emojis.mythicHeart} The story made ${author} gain some bonus power by ${formattedBonusXP} XP!**${rollGuaranteeFooter}`;
+
+    }
+
+
+    if(rolledXP > 500000){
+
+        return `${emojis.goldenRoll} ${author} rolled **+${formattedRolledXP} XP!** 🌠${resultExtras}
+
+### ${author} VS beyondborder_08386
+
+*beyondborder_08386 was walking toward the crew's house until he saw ${author} running up to him from the house.*
+
+"Hey! Let's bet our power on rolling the dice!" *${author} said energetically.*
+
+*beyondborder_08386 blinked at ${author} and coldly kept staring.
+
+beyondborder_08386 could definitely feel that ${author} was stronger—as if ${author} had already won every bet and taken power from Mrhacker and Kape...*
+
+"Alright... I guess..."
+
+*beyondborder_08386 rolled first with two dice. He needed a total of 10. He shook them in his hands before rolling and got...
+
+The numbers 5 and 4. beyondborder_08386 blinked at the dice and started getting suspicious because he had thrown them perfectly...
+
+It was ${author}'s turn. ${author} needed exactly 9 with both dice combined. ${author} rolled and got...
+
+The numbers 6 and 3. ${author} won once again...
+
+beyondborder_08386 stared suspiciously while ${author} simply smiled back at him.
+
+beyondborder_08386 sighed, raised his hand, and spared some of his power, making ${author} even stronger...
+
+${author} powered up, a dark green aura surrounding them, but then beyondborder_08386 noticed something: when ${author} had rolled the dice, there had been a strange, faint green glow around them...*
+
+"You're cheating..."
+
+*beyondborder_08386 stated it as a fact, not a question. ${author} looked at him with slightly widened eyes...*
+
+"Uh... no... what are you talking about, heh...?"
+
+*beyondborder_08386 stepped closer to ${author} and, without saying anything, kicked them in the gut, making ${author} gasp and slide backward.*
+
+"That's what you get for cheating..." *beyondborder_08386 said as ${author} groaned.*
+
+*${author} gritted their teeth and charged at beyondborder_08386, trying to punch him directly in the face...
+
+But beyondborder_08386 saw it coming and simply moved his head aside, dodging successfully...
+
+Then ${author} tried kicking beyondborder_08386 in the torso, but he blocked it, sending ${author} sliding back slightly...
+
+${author} tried another punch. beyondborder_08386 grabbed ${author}'s hand, stopped the incoming attack, punched ${author} in the face several times, and threw them away...*
+
+*${author} tried a sweep kick from the ground, but beyondborder_08386 blocked it with his leg. ${author} then jumped into the air and attempted a dragon kick. beyondborder_08386 dodged the first kick by ducking, but the second kick struck him in the face...
+
+beyondborder_08386 grew colder, calculated ${author}'s next attack, dodged it easily, punched ${author} in the gut several times, and kicked them away...
+
+${author} was knocked back badly and fell to their knees, bleeding slightly...*
+
+"Even with your new stolen power... you lack technique..." *beyondborder_08386 said coldly while looking down at ${author}.*
+
+*beyondborder_08386 simply turned around and walked away...
+
+${author} gritted their teeth and swore they would make beyondborder_08386 pay...*
+
+**${emojis.goldenHeart} The fight made ${author} gain some bonus power by ${formattedBonusXP} XP!**${rollGuaranteeFooter}`;
+
+    }
+
+
+    if(rolledXP > 100000){
+
+        return `${emojis.halfGoldenRoll} ${author} rolled **+${formattedRolledXP} XP!** ${emojis.inevitableGalaxy}${resultExtras}
+
+*Kape was sitting on the crew's couch with gorjezz before seeing ${author} arrive...*
+
+"Sup..." *Kape said with a neutral tone.*
+
+"Hellooo-..." *gorjezz said sweetly.*
+
+*${author} placed something on the table and answered:*
+
+"Hi..." *${author} simply said before sitting beside them on the couch.*
+
+*gorjezz blinked at the objects ${author} had placed on the table.*
+
+"What's this...?" *gorjezz asked curiously.*
+
+*${author} smiled and explained:*
+
+"These are dice..." *${author} paused.*
+
+"We're going to gambleeeeeeeee our power..."
+
+*Kape and gorjezz blinked at each other before Kape spoke:*
+
+"Okay, buddy..."
+
+*They started playing. Kape needed to roll 11 or more with two dice combined. Kape rolled the two dice and got the numbers 5 and 4—which was not more than 11. Kape sighed before it became gorjezz's turn.
+
+gorjezz needed to roll 7 or more with two dice combined. gorjezz rolled and got the numbers 5 and 2—right on the dot. That meant she didn't have to give her power to anyone...
+
+Now it was ${author}'s turn. ${author} needed to roll exactly 12 with two dice combined. ${author} rolled and actually got double sixes...
+
+Kape sighed, slightly annoyed, and raised his Gauntlet toward ${author}. Using the Stones, Kape gave ${author} a huge temporary boost in power...*
+
+**${emojis.halfGoldenHeart} Kape accidentally rewarded you more as a bonus with ${formattedBonusXP} XP!**${rollGuaranteeFooter}`;
+
+    }
+
+
+    if(rolledXP > 25000){
+
+        return `${emojis.roll} ${author} rolled **+${formattedRolledXP} XP!** ✨${resultExtras}
+
+*Mrnoob was wandering outside beside the crew's house when he saw thezdrink and ${author} walking nearby. Mrnoob quickly approached them...*
+
+"Hey guys!" *Mrnoob said as he waved at them.*
+
+*${author} and thezdrink approached Mrnoob as well.*
+
+"What's up...?" *${author} and thezdrink said at the same time.*
+
+*Mrnoob smiled and said:*
+
+"If you guys roll more XP than me, I'll give you some of my power. But if I win, you guys will give me... 50% of your power..."
+
+*${author} and thezdrink thought about it and agreed. Mrnoob quickly pulled out a die and said:*
+
+"If I roll the number 1, then I win... If you guys roll the number 3, then you win..."
+
+*Mrnoob rolled first and got the number... 2. Mrnoob blinked at the result and handed them the die. ${author} decided to roll because they felt lucky and... actually rolled the number 3.*
+
+"Alright, whatever! I didn't use Luck Boosts like you noobs!" *Mrnoob said as he spared some of his power for both thezdrink and, mainly, ${author}.*
+
+**${emojis.giftHeart} Mrnoob accidentally rewarded you more as a bonus with ${formattedBonusXP} XP!**${rollGuaranteeFooter}`;
+
+    }
+
+
+    if(rolledXP > 5000){
+
+        return `${emojis.roll} ${author} rolled **+${formattedRolledXP} XP!**${resultExtras}
+
+*Mizuki told ${author} that if they rolled a die and it landed on the number 6, Mizuki would reward them...
+
+If not, Mizuki would punish ${author}... but ${author} actually rolled a 6...
+
+A deal is a deal...*
+
+"Wow, that was just pure luck..." *Mizuki grumbled as she snapped her fingers.*
+
+*Giving ${author} a temporary power boost.*${rollGuaranteeFooter}`;
+
+    }
+
+
+    return `${emojis.roll} ${author} rolled **+${formattedRolledXP} XP!**${resultExtras}${rollGuaranteeFooter}`;
 
 }
 
@@ -1042,7 +1967,7 @@ if(!rollAccess.allowed){
 // - its own Luck calculation
 // - its own XP MAX / Luck Boost drop checks
 // - its own quest progress
-// - its own bonus / Impossible bonus
+// - its own threshold-based story bonus
 //
 // The cooldown was already consumed once above.
 if(
@@ -1104,6 +2029,12 @@ if(
 // ======================
 // ROLL WITH LUCK
 // ======================
+
+const trollRollEffect =
+    await trolls.getRollEffect(
+        message.guild.id,
+        userID
+    );
 
 const luckResult =
     await luck.rollWithLuck(
@@ -1209,6 +2140,23 @@ if(
 }
 
 
+const forcedNegativeByTroll =
+    trollRollEffect?.effectType ===
+        trolls.EFFECTS.ROLL_NEGATIVE;
+
+const redirectedByTroll =
+    trollRollEffect?.effectType ===
+        trolls.EFFECTS.ROLL_REDIRECT;
+
+
+if(forcedNegativeByTroll){
+    rolledXP = rollGuaranteedNegative(
+        rollChanceTable
+    );
+    rollingUpgradeDoubled = false;
+}
+
+
 // This is the Luck Boost used
 // during the current roll.
 //
@@ -1224,15 +2172,35 @@ const usedLuckBoost =
     // ======================
 
 
+const targetRollXP =
+    redirectedByTroll
+        ? 0
+        : rolledXP;
+
+const redirectedRollXP =
+    redirectedByTroll
+        ? Math.max(0, rolledXP)
+        : 0;
+
+
 await database.addXP(
 
     message.guild.id,
 
     userID,
 
-    rolledXP
+    targetRollXP
 
 );
+
+
+if(redirectedRollXP > 0){
+    await database.giveXP(
+        message.guild.id,
+        trollRollEffect.sourceUserID,
+        redirectedRollXP
+    );
+}
 
 
 await quests.recordEvent(
@@ -1247,7 +2215,7 @@ await quests.recordEvent(
     "roll_xp",
     Math.max(
         0,
-        rolledXP
+        targetRollXP
     )
 );
 
@@ -1260,7 +2228,7 @@ await quests.recordEvent(
     "single_roll_xp",
     Math.max(
         0,
-        rolledXP
+        targetRollXP
     )
 );
 
@@ -1270,7 +2238,7 @@ await quests.recordEvent(
     "earn_xp",
     Math.max(
         0,
-        rolledXP
+        targetRollXP
     )
 );
 
@@ -1282,7 +2250,7 @@ await database.addBoostActivity(
 
     userID,
 
-    Math.max(0, rolledXP)
+    Math.max(0, targetRollXP)
 
 );
 
@@ -1323,7 +2291,9 @@ const xpBoostDropExtra =
 
 
 const guaranteedRollExtra =
-    guaranteedRoll === "daily_25k_75k"
+    forcedNegativeByTroll
+        ? ""
+        : guaranteedRoll === "daily_25k_75k"
         ? "\nQuest reward used: guaranteed 25,000–75,000 XP roll."
         : guaranteedRoll === "impossible"
             ? "\nQuest reward used: guaranteed Impossible Roll."
@@ -1333,7 +2303,8 @@ const guaranteedRollExtra =
 
 
 const megaRollExtra =
-    luckResult.megaRoll
+    !forcedNegativeByTroll
+    && luckResult.megaRoll
         ? "\n💎 **MEGA ROLL!** This result landed in the **10,000,000+ XP** range."
         : "";
 
@@ -1344,7 +2315,7 @@ const rollingUpgradeExtra =
         : "";
 
 
-const rollExtras =
+const rollContextExtras =
     luck.buildRollExtras(
         message,
         usedLuckBoost,
@@ -1353,450 +2324,162 @@ const rollExtras =
     + xpBoostDropExtra
     + guaranteedRollExtra
     + megaRollExtra
-    + rollingUpgradeExtra
-    + buildRollCooldownExtra(
+    + rollingUpgradeExtra;
+
+
+const rollCooldownExtra =
+    buildRollCooldownExtra(
         rollAccess
     );
 
 
 const rollGuaranteeFooter =
     buildRollGuaranteeFooter(
-        rollGuarantee
+        forcedNegativeByTroll
+            ? {
+                ...rollGuarantee,
+                guaranteed: false
+            }
+            : rollGuarantee
     );
 
 
-
-
-
-
-
-// ======================
-// Impossible Roll
-// ======================
-
-if(rolledXP >= 500000){
-
-const bonus =
-    Math.floor(
-        Math.random() * 1250001
-    ) + 750000;
-
-await database.addXP(
-
-    message.guild.id,
-
-    userID,
-
-    bonus
-
-);
-
-
-await database.addBoostActivity(
-
-    message.guild.id,
-
-    userID,
-
-    bonus
-
-);
-
-
-await quests.recordEvent(
-    message,
-    "earn_xp",
-    bonus
-);
-
-
-await syncRollLevel(
-    message,
-    userID
-);
-
-    return sendRollResultMessage(
-        message,
-        rollAccess,
-
-`🌠 **THE UNIVERSE FALLS SILENT.**
-
-${message.author} rolled **+${rolledXP.toLocaleString()} XP!**${rollExtras}
-
-*Time itself seems to stop.*
-
-*Mizuki simply stares at the glowing number.*
-
-*"...."*
-
-*"You're... unreal."*
-
-*Without saying another word, she rushes toward ${message.author}, wraps both arms around them and refuses to let go.*
-
-*"I... I don't ever want to forget this moment..."*
-
-*After several long seconds she finally lets go, cheeks glowing bright red.*
-
-*"Congratulations... my luckiest person."*
-
-💖 **Mizuki secretly rewarded you with +${bonus.toLocaleString()} XP!**
-
-✨ **The universe itself acknowledged your existence.**${rollGuaranteeFooter}`
-
+const bonusPercentRange =
+    getRollBonusPercentRange(
+        rolledXP
     );
 
-}
+let bonusXP =
+    0;
 
 
+if(bonusPercentRange){
+
+    bonusXP =
+        rollPercentageLessBonus(
+            rolledXP,
+            bonusPercentRange
+                .minimumPercentLess,
+            bonusPercentRange
+                .maximumPercentLess
+        );
 
 
+    if(redirectedByTroll){
+        await database.giveXP(
+            message.guild.id,
+            trollRollEffect.sourceUserID,
+            bonusXP
+        );
+    }
+    else{
+        await database.addXP(
+            message.guild.id,
+            userID,
+            bonusXP
+        );
+    }
 
-// ======================
-// Legendary Lucky Bonus
-// ======================
-
-if(rolledXP >= 200000){
-
-const bonus =
-    Math.floor(
-        Math.random() * 350001
-    ) + 150000;
-
-await database.addXP(
-
-    message.guild.id,
-
-    userID,
-
-    bonus
-
-);
-
-
-await database.addBoostActivity(
-
-    message.guild.id,
-
-    userID,
-
-    bonus
-
-);
-
-
-await quests.recordEvent(
-    message,
-    "earn_xp",
-    bonus
-);
-
-
-await syncRollLevel(
-    message,
-    userID
-);
-
-    return sendRollResultMessage(
-        message,
-        rollAccess,
-
-`✨ ${message.author} rolled **+${rolledXP.toLocaleString()} XP!**${rollExtras}
-
-*Mizuki stares in complete disbelief.*
-
-*"That's impossible..."*
-
-*Golden sparkles begin swirling around both of you.*
-
-*Mizuki suddenly laughs, throws herself into your arms, and hugs you as tightly as she can.*
-
-*"Hehe... maybe you're my lucky charm after all~"*
-
-💖 **Mizuki secretly rewarded you with +${bonus.toLocaleString()} XP!**${rollGuaranteeFooter}`
-
-    );
-
-}
-
-
-// ======================
-// 75k - 200k
-// ======================
-
-if(rolledXP >= 75000){
-
-    const bonus =
-    Math.floor(
-        Math.random() * 75001
-    ) + 50000;
-
-    await database.addXP(
-        message.guild.id,
-        userID,
-        bonus
-    );
 
     await database.addBoostActivity(
         message.guild.id,
         userID,
-        bonus
+        redirectedByTroll
+            ? 0
+            : bonusXP
     );
+
 
     await quests.recordEvent(
         message,
         "earn_xp",
-        bonus
-    );
-
-await syncRollLevel(
-    message,
-    userID
-);
-
-    return sendRollResultMessage(
-        message,
-        rollAccess,
-
-`🌌 ${message.author} rolled **+${rolledXP.toLocaleString()} XP!**${rollExtras}
-
-*The air itself seems to shimmer.*
-
-*Mizuki slowly lands beside you, completely speechless.*
-
-*"I... I don't even know what to say..."*
-
-*She gently holds both of your hands.*
-
-*"Promise me you'll stay by my side, okay?"*
-
-*She blushes, kisses both cheeks, then quietly flies away.*
-
-💖 **Mizuki secretly rewarded you with +${bonus.toLocaleString()} XP!**${rollGuaranteeFooter}`
-
+        redirectedByTroll
+            ? 0
+            : bonusXP
     );
 
 }
 
 
-// ======================
-// 25k - 75k
-// ======================
+if(trollRollEffect){
+    if(redirectedByTroll){
+        trollRollEffect.payload.redirectedXP =
+            Math.max(
+                0,
+                Number(
+                    trollRollEffect.payload.redirectedXP
+                ) || 0
+            )
+            + redirectedRollXP
+            + bonusXP;
+    }
 
-if(rolledXP >= 25000){
-
-    const bonus =
-    Math.floor(
-        Math.random() * 40001
-    ) + 10000;
-
-    await database.addXP(
-        message.guild.id,
-        userID,
-        bonus
+    await trolls.consumeRollEffect(
+        trollRollEffect
     );
-
-    await database.addBoostActivity(
-        message.guild.id,
-        userID,
-        bonus
-    );
-
-    await quests.recordEvent(
-        message,
-        "earn_xp",
-        bonus
-    );
-
-await syncRollLevel(
-    message,
-    userID
-);
-
-    return sendRollResultMessage(
-        message,
-        rollAccess,
-
-`🌟 ${message.author} rolled **+${rolledXP.toLocaleString()} XP!**${rollExtras}
-
-*Mizuki almost drops out of the sky from pure shock.*
-
-*"N-No way..."*
-
-*She circles around you several times, unable to stop smiling.*
-
-*"I've never seen luck like this..."*
-
-*She hugs you tightly, spins you around laughing, then kisses your forehead.*
-
-💖 **Mizuki secretly rewarded you with +${bonus.toLocaleString()} XP!**${rollGuaranteeFooter}`
-
-    );
-
 }
 
-// ======================
-// Lucky Roll Bonus
-// ======================
-
-if(rolledXP >= 1000){
-
-const bonus =
-    Math.floor(
-        Math.random() * 501
-    ) + 500;
-
-await database.addXP(
-
-    message.guild.id,
-
-    userID,
-
-    bonus
-
-);
-
-
-await database.addBoostActivity(
-
-    message.guild.id,
-
-    userID,
-
-    bonus
-
-);
-
-
-await quests.recordEvent(
-    message,
-    "earn_xp",
-    bonus
-);
-
 
 await syncRollLevel(
     message,
     userID
 );
 
-    return sendRollResultMessage(
+
+if(
+    redirectedByTroll
+    && (redirectedRollXP + bonusXP) > 0
+){
+    await syncRollLevel(
         message,
-        rollAccess,
+        trollRollEffect.sourceUserID
+    );
+}
 
-`🎲 ${message.author} rolled **+${rolledXP.toLocaleString()} XP!**${rollExtras}
 
-*Mizuki's eyes widen for a second before a warm smile appears.*
+if(rolledXP > 25000){
 
-*"Hehe~ You're stronger than I thought..."*
-
-*She floats closer, gently pats your head before wrapping her arms around you in a quick hug.*
-
-*"Don't stop now... I want to see how far you can go."*
-
-💖 **Mizuki secretly rewarded you with +${bonus} XP!**${rollGuaranteeFooter}`
-
+    await playRollReveal(
+        message,
+        rolledXP,
+        options.rollRevealWait
     );
 
 }
 
 
-// ======================
-// Kiss
-// ======================
+if(rolledXP > 0){
 
-if(rolledXP > 100){
+    const positiveDialogue =
+        buildPositiveRollDialogue({
+            message,
+            rolledXP,
+            bonusXP,
+            rollCooldownExtra,
+            rollContextExtras,
+            rollGuaranteeFooter
+        });
 
-const bonus =
-    Math.floor(
-        Math.random() * 451
-    ) + 50;
 
-await database.addXP(
+    return sendRollResultMessage(
+        message,
+        rollAccess,
+        positiveDialogue
+    );
 
-    message.guild.id,
+}
 
-    userID,
 
-    bonus
-
-);
-
-await database.addBoostActivity(
-
-    message.guild.id,
-
-    userID,
-
-    bonus
-
-);
-
-await quests.recordEvent(
-    message,
-    "earn_xp",
-    bonus
-);
-
-await syncRollLevel(
-    message,
-    userID
-);
+const rollEmojis =
+    getRollEmojis(
+        message.guild
+    );
 
 
 return sendRollResultMessage(
     message,
     rollAccess,
-
-`🎲 ${message.author} rolled **+${rolledXP.toLocaleString()} XP!**${rollExtras}
-
-*Mizuki keeps watching ${message.author} with a smile and a slight blush, then flies over and whispers quietly...*
-
-*"Woow... you're my lucky boy/girl~..."*
-
-*She gently kisses ${message.author}'s cheek before flying away.*
-
-💖 The kiss gave you **+${bonus} XP** as a bonus!${rollGuaranteeFooter}`
-
-);
-
-}
-
-
-
-// ======================
-// UPDATE LEVEL
-// ======================
-
-await syncRollLevel(
-    message,
-    userID
-);
-
-
-
-// ======================
-// Normal messages
-// ======================
-
-if(rolledXP >= 0){
-
-    return sendRollResultMessage(
-        message,
-        rollAccess,
-
-`🎲 ${message.author} rolled **+${rolledXP.toLocaleString()} XP! Lucky! 🍀**${rollExtras}${rollGuaranteeFooter}`
-
-    );
-
-}
-
-
-return sendRollResultMessage(
-    message,
-    rollAccess,
-
-`🎲 ${message.author} rolled **${rolledXP.toLocaleString()} XP!** Better luck next time... 💀${rollExtras}${rollGuaranteeFooter}`
-
+    `${rollEmojis.roll} ${message.author} rolled **${rolledXP.toLocaleString()} XP!** Better luck next time... 💀${rollCooldownExtra}${rollContextExtras}${rollGuaranteeFooter}`
 );
 
 
@@ -1809,6 +2492,12 @@ module.exports = {
     execute,
 
     ROLL_COOLDOWN_MS,
+
+    ROLL_REVEAL_FRAME_DELAY_MS,
+
+    ROLL_MESSAGE_MAX_LENGTH,
+
+    buildRollGuaranteeFooter,
 
     buildRollCooldownExtra,
 
@@ -1830,9 +2519,31 @@ module.exports = {
 
     sendMessageWithRollCountdown,
 
+    getCustomEmoji,
+
+    getRollEmojis,
+
+    getRollRevealEmojiSequence,
+
+    buildRollRevealText,
+
+    playRollReveal,
+
+    splitLongMessage,
+
+    sendRollResultMessage,
+
+    getRollBonusPercentRange,
+
+    rollPercentageLessBonus,
+
+    buildPositiveRollDialogue,
+
     ROLL_READY_MESSAGE,
 
     getRollingUpgradeChanceTable,
+
+    rollGuaranteedNegative,
 
     ROLL_SETTINGS
 
