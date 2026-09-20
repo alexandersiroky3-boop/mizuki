@@ -34,10 +34,17 @@ const SOCIAL_FULL_REWARD_LEVEL =
 // Level 100. Level 100+ keeps the command's original uncapped result.
 const LOW_LEVEL_SOCIAL_XP_CAPS =
     Object.freeze({
-        hug: 100000,
-        kiss: 50000,
+        // The reworked Level 1-99 !hug table reaches 1,500,000 XP at
+        // Mythic rarity. Keep the cap aligned with that authored ceiling.
+        hug: 1500000,
+        // The reworked Level 1-99 !kiss table now legitimately reaches
+        // 1,000,000 XP at Mythic rarity. Keep the safety cap aligned with
+        // that authored ceiling instead of flattening Rare+ outcomes.
+        kiss: 1000000,
         steal: 50000,
-        ezwin: 5000
+        // Level 1-99 !ezwin can legitimately award 750,000 XP when a
+        // Legendary result evolves. Preserve the authored ceiling.
+        ezwin: 750000
     });
 
 
