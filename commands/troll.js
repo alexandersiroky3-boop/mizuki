@@ -44,18 +44,87 @@ function getTargetID(message){
 }
 
 
+function getMentionedUser(message){
+    return message.mentions?.users?.first?.() || null;
+}
+
+
+function getMentionedMember(message){
+    return message.mentions?.members?.first?.() || null;
+}
+
+
+async function resolveTarget(message, targetID){
+
+    const mentionedUser = getMentionedUser(message);
+    const mentionedMember = getMentionedMember(message);
+
+    let member =
+        mentionedMember?.id === targetID
+            ? mentionedMember
+            : message.guild.members.cache?.get?.(targetID) || null;
+
+
+    if(!member){
+        member = await message.guild.members.fetch(targetID)
+            .catch(error => {
+                console.warn(
+                    `!troll could not fetch guild member ${targetID}; using the resolved mention when available:`,
+                    error?.message || error
+                );
+                return null;
+            });
+    }
+
+
+    const user =
+        member?.user
+        || (
+            mentionedUser?.id === targetID
+                ? mentionedUser
+                : null
+        );
+
+
+    return {
+        member,
+        user,
+        // Discord supplied an actual mention object, so a temporary member
+        // fetch/cache failure must not make a valid command unusable.
+        resolvedFromMention:
+            mentionedUser?.id === targetID
+    };
+
+}
+
+
 async function replySafely(message, content){
-    return message.reply({
+
+    const payload = {
         content,
         allowedMentions: {
             parse: [],
             repliedUser: false
         }
-    });
+    };
+
+
+    try{
+        return await message.reply(payload);
+    }
+    catch(replyError){
+
+        if(message.channel?.send){
+            return message.channel.send(payload);
+        }
+
+        throw replyError;
+
+    }
 }
 
 
-async function execute(message){
+async function executeTroll(message){
 
     if(!message.guild || message.author.bot){
         return null;
@@ -81,18 +150,25 @@ async function execute(message){
     }
 
 
-    const targetMember = await message.guild.members.fetch(
+    const target = await resolveTarget(
+        message,
         targetID
-    ).catch(() => null);
+    );
 
-    if(!targetMember){
+    if(
+        !target.user
+        || (
+            !target.member
+            && !target.resolvedFromMention
+        )
+    ){
         return replySafely(
             message,
             "I could not find that user in this server."
         );
     }
 
-    if(targetMember.user.bot){
+    if(target.user.bot){
         return replySafely(
             message,
             "Bots cannot receive troll effects."
@@ -136,14 +212,14 @@ async function execute(message){
     });
 
 
-    if(!result.success && result.status === "target-active"){
+    if(!result?.success && result?.status === "target-active"){
         return replySafely(
             message,
             `<@${targetID}> already has a troll effect active. Wait for it to finish or expire before trolling them again.`
         );
     }
 
-    if(!result.success){
+    if(!result?.success){
         return replySafely(
             message,
             "The troll could not be applied. Please try again."
@@ -151,12 +227,19 @@ async function execute(message){
     }
 
 
+    // The troll is already committed at this point. A secondary cooldown
+    // write must never hide the successful result from the user.
     await database.setCommandCooldown(
         guildID,
         actorID,
         "troll",
         Date.now() + COOLDOWN
-    );
+    ).catch(error => {
+        console.error(
+            "!troll applied an effect but could not save its cooldown:",
+            error
+        );
+    });
 
 
     for(const changedUserID of result.changedUserIDs || []){
@@ -164,7 +247,12 @@ async function execute(message){
             message.client,
             guildID,
             changedUserID
-        );
+        ).catch(error => {
+            console.error(
+                `!troll could not sync level state for ${changedUserID}:`,
+                error
+            );
+        });
     }
 
 
@@ -184,9 +272,42 @@ async function execute(message){
 }
 
 
+async function execute(message){
+
+    try{
+        return await executeTroll(message);
+    }
+    catch(error){
+
+        console.error(
+            "!troll command failed:",
+            error
+        );
+
+
+        return replySafely(
+            message,
+            "❌ **!troll could not finish because of an internal error.** The exact cause was written to the bot log."
+        ).catch(replyError => {
+
+            console.error(
+                "!troll also failed to send its error reply:",
+                replyError
+            );
+
+            return null;
+
+        });
+
+    }
+
+}
+
+
 module.exports = {
     execute,
     COOLDOWN,
     formatCooldown,
-    getTargetID
+    getTargetID,
+    resolveTarget
 };
