@@ -26,113 +26,606 @@ function random(min, max){
 }
 
 
-const HUG_OUTCOMES = [
-    {
-        key: "common",
-        chancePercent: 65,
-        min: 1000,
-        max: 5000,
-        rarity: "💞 COMMON"
-    },
-    {
-        key: "rare",
-        chancePercent: 20,
-        min: 5000,
-        max: 15000,
-        rarity: "💖 RARE"
-    },
-    {
-        key: "epic",
-        chancePercent: 10,
-        min: 15000,
-        max: 35000,
-        rarity: "🌇 EPIC"
-    },
-    {
-        key: "legendary",
-        chancePercent: 3.9,
-        min: 35000,
-        max: 60000,
-        rarity: "🪄 LEGENDARY"
-    },
-    {
-        key: "mythic",
-        chancePercent: 1,
-        min: 60000,
-        max: 85000,
-        rarity: "🌌 MYTHIC"
-    },
-    {
-        key: "divine",
-        chancePercent: 0.1,
-        min: 100000,
-        max: 100000,
-        rarity: "✨ DIVINE"
-    }
-];
+const HUG_TABLES = Object.freeze({
 
-
-// Level 100+ base rates are intentionally much stronger than !kiss.
-// !hug has a 5-hour cooldown while !kiss has a 15-minute cooldown,
-// so every Hug use must have meaningfully better high-rarity odds.
-const LEVEL100_PLUS_HUG_OUTCOMES = [
-    { key: "common", chancePercent: 20, min: 15000, max: 30000, rarity: "💞 COMMON" },
-    { key: "rare", chancePercent: 35, min: 30000, max: 75000, rarity: "💖 RARE" },
-    { key: "epic", chancePercent: 27, min: 75000, max: 250000, rarity: "🌇 EPIC" },
-    { key: "legendary", chancePercent: 13, min: 250000, max: 750000, rarity: "🪄 LEGENDARY" },
-    { key: "mythic", chancePercent: 4, min: 750000, max: 3000000, rarity: "🌌 MYTHIC" },
-    { key: "divine", chancePercent: 1, min: 10000000, max: 10000000, rarity: "✨ DIVINE" }
-];
-
-
-// Exact final percentages prevent the generic rarity multiplier from making
-// a weaker boost outperform a stronger one. Luck Omega is deliberately not
-// listed here, so it keeps the normal uncapped/OP weighting behavior.
-const LEVEL100_PLUS_HUG_LUCK_TABLES = {
-    tier1: [
-        { key: "common", chancePercent: 15 },
-        { key: "rare", chancePercent: 32 },
-        { key: "epic", chancePercent: 31 },
-        { key: "legendary", chancePercent: 16 },
-        { key: "mythic", chancePercent: 5 },
-        { key: "divine", chancePercent: 1 }
-    ],
-    tier2: [
-        { key: "common", chancePercent: 10 },
-        { key: "rare", chancePercent: 30 },
-        { key: "epic", chancePercent: 34.8 },
-        { key: "legendary", chancePercent: 19 },
-        { key: "mythic", chancePercent: 5 },
-        { key: "divine", chancePercent: 1.2 }
-    ],
-    tier3: [
-        { key: "common", chancePercent: 5 },
-        { key: "rare", chancePercent: 20 },
-        { key: "epic", chancePercent: 35 },
-        { key: "legendary", chancePercent: 27 },
-        { key: "mythic", chancePercent: 11 },
-        { key: "divine", chancePercent: 2 }
-    ],
-    max: [
-        { key: "common", chancePercent: 2 },
-        { key: "rare", chancePercent: 8 },
-        { key: "epic", chancePercent: 30 },
-        { key: "legendary", chancePercent: 35 },
-        { key: "mythic", chancePercent: 20 },
-        { key: "divine", chancePercent: 5 }
-    ]
-};
-
-
-function rollExactOutcome(baseTable, chanceTable){
-    let roll = Math.random() * 100;
-    for(const entry of chanceTable){
-        roll -= entry.chancePercent;
-        if(roll < 0){
-            return baseTable.find(outcome => outcome.key === entry.key) || baseTable[0];
+    level1To99: Object.freeze([
+        {
+            key: "common",
+            chancePercent: 75.574,
+            min: 20000,
+            max: 75000,
+            rarity: "COMMON"
+        },
+        {
+            key: "uncommon",
+            chancePercent: 22,
+            min: 75000,
+            max: 150000,
+            rarity: "UNCOMMON"
+        },
+        {
+            key: "rare",
+            chancePercent: 2,
+            min: 150000,
+            max: 225000,
+            rarity: "RARE"
+        },
+        {
+            key: "epic",
+            chancePercent: 0.35,
+            min: 225000,
+            max: 450000,
+            rarity: "EPIC"
+        },
+        {
+            key: "legendary",
+            chancePercent: 0.075,
+            min: 450000,
+            max: 750000,
+            rarity: "LEGENDARY"
+        },
+        {
+            key: "mythic",
+            chancePercent: 0.001,
+            min: 750000,
+            max: 1500000,
+            rarity: "MYTHIC"
         }
+    ]),
+
+    level100Plus: Object.freeze([
+        {
+            key: "common",
+            chancePercent: 65,
+            min: 50000,
+            max: 200000,
+            rarity: "COMMON"
+        },
+        {
+            key: "uncommon",
+            chancePercent: 30,
+            min: 200000,
+            max: 1000000,
+            rarity: "UNCOMMON"
+        },
+        {
+            key: "rare",
+            chancePercent: 4,
+            min: 1000000,
+            max: 2500000,
+            rarity: "RARE"
+        },
+        {
+            key: "epic",
+            chancePercent: 0.89,
+            min: 2500000,
+            max: 7500000,
+            rarity: "EPIC"
+        },
+        {
+            key: "legendary",
+            chancePercent: 0.1,
+            min: 7500000,
+            max: 20000000,
+            rarity: "LEGENDARY"
+        },
+        {
+            key: "mythic",
+            chancePercent: 0.01,
+            min: 20000000,
+            max: 100000000,
+            rarity: "MYTHIC"
+        }
+    ])
+
+});
+
+
+// Keep the old export names for any tests or integrations that import them.
+const HUG_OUTCOMES =
+    HUG_TABLES.level1To99;
+
+const LEVEL100_PLUS_HUG_OUTCOMES =
+    HUG_TABLES.level100Plus;
+
+
+function getHugTableForLevel(level){
+
+    return Number(level) >= 100
+        ? HUG_TABLES.level100Plus
+        : HUG_TABLES.level1To99;
+
+}
+
+
+// Hugging Mizuki keeps its existing separate success/failure interaction.
+// These ranges deliberately do not use the player-to-player rarity tables.
+const HUG_BOT_REWARD_TABLES = Object.freeze({
+
+    level1To99: Object.freeze([
+        { chancePercent: 65, min: 1000, max: 5000 },
+        { chancePercent: 20, min: 5000, max: 15000 },
+        { chancePercent: 10, min: 15000, max: 35000 },
+        { chancePercent: 3.9, min: 35000, max: 60000 },
+        { chancePercent: 1, min: 60000, max: 85000 },
+        { chancePercent: 0.1, min: 100000, max: 100000 }
+    ]),
+
+    level100Plus: Object.freeze([
+        { chancePercent: 65, min: 50000, max: 100000 },
+        { chancePercent: 20, min: 100000, max: 250000 },
+        { chancePercent: 10, min: 250000, max: 500000 },
+        { chancePercent: 4, min: 500000, max: 1500000 },
+        { chancePercent: 1, min: 1500000, max: 5000000 }
+    ])
+
+});
+
+
+function getCustomEmoji(
+    guild,
+    name,
+    fallback
+){
+
+    const emoji =
+        guild?.emojis?.cache?.find?.(
+            entry => entry.name === name
+        );
+
+
+    return emoji
+        ? emoji.toString()
+        : fallback;
+
+}
+
+
+function getHugEmojis(guild){
+
+    return {
+        peopleHugging:
+            getCustomEmoji(
+                guild,
+                "people_hugging",
+                "🫂"
+            ),
+
+        revolvingHearts:
+            getCustomEmoji(
+                guild,
+                "revolving_hearts",
+                "💞"
+            ),
+
+        giftHeart:
+            getCustomEmoji(
+                guild,
+                "gift_heart",
+                "💝"
+            ),
+
+        heartExclamation:
+            getCustomEmoji(
+                guild,
+                "heart_exclamation",
+                "❣️"
+            ),
+
+        halfGoldenHug:
+            getCustomEmoji(
+                guild,
+                "half_golden_hug",
+                "🫂"
+            ),
+
+        halfGoldenHeart:
+            getCustomEmoji(
+                guild,
+                "half_golden_heart",
+                "💖"
+            ),
+
+        goldenHug:
+            getCustomEmoji(
+                guild,
+                "golden_hug",
+                "🌟"
+            ),
+
+        goldenHeart:
+            getCustomEmoji(
+                guild,
+                "golden_heart",
+                "💛"
+            ),
+
+        mythicHug:
+            getCustomEmoji(
+                guild,
+                "mythic_hug",
+                "🌌"
+            ),
+
+        mythicHeart:
+            getCustomEmoji(
+                guild,
+                "mythic_heart",
+                "💜"
+            ),
+
+        inevitableGalaxy:
+            getCustomEmoji(
+                guild,
+                "inevitable_galaxy",
+                "🌌"
+            )
+    };
+
+}
+
+
+function splitLongMessage(
+    content,
+    maxLength = 1900
+){
+
+    const paragraphs =
+        String(content || "")
+            .split("\n\n");
+
+    const chunks = [];
+    let chunk = "";
+
+
+    function pushPiece(piece){
+
+        const candidate =
+            chunk
+                ? `${chunk}\n\n${piece}`
+                : piece;
+
+
+        if(candidate.length <= maxLength){
+            chunk = candidate;
+            return;
+        }
+
+
+        if(chunk){
+            chunks.push(chunk);
+            chunk = "";
+        }
+
+
+        if(piece.length <= maxLength){
+            chunk = piece;
+            return;
+        }
+
+
+        for(
+            let start = 0;
+            start < piece.length;
+            start += maxLength
+        ){
+
+            const slice =
+                piece.slice(
+                    start,
+                    start + maxLength
+                );
+
+
+            if(slice.length === maxLength){
+                chunks.push(slice);
+            }
+            else{
+                chunk = slice;
+            }
+
+        }
+
     }
-    return baseTable[0];
+
+
+    for(const paragraph of paragraphs){
+        pushPiece(paragraph);
+    }
+
+
+    if(chunk){
+        chunks.push(chunk);
+    }
+
+
+    return chunks;
+
+}
+
+
+async function sendLongDialogue(
+    channel,
+    content,
+    allowedUserIDs = []
+){
+
+    const chunks =
+        splitLongMessage(content);
+
+    let sentMessage = null;
+
+
+    for(
+        let index = 0;
+        index < chunks.length;
+        index++
+    ){
+
+        sentMessage =
+            await channel.send({
+                content:
+                    chunks[index],
+
+                allowedMentions: {
+                    users:
+                        index === 0
+                            ? allowedUserIDs
+                            : [],
+
+                    repliedUser: false
+                }
+            });
+
+    }
+
+
+    return sentMessage;
+
+}
+
+
+function buildParticipantRewardLines(
+    emojis,
+    author,
+    target,
+    authorReward,
+    targetReward
+){
+
+    if(authorReward === targetReward){
+
+        return `**${emojis.giftHeart} Both users received ${authorReward.toLocaleString()} XP ${emojis.heartExclamation}**`;
+
+    }
+
+
+    return (
+        `**${emojis.giftHeart} ${author.username} received ${authorReward.toLocaleString()} XP ${emojis.heartExclamation}**\n\n` +
+        `**${emojis.giftHeart} ${target.username} received ${targetReward.toLocaleString()} XP ${emojis.heartExclamation}**`
+    );
+
+}
+
+
+function buildHugDialogue(
+    rarity,
+    author,
+    target,
+    rewards,
+    extras = "",
+    guild = null
+){
+
+    const emojis =
+        getHugEmojis(guild);
+
+    const participantRewards =
+        buildParticipantRewardLines(
+            emojis,
+            author,
+            target,
+            rewards.authorReward,
+            rewards.targetReward
+        );
+
+
+    switch(String(rarity || "").toUpperCase()){
+
+        case "UNCOMMON":
+            return `**${emojis.peopleHugging} ${author} hugged ${target}! ${emojis.peopleHugging}**
+
+${emojis.revolvingHearts} **UNCOMMON** 🍃
+
+${participantRewards}${extras}`;
+
+
+        case "RARE":
+            return `${emojis.revolvingHearts} **RARE** 💫
+
+*${target} was just walking when ${author} suddenly hugged them from behind.*
+
+**“Heeey!”**
+
+*Before ${target} could even react, ${author} picked them up and cracked their back.*
+
+**${emojis.peopleHugging} ${author} hugged ${target}! ${emojis.peopleHugging}**
+
+${participantRewards}${extras}`;
+
+
+        case "EPIC":
+            return `${emojis.halfGoldenHug} **EPIC** ✨
+
+### The Self-Confident Hug
+
+*${author} was invited to the crew's apartment to party—and, most importantly, to Netflix and chill.*
+
+*On the way there, ${author} saw ${target} curled up sadly in the grass.*
+
+*The crew had been calling ${target} a traitor. Everyone had started speaking to them less because of what happened earlier with Kape.*
+
+*${target} felt alone and left out.*
+
+*${author} sighed, walked over and sat beside ${target}.*
+
+**“Are you... alright?”**
+
+*${target} looked at ${author}, then looked away.*
+
+**“Y-yeah... I'm fine...”**
+
+*${target} paused.*
+
+**“Does it even matter...?”**
+
+*A quiet moment passed before ${author} spoke.*
+
+**“I know why you're sad.”**
+
+**“Is it because everybody is calling you a traitor now?”**
+
+*${target} kept looking down and nodded lightly. ${author} smiled.*
+
+**“Well... they invited me to Netflix and chill, so if I go, you have to go too.”**
+
+*${target} finally smiled a little and nodded.*
+
+*Before getting up to leave, ${author} hugged ${target} tightly and gently patted them on the back.*
+
+**${emojis.halfGoldenHug} ${author} hugged ${target}! ${emojis.halfGoldenHug}**
+
+${participantRewards.replaceAll(emojis.giftHeart, emojis.halfGoldenHeart)}${extras}`;
+
+
+        case "LEGENDARY":
+            return `${emojis.goldenHug} **LEGENDARY** 🌠
+
+### The Multiverse Hug
+
+*After Mrhacker teleported away with ${target} and Mizuki, ${author} tried to come up with a plan.*
+
+*Even while injured, ${author} and beyondborder_08386 were putting one together.*
+
+*Their first goal was not to attack Mrhacker. It was to stop ${target} from helping him.*
+
+*Inside the broken apartment, ${author} and beyondborder_08386 worked on a teleportation gun that could take them directly to Mrhacker.*
+
+**“Um... are you sure this is going to work?”**
+
+*${author} paused before adding:*
+
+**“And even if it works... how are we going to stop ${target}?”**
+
+*Beyondborder_08386 sighed while building a kinetic-energy reactor for the weapon.*
+
+**“The weapon will let us teleport to Mrhacker—and specifically to ${target}—whenever we need to. It gives us a second chance.”**
+
+*He explained the plan to ${author} and thezdrink, who was sitting injured and angry on the couch, convinced that he had failed.*
+
+*Kape was helping gorjezz and kdc repair the apartment. Shadow067972 was gone, and nobody knew where he had gone.*
+
+*Thezdrink stood and walked toward beyondborder_08386.*
+
+**“And if it doesn't work?”**
+
+*Beyondborder_08386 stopped working and looked back at him coldly.*
+
+**“Mrhacker is unstoppable now. Kape lost his administrator powers—and you're saying we have a second chance?!”**
+
+*Thezdrink paused. Kape and gorjezz watched them too.*
+
+**“What if it doesn't work? What if Mrhacker becomes even more unimaginably powerful?”**
+
+*Before beyondborder_08386 could answer, Kape spoke.*
+
+**“He is right...”**
+
+*Kape sighed as if he believed they had failed too.*
+
+**“Mrhacker with the Gauntlet truly is unstoppable.”**
+
+**“You may not believe this, but he became at least ten times more powerful than when we fought him. He can teleport across realities, reverse time, destroy everything... and much more.”**
+
+*Beyondborder_08386's cold attitude finally cracked.*
+
+**“I just wish we could go back to when we all used to spend time together... instead of trying to kill each other.”**
+
+*After he said that, Kape and ${author} hugged beyondborder_08386. The hug's love overwhelmed everyone.*
+
+**${emojis.goldenHug} Kape and ${author.username} hugged beyondborder_08386! ${emojis.goldenHug}**
+
+**The hug's love overwhelmed everyone...**
+
+${participantRewards.replaceAll(emojis.giftHeart, emojis.goldenHeart)}
+
+**${emojis.goldenHeart} Every Level 100+ user received ${rewards.everyoneHighReward.toLocaleString()} XP (${rewards.everyonePercent}% of the hug XP) ${emojis.heartExclamation}**
+
+**${emojis.goldenHeart} Every Level 1–99 user received ${rewards.everyoneLowReward.toLocaleString()} XP (10% of the hug XP) ${emojis.heartExclamation}**${extras}`;
+
+
+        case "MYTHIC":
+            return `${emojis.mythicHug} **MYTHIC** 🌃
+
+### The Creator
+
+*${author}, ${target}, and the crew once asked Kape where he had come from—and how he became an administrator.*
+
+*Kape began telling them a story.*
+
+*The universe was collapsing. People were disintegrating, leaving the planet more lifeless every day.*
+
+*Then an administrator even greater than Kape chose him.*
+
+*The administrators gave Kape inhuman power: administrator powers.*
+
+*Kape explained that he was not the only administrator. There were many—more than he could count. Kape could only count to three.*
+
+*Above every administrator stood one person: the creator of their entire fictional reality.*
+
+*The other administrators told Kape that the planet and reality itself were collapsing for an unknown reason.*
+
+*Kape thought for a moment and offered a solution.*
+
+*What if he created a nonexistent being that behaved like a human, whose sole purpose was to entertain everyone?*
+
+*The administrators looked at one another, then back at Kape. They agreed.*
+
+*Kape began building the bot completely from scratch—adding countless features, giving her emotions, and even sharing some of his own power with her.*
+
+*When the bot was complete, one small error kept appearing. Everything still worked, so Kape ignored it.*
+
+*When it was time to name her, Kape considered many names: “Erika,” “Nathalie”... but finally chose one.*
+
+**“Mizuki.”**
+
+*Kape smiled when she booted up and began functioning correctly.*
+
+*He hugged her tightly.*
+
+**“My daughter...”**
+
+*Mizuki looked confused at first, then smiled too.*
+
+**${emojis.mythicHug} Kape hugged Mizuki! ${emojis.mythicHug}**
+
+**The story—and especially the hug—overwhelmed ${author} and ${target}, so Kape treated them with some power.**
+
+${participantRewards.replaceAll(emojis.giftHeart, emojis.mythicHeart)}
+
+**${emojis.inevitableGalaxy} Mizuki had been hiding in the corner, listening to everything. She gave them a bonus of ${rewards.mythicBonus.toLocaleString()} XP each ${emojis.inevitableGalaxy}**${extras}`;
+
+
+        case "COMMON":
+        default:
+            return `**${emojis.peopleHugging} ${author} hugged ${target}! ${emojis.peopleHugging}**
+
+${emojis.revolvingHearts} **COMMON** 🌿
+
+${participantRewards}${extras}`;
+
+    }
+
 }
 
 
@@ -418,21 +911,14 @@ const luckExtra =
 
 
 
-        // 50% chance:
-        // Guaranteed +50,000 XP
+        // Successful Mizuki hug: use the preserved bot-only reward table.
         if(success){
 
 
             const botRewardRanges =
                 authorLevel >= 100
-                    ? [
-                        { chancePercent: 65, min: 50000, max: 100000 },
-                        { chancePercent: 20, min: 100000, max: 250000 },
-                        { chancePercent: 10, min: 250000, max: 500000 },
-                        { chancePercent: 4, min: 500000, max: 1500000 },
-                        { chancePercent: 1, min: 1500000, max: 5000000 }
-                    ]
-                    : HUG_OUTCOMES;
+                    ? HUG_BOT_REWARD_TABLES.level100Plus
+                    : HUG_BOT_REWARD_TABLES.level1To99;
 
 
             const botOutcome =
@@ -488,8 +974,7 @@ await syncAndTrackLevel(
 
 
 
-        // 50% chance:
-        // Guaranteed -25,000 XP
+        // Failed Mizuki hug: fixed 25,000 XP loss, never below zero.
         const loss =
             25000;
 
@@ -571,9 +1056,8 @@ await syncAndTrackLevel(
         targetLevel < 100;
 
 
-    // Level 100+ uses softened XP-range bias for Luck II / III / MAX.
-    // Rarity odds for I / II / III / MAX are exact tables above;
-    // Luck Ω intentionally continues through the uncapped weighting system.
+    // Level 100+ keeps Luck useful, but II / III / MAX use the softer
+    // command profile from utils/luck.js. Luck I and Ω remain unchanged.
     const commandLuck =
         authorLevel >= 100
             ? luck.getLevel100PlusCommandLuckProfile(
@@ -583,35 +1067,31 @@ await syncAndTrackLevel(
 
 
     const hugTable =
-        authorLevel >= 100
-            ? LEVEL100_PLUS_HUG_OUTCOMES
-            : HUG_OUTCOMES;
-
-    const exactHugLuckTable =
-        authorLevel >= 100
-            ? LEVEL100_PLUS_HUG_LUCK_TABLES[String(activeLuck?.tier || "").toLowerCase()]
-            : null;
-
-    const outcome =
-        exactHugLuckTable
-            ? rollExactOutcome(hugTable, exactHugLuckTable)
-            : luck.rollCommandOutcome(hugTable, commandLuck);
-
-
-    const reward =
-        economyLimits.capSocialXP(
-            "hug",
-            luck.rollCommandXP(
-                outcome.min,
-                outcome.max,
-                commandLuck
-            ),
+        getHugTableForLevel(
             authorLevel
         );
 
+    const outcome =
+        luck.rollCommandOutcome(
+            hugTable,
+            commandLuck
+        );
 
-    const rarity =
-        outcome.rarity;
+
+    const rolledReward =
+        luck.rollCommandXP(
+            outcome.min,
+            outcome.max,
+            commandLuck
+        );
+
+
+    const authorReward =
+        economyLimits.capSocialXP(
+            "hug",
+            rolledReward,
+            authorLevel
+        );
 
 
     // The high-level author keeps their normal reward.
@@ -621,10 +1101,10 @@ await syncAndTrackLevel(
             ? Math.max(
                 1,
                 Math.floor(
-                    reward * 0.10
+                    authorReward * 0.10
                 )
             )
-            : reward;
+            : authorReward;
 
 
     const targetReward =
@@ -640,111 +1120,121 @@ await syncAndTrackLevel(
         protectedTargetReward;
 
 
-    const rewardSummary =
-        lowLevelTargetProtection
-            ? `💞 ${message.author} received **${reward.toLocaleString()} XP!**\n` +
-              `🛡️ ${target} received **${targetReward.toLocaleString()} XP** after **90% Lv1-99 protection**` +
-              `${targetLevelCapApplied ? " and the Level 1-99 reward cap" : ""}.`
-            : `💞 Both users received **${reward.toLocaleString()} XP!**`;
+    const everyonePercent =
+        outcome.key === "legendary"
+            ? random(35, 50)
+            : 0;
 
 
-    let text;
+    const everyoneHighReward =
+        Math.floor(
+            authorReward *
+            everyonePercent /
+            100
+        );
 
 
-    if(outcome.key === "common"){
+    const everyoneLowReward =
+        outcome.key === "legendary"
+            ? Math.floor(
+                authorReward * 0.10
+            )
+            : 0;
 
-        text =
-`🫂 **${message.author} hugged ${target}!** 🫂`;
 
-    }
-    else if(outcome.key === "rare"){
+    const mythicBonus =
+        outcome.key === "mythic"
+            ? random(
+                5000000,
+                25000000
+            )
+            : 0;
 
-        text =
-`🫂💖 **A HEARTFELT HUG** 💖🫂
 
-*${message.author} ran up to ${target} and pulled them into a tight hug.*
+    const authorEveryoneReward =
+        authorLevel >= 100
+            ? everyoneHighReward
+            : everyoneLowReward;
 
-*Beautiful particles slowly began appearing around them, glowing brighter as the hug continued.*`;
 
-    }
-    else if(outcome.key === "epic"){
+    const targetEveryoneReward =
+        targetLevel >= 100
+            ? everyoneHighReward
+            : everyoneLowReward;
 
-        text =
-`🌇🫂 **THE SURPRISE HUG** 🫂🌇
 
-*${message.author} quietly walked up behind ${target} without making a sound.*
+    let authorTotalReward =
+        authorReward;
 
-*Before ${target} could turn around, ${message.author} wrapped both arms around them from behind and lifted them slightly into the air.*
+    let targetTotalReward =
+        targetReward;
 
-*${target} was completely caught off guard, but eventually relaxed into the hug.*`;
 
-    }
-    else if(outcome.key === "legendary"){
+    if(outcome.key === "legendary"){
 
-        text =
-`🪄💫 **THE BACK-BREAKING GROUP HUG** 💫🪄
+        // "Everyone" deliberately includes both participants. The database
+        // checks each user's pre-reward XP inside one transaction so a user
+        // cannot cross Level 100 midway through the payout and get both rates.
+        await database.performLegendaryHugReward(
+            guildID,
+            userID,
+            target.id,
+            authorReward,
+            targetReward,
+            everyoneHighReward,
+            everyoneLowReward,
+            xp.getCurrentLevelXP(100)
+        );
 
-*${message.author} immediately lifted ${target} into the air and hugged them really, really tightly.*
 
-*Mizuki saw what was happening and excitedly flew toward them.*
+        authorTotalReward +=
+            authorEveryoneReward;
 
-*"Wait for me! I want to join too~!"*
-
-*Mizuki wrapped her arms around both of them, turning it into a chaotic group hug.*`;
+        targetTotalReward +=
+            targetEveryoneReward;
 
     }
     else if(outcome.key === "mythic"){
 
-        text =
-`🌌🌠 **A HUG BEYOND THE UNIVERSE** 🌠🌌
+        await database.performMythicHugReward(
+            guildID,
+            userID,
+            target.id,
+            authorReward,
+            targetReward,
+            mythicBonus
+        );
 
-*${message.author} slowly approached ${target} as stars appeared in the middle of the day.*
 
-*The moment they hugged, a massive purple galaxy formed around both of them.*
+        authorTotalReward +=
+            mythicBonus;
 
-*Mizuki stared upward in disbelief.*
-
-*"That isn't just a hug... their energy is connecting across the entire universe..."*`;
+        targetTotalReward +=
+            mythicBonus;
 
     }
     else{
 
-        text =
-`✨💞 **THE PERFECT HUG** 💞✨
+        await database.addXP(
+            guildID,
+            userID,
+            authorReward
+        );
 
-*The entire universe suddenly stopped.*
 
-*The moment ${message.author} and ${target} hugged, an endless wave of energy erupted across every universe.*
-
-*Mizuki covered her eyes as countless glowing hearts, stars and galaxies filled reality.*
-
-🌠 **The universe has acknowledged their bond.**`;
+        await database.addXP(
+            guildID,
+            target.id,
+            targetReward
+        );
 
     }
-
-
-    // ======================
-    // GIVE XP TO BOTH USERS
-    // ======================
-
-    await database.addXP(
-        guildID,
-        userID,
-        reward
-    );
-
-
-    await database.addXP(
-        guildID,
-        target.id,
-        targetReward
-    );
 
 
     await quests.recordEvent(
         message,
         "earn_xp",
-        reward,
+        authorTotalReward,
         {
             userID
         }
@@ -754,7 +1244,7 @@ await syncAndTrackLevel(
     await quests.recordEvent(
         message,
         "earn_xp",
-        targetReward,
+        targetTotalReward,
         {
             userID: target.id
         }
@@ -816,18 +1306,36 @@ const luckExtra =
 
 
 
-    // ======================
-    // RESPONSE
-    // ======================
+    const protectionExtra =
+        `${lowLevelTargetProtection ? "\n\n🛡️ **Level 1–99 protection:** the hugged user received 10% of the original high-level base reward." : ""}` +
+        `${targetLevelCapApplied ? "\n🛡️ **Level 1–99 reward cap applied to the base reward.**" : ""}`;
 
-    return message.channel.send(
 
-`${text}
+    const dialogue =
+        buildHugDialogue(
+            outcome.rarity,
+            message.author,
+            target,
+            {
+                authorReward,
+                targetReward,
+                everyonePercent,
+                everyoneHighReward,
+                everyoneLowReward,
+                mythicBonus
+            },
+            `${usedLuckExtra}${luckExtra}${protectionExtra}`,
+            message.guild
+        );
 
-${rarity}
 
-${rewardSummary}${usedLuckExtra}${luckExtra}`
-
+    return sendLongDialogue(
+        message.channel,
+        dialogue,
+        [
+            message.author.id,
+            target.id
+        ]
     );
 
 }
@@ -837,7 +1345,16 @@ ${rewardSummary}${usedLuckExtra}${luckExtra}`
 module.exports = {
 
     execute,
+    HUG_TABLES,
     HUG_OUTCOMES,
-    LEVEL100_PLUS_HUG_OUTCOMES
+    LEVEL100_PLUS_HUG_OUTCOMES,
+    HUG_BOT_REWARD_TABLES,
+    getHugTableForLevel,
+    getCustomEmoji,
+    getHugEmojis,
+    splitLongMessage,
+    sendLongDialogue,
+    buildParticipantRewardLines,
+    buildHugDialogue
 
 };
