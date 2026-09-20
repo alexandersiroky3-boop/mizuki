@@ -11,10 +11,9 @@ const boosts = require("../systems/boosts");
 // to the NEXT critical roll, up to +28%.
 // An active streak of 20+ adds another +3% chance.
 // Permanent Chatting upgrades replace the old automatic level buffs.
-// Base streak rewards are 2x at 20+ and 5x at 50+; later upgrades raise
-// those values and unlock a 50x reward at 100+.
-// XP Boost Infinity already applies its own very large multiplier,
-// so it does not also multiply with the special 20+/50+/100+ streak reward.
+// Streak rewards begin at 5 consecutive criticals. Stronger XP Boosts use
+// progressively smaller streak multipliers so their own XP multiplier cannot
+// make long streaks explode the economy.
 // The normal critical reward (including +100 XP per streak) still applies.
 // Final critical chance is normally capped at 95%, with two exact
 // Luck Boost Omega combinations receiving their own higher caps.
@@ -23,12 +22,107 @@ const CRITICAL_MOMENTUM_PER_STREAK = 4;
 const CRITICAL_MOMENTUM_CAP = 28;
 const CRITICAL_STREAK_BONUS_THRESHOLD = 20;
 const CRITICAL_STREAK_CHANCE_BONUS = 3;
-const CRITICAL_STREAK_XP_MULTIPLIER = 2;
-const CRITICAL_STREAK_SUPER_THRESHOLD = 50;
-const CRITICAL_STREAK_SUPER_XP_MULTIPLIER = 5;
 const DEFAULT_CRITICAL_CHANCE_CAP = 95;
 const OMEGA_MAX_CRITICAL_CHANCE_CAP = 98;
 const OMEGA_INFINITY_CRITICAL_CHANCE_CAP = 99;
+
+
+const CRITICAL_STREAK_REWARD_TABLE =
+    Object.freeze({
+
+        none: Object.freeze({
+            5: 5,
+            20: 20,
+            50: 50,
+            100: 100
+        }),
+
+        tier1: Object.freeze({
+            5: 4,
+            20: 17,
+            50: 45,
+            100: 80
+        }),
+
+        tier2: Object.freeze({
+            5: 2,
+            20: 10,
+            50: 20,
+            100: 40
+        }),
+
+        max: Object.freeze({
+            5: 2,
+            20: 7,
+            50: 15,
+            100: 35
+        }),
+
+        infinity: Object.freeze({
+            5: 1.8,
+            20: 3,
+            50: 10,
+            100: 20
+        })
+
+    });
+
+
+const CRITICAL_STREAK_REWARD_THRESHOLDS =
+    Object.freeze([
+        100,
+        50,
+        20,
+        5
+    ]);
+
+
+function getCriticalStreakXPMultiplier(
+    xpBoostTier,
+    criticalStreak
+){
+
+    const normalizedTier =
+        Object.prototype.hasOwnProperty.call(
+            CRITICAL_STREAK_REWARD_TABLE,
+            xpBoostTier
+        )
+            ? xpBoostTier
+            : "none";
+
+
+    const safeStreak =
+        Math.max(
+            0,
+            Math.floor(
+                Number(criticalStreak) || 0
+            )
+        );
+
+
+    const profile =
+        CRITICAL_STREAK_REWARD_TABLE[
+            normalizedTier
+        ];
+
+
+    for(
+        const threshold of
+        CRITICAL_STREAK_REWARD_THRESHOLDS
+    ){
+
+        if(safeStreak >= threshold){
+
+            return profile[threshold];
+
+        }
+
+    }
+
+
+    return 1;
+
+}
 
 
 function getCriticalMomentum(currentStreak){
@@ -499,9 +593,14 @@ function getXPAmount(
 
 
     const activeLuckBoost =
-        luck.getMemberLuckProfile(
-            member
-        );
+        Object.prototype.hasOwnProperty.call(
+            options,
+            "activeLuckBoost"
+        )
+            ? options.activeLuckBoost
+            : luck.getMemberLuckProfile(
+                member
+            );
 
 
     const luckCriticalBonus =
@@ -515,35 +614,6 @@ function getXPAmount(
                     .boostMultiplierScale
             ) || 1
         ) || 0;
-
-
-    const critical20Multiplier =
-        Math.max(
-            1,
-            Number(
-                upgradeEffects
-                    .critical20Multiplier
-            ) ||
-                CRITICAL_STREAK_XP_MULTIPLIER
-        );
-
-
-    const critical50Multiplier =
-        Math.max(
-            critical20Multiplier,
-            Number(
-                upgradeEffects
-                    .critical50Multiplier
-            ) ||
-                CRITICAL_STREAK_SUPER_XP_MULTIPLIER
-        );
-
-
-    const critical100Multiplier =
-        Number(
-            upgradeEffects
-                .critical100Multiplier
-        ) || null;
 
 
     const criticalChanceCap =
@@ -563,8 +633,26 @@ function getXPAmount(
         );
 
 
+    const criticalChanceMultiplier =
+        options.criticalChanceMultiplier == null
+            ? 1
+            : Math.max(
+                0,
+                Number(
+                    options.criticalChanceMultiplier
+                ) || 0
+            );
+
+
     const criticalChance =
-        chanceData.finalChance;
+        Math.max(
+            0,
+            Math.min(
+                chanceData.criticalChanceCap,
+                chanceData.finalChance *
+                    criticalChanceMultiplier
+            )
+        );
 
 
 
@@ -578,11 +666,21 @@ function getXPAmount(
         );
 
 
+    const forcedCriticalFailure =
+        Boolean(
+            options.forcedCriticalFailure
+        );
+
+
     const critical =
-        forcedCritical
-        ||
-        Math.random() * 100 <
-            criticalChance;
+        !forcedCriticalFailure
+        &&
+        (
+            forcedCritical
+            ||
+            Math.random() * 100 <
+                criticalChance
+        );
 
 
     let criticalMultiplier = 1;
@@ -594,7 +692,10 @@ function getXPAmount(
     let configuredStreakXPMultiplier = 1;
 
 
-    let streakBonusSuppressedByInfinity = false;
+    // Kept in the result payload for compatibility with older logging code.
+    // Infinity now receives its own reduced streak rewards instead of having
+    // the streak reward suppressed completely.
+    const streakBonusSuppressedByInfinity = false;
 
 
     let criticalStreak =
@@ -618,46 +719,15 @@ function getXPAmount(
             criticalMultiplier;
 
 
-        if(
-            critical100Multiplier
-            &&
-            criticalStreak >= 100
-        ){
-
-            configuredStreakXPMultiplier =
-                critical100Multiplier;
-
-        }
-        else if(
-            criticalStreak >=
-                CRITICAL_STREAK_SUPER_THRESHOLD
-        ){
-
-            configuredStreakXPMultiplier =
-                critical50Multiplier;
-
-        }
-        else if(
-            criticalStreak >=
-                CRITICAL_STREAK_BONUS_THRESHOLD
-        ){
-
-            configuredStreakXPMultiplier =
-                critical20Multiplier;
-
-        }
-
-
-        streakBonusSuppressedByInfinity =
-            activeXPBoost.tier === "infinity"
-            &&
-            configuredStreakXPMultiplier > 1;
+        configuredStreakXPMultiplier =
+            getCriticalStreakXPMultiplier(
+                activeXPBoost.tier,
+                criticalStreak
+            );
 
 
         streakXPMultiplier =
-            streakBonusSuppressedByInfinity
-                ? 1
-                : configuredStreakXPMultiplier;
+            configuredStreakXPMultiplier;
 
 
         earnedXP *=
@@ -727,6 +797,9 @@ function getXPAmount(
 
 
         forcedCritical,
+
+
+        forcedCriticalFailure,
 
 
         criticalBonus,
@@ -920,6 +993,12 @@ module.exports = {
 
     BOOST_ROLES:
         boosts.BOOST_ROLES,
+
+
+    CRITICAL_STREAK_REWARD_TABLE,
+
+
+    getCriticalStreakXPMultiplier,
 
 
     getLevel,
