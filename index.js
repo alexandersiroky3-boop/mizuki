@@ -28,11 +28,6 @@ const rankCommand = require("./commands/rank");
 const giveXPCommand = require("./commands/givexp");
 const commandsCommand = require("./commands/commands");
 const boostCommand = require("./commands/showboost");
-const valuesCommand = require("./commands/values");
-const sellCommand = require("./commands/sell");
-const muteCommand = require("./commands/mute");
-const upgradesCommand = require("./commands/upgrades");
-const setUpgradeCommand = require("./commands/setupgrade");
 const shopCommand = require("./commands/shop");
 const merchantCommand =
     require("./commands/merchant");
@@ -87,10 +82,6 @@ const unbanCommand = require("./commands/unban");
 const kickCommand = require("./commands/kick");
 const permabanCommand = require("./commands/permaban");
 const sendStaffRulesMSGCommand = require("./commands/sendstaffrulesmsg");
-
-
-const CRITICAL_50_PLUS_PREFIX =
-    ". ݁⋆✶ ˗ˏˋ 🐦‍🔥🔥💥 ˎˊ˗  ࣪ ✶⋆ ˖ ";
 
 
 // =====================================================
@@ -197,77 +188,15 @@ const http = require("http");
 
 const PORT = process.env.PORT || 3000;
 
-const serviceState = {
-    databaseReady: false,
-    discordReady: false,
-    shuttingDown: false
-};
-
-
-function isServiceReady(){
-
-    return (
-        serviceState.databaseReady
-        &&
-        serviceState.discordReady
-        &&
-        !serviceState.shuttingDown
-    );
-
-}
-
-
-const healthServer =
-    http.createServer((request, response) => {
-
-        const ready =
-            isServiceReady();
-
-
-        response.writeHead(
-            ready ? 200 : 503,
-            {
-                "Content-Type":
-                    "text/plain; charset=utf-8",
-                "Cache-Control":
-                    "no-store"
-            }
-        );
-
-
-        response.end(
-            ready
-                ? "Mizuki is online!"
-                : serviceState.shuttingDown
-                    ? "Mizuki is shutting down."
-                    : "Mizuki is starting up."
-        );
-
+http.createServer((request, response) => {
+    response.writeHead(200, {
+        "Content-Type": "text/plain"
     });
 
-
-healthServer.on("error", error => {
-
-    console.error(
-        "Health server failed:",
-        error
-    );
-
-
-    process.exit(1);
-
+    response.end("Mizuki is online!");
+}).listen(PORT, () => {
+    console.log(`Health server running on port ${PORT}`);
 });
-
-
-healthServer.listen(
-    PORT,
-    "0.0.0.0",
-    () => {
-        console.log(
-            `Health server listening on port ${PORT}; waiting for PostgreSQL and Discord.`
-        );
-    }
-);
 
 
 
@@ -306,12 +235,6 @@ partials:[
 
 
 client.once("clientReady", async () => {
-
-
-    // Discord is connected. Render may now mark the service healthy once
-    // PostgreSQL is ready too; startup restore jobs can continue afterward.
-    serviceState.discordReady =
-        true;
 
 
     await resolveMainGuild();
@@ -635,44 +558,6 @@ client.on(
         }
 
 
-        let bannedRoleProtection;
-
-        try{
-
-            bannedRoleProtection =
-                await moderation.handleBannedRoleProtection(
-                    oldMember,
-                    newMember
-                );
-
-        }
-        catch(error){
-
-            console.error(
-                "Banned-role protection failed:",
-                error
-            );
-
-
-            // Do not let other automatic role systems act on a member while
-            // a protected Banned-role change could not be verified/reverted.
-            return;
-
-        }
-
-
-        if(bannedRoleProtection.reverted){
-            return;
-        }
-
-
-        // A banned member is intentionally excluded from every other role
-        // repair system until !unban or automatic expiry removes Banned.
-        if(newMember.roles.cache.has(moderation.BANNED_ROLE_ID)){
-            return;
-        }
-
-
         await levelRoles.handleProtectedRoleUpdate(
             oldMember,
             newMember
@@ -684,6 +569,13 @@ client.on(
             );
 
         });
+
+
+        // A temporarily banned member must keep only the Banned role;
+        // automatic XP/Luck boost role repair resumes after unban.
+        if(newMember.roles.cache.has(moderation.BANNED_ROLE_ID)){
+            return;
+        }
 
 
         await boosts.checkBoostRole(
@@ -744,17 +636,6 @@ client.on(
                 interaction.guildId
             )
         ){
-            return;
-        }
-
-
-        const sellHandled =
-            await sellCommand.handleInteraction(
-                interaction
-            );
-
-
-        if(sellHandled){
             return;
         }
 
@@ -1019,66 +900,6 @@ if(message.content === "!boost"){
 if(
     message.content
         .trim()
-        .toLowerCase() === "!values"
-){
-
-    return valuesCommand.execute(
-        message
-    );
-
-}
-
-if(
-    message.content
-        .trim()
-        .toLowerCase() === "!sell"
-){
-
-    return sellCommand.execute(
-        message
-    );
-
-}
-
-if(
-    message.content
-        .trim()
-        .toLowerCase() === "!mute"
-){
-
-    return muteCommand.execute(
-        message
-    );
-
-}
-
-if(
-    /^!setupgrade(?:\s|$)/i.test(
-        message.content.trim()
-    )
-){
-
-    return setUpgradeCommand.execute(
-        message
-    );
-
-}
-
-if(
-    message.content
-        .trim()
-        .toLowerCase() === "!upgrades"
-){
-
-    return upgradesCommand.execute(
-        message
-    );
-
-}
-
-if(
-    message.content
-        .trim()
         .toLowerCase() === "!quests"
 ){
 
@@ -1278,19 +1099,6 @@ if(
             return;
 
 
-await boosts.sendXPBoostDropReply(
-    message,
-    result.xpBoostDrop
-).catch(error => {
-
-    console.error(
-        "Could not send chat XP Boost drop reply:",
-        error
-    );
-
-});
-
-
 await quests.recordEvent(
     message,
     "earn_xp",
@@ -1299,32 +1107,6 @@ await quests.recordEvent(
         Number(result.earnedXP) || 0
     )
 );
-
-
-// Chat-only XP quest progress. Keep this separate from earn_xp so XP from
-// !roll, quest rewards, trades, and admin commands cannot complete it.
-await quests.recordEvent(
-    message,
-    "chat_xp",
-    Math.max(
-        0,
-        Number(result.earnedXP) || 0
-    )
-);
-
-
-const criticalMessagesMuted =
-    (
-        result.critical
-        ||
-        Number(result.lostCriticalStreak) >= 2
-    )
-        ? await database.isMessageTypeMuted(
-            message.guild.id,
-            message.author.id,
-            "critical"
-        )
-        : false;
 
 
 if(result.critical){
@@ -1354,24 +1136,8 @@ if(result.critical){
 
 
 
-    if(!criticalMessagesMuted){
-
-    // Critical streaks 50+ keep the special announcement; the actual streak
-    // XP multiplier now comes from the user's Chatting upgrades.
-    if(result.criticalStreak >= 50){
-
-        message.reply(
-
-            `${CRITICAL_50_PLUS_PREFIX}**${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!**`
-
-        ).catch(() => {});
-
-    }
-
-
-
-    // Critical streaks 20-49.
-    else if(result.criticalStreak >= 20){
+    // Critical streaks 20+.
+    if(result.criticalStreak >= 20){
 
         message.reply(
 
@@ -1391,7 +1157,7 @@ if(result.critical){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **`
 
         ).catch(() => {});
 
@@ -1411,9 +1177,6 @@ if(result.critical){
     }
 
 
-    }
-
-
 }
 
 
@@ -1421,15 +1184,11 @@ if(result.critical){
 else if(result.lostCriticalStreak >= 2){
 
 
-    if(!criticalMessagesMuted){
-
     message.reply(
 
         `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
 
     ).catch(() => {});
-
-    }
 
 
 }
@@ -1498,12 +1257,7 @@ let prefix = "";
 
 if(result.critical){
 
-    if(result.criticalStreak >= 50){
-
-        prefix = CRITICAL_50_PLUS_PREFIX;
-
-    }
-    else if(result.criticalStreak >= 20){
+    if(result.criticalStreak >= 20){
 
         prefix = "🧊🥶 ";
 
@@ -1561,118 +1315,14 @@ async function startBot(){
     await database.initDatabase();
 
 
-    serviceState.databaseReady =
-        true;
-
-
-    const token =
-        String(
-            process.env.TOKEN || ""
-        ).trim();
-
-
-    if(!token){
-
-        throw new Error(
-            "TOKEN is missing. Add the Discord bot token to Render's environment variables."
-        );
-
-    }
-
-
     await client.login(
-        token
+        process.env.TOKEN
     );
 
 }
-
-
-let shutdownStarted =
-    false;
-
-
-function shutdownApplication(
-    reason,
-    exitCode = 0
-){
-
-    if(shutdownStarted){
-        return;
-    }
-
-
-    shutdownStarted =
-        true;
-
-
-    serviceState.shuttingDown =
-        true;
-
-    serviceState.discordReady =
-        false;
-
-
-    console.log(
-        `Mizuki is shutting down (${reason}).`
-    );
-
-
-    try{
-        client.destroy();
-    }
-    catch(error){
-        console.error(
-            "Discord shutdown failed:",
-            error
-        );
-    }
-
-
-    const exit = () => {
-        process.exit(exitCode);
-    };
-
-
-    healthServer.close(exit);
-
-
-    const forcedExit =
-        setTimeout(
-            exit,
-            5000
-        );
-
-
-    forcedExit.unref();
-
-}
-
-
-process.once(
-    "SIGTERM",
-    () => shutdownApplication(
-        "Render sent SIGTERM",
-        0
-    )
-);
-
-
-process.once(
-    "SIGINT",
-    () => shutdownApplication(
-        "SIGINT",
-        0
-    )
-);
 
 
 startBot().catch(error => {
-
-    serviceState.databaseReady =
-        false;
-
-    serviceState.discordReady =
-        false;
 
     console.error(
         "Mizuki could not start:"
@@ -1682,9 +1332,6 @@ startBot().catch(error => {
         error
     );
 
-    shutdownApplication(
-        "startup failure",
-        1
-    );
+    process.exitCode = 1;
 
 });
