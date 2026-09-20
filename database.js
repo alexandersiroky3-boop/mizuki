@@ -1445,7 +1445,14 @@ const TRADE_BOOST_FEES = {
     "luck:tier2": 4000,
     "luck:tier3": 50000,
     "luck:max": 125000,
-    "luck:omega": 250000
+    "luck:omega": 250000,
+
+    // Power Runes are fixed-XP consumables rather than Boosts, but they use
+    // the same atomic inventory-transfer path during trades. Their fees are
+    // five percent of the XP each Rune can redeem for.
+    "rune:tier1": 5000,
+    "rune:tier2": 50000,
+    "rune:tier3": 500000
 
 };
 
@@ -2599,6 +2606,111 @@ await db.query(`
         )
 
     )
+
+`);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS afk_users (
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        originalNickname TEXT,
+
+        startedAt BIGINT NOT NULL,
+
+        PRIMARY KEY(
+            guildID,
+            userID
+        )
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS troll_effects (
+
+        id BIGSERIAL PRIMARY KEY,
+
+        guildID TEXT NOT NULL,
+
+        sourceUserID TEXT NOT NULL,
+
+        targetUserID TEXT NOT NULL,
+
+        rarity TEXT NOT NULL,
+
+        effectType TEXT NOT NULL,
+
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+        status TEXT NOT NULL DEFAULT 'active',
+
+        createdAt BIGINT NOT NULL,
+
+        expiresAt BIGINT NOT NULL,
+
+        completedAt BIGINT,
+
+        revealedAt BIGINT
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE UNIQUE INDEX IF NOT EXISTS
+    troll_effects_one_active_per_target
+
+    ON troll_effects(
+        guildID,
+        targetUserID
+    )
+
+    WHERE status='active'
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    troll_effects_pending_reveal
+
+    ON troll_effects(
+        guildID,
+        targetUserID,
+        completedAt
+    )
+
+    WHERE status='completed'
+    AND revealedAt IS NULL
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    troll_effects_luck_overlay
+
+    ON troll_effects(
+        guildID,
+        sourceUserID,
+        targetUserID,
+        expiresAt
+    )
+
+    WHERE status='active'
+    AND effectType='luck_transfer'
 
 `);
 
@@ -5255,6 +5367,21 @@ await client.query(`
 
 await client.query(`
 
+    DELETE FROM troll_effects
+
+    WHERE guildID=$1
+    AND (
+        sourceUserID=$2
+        OR targetUserID=$2
+    )
+
+`, [
+    guildID,
+    userID
+]);
+
+await client.query(`
+
     DELETE FROM xp_logs
 
     WHERE guildID=$1
@@ -5365,6 +5492,1193 @@ async function getAllUsers(guildID){
 
 
     return result.rows;
+
+}
+
+
+// =====================================================
+// MYTHIC SERVER-WIDE STEAL
+// =====================================================
+
+async function performMythicSteal(
+    guildID,
+    thiefUserID,
+    amount
+){
+
+    const normalizedGuildID =
+        String(guildID);
+
+    const normalizedThiefUserID =
+        String(thiefUserID);
+
+    const safeAmount =
+        Math.max(
+            0,
+            Math.floor(
+                Number(amount) || 0
+            )
+        );
+
+
+    if(safeAmount <= 0){
+
+        return {
+            reward: 0,
+            affectedCount: 0
+        };
+
+    }
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        await client.query(`
+
+            INSERT INTO users(
+                guildID,
+                userID
+            )
+
+            VALUES($1,$2)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            normalizedGuildID,
+            normalizedThiefUserID
+        ]);
+
+
+        // One atomic UPDATE prevents chat XP earned during the Mythic steal
+        // from being overwritten by an old per-user balance snapshot.
+        const drainedUsers =
+            await client.query(`
+
+                UPDATE users
+
+                SET xp = GREATEST(
+                    0,
+                    xp - $3
+                )
+
+                WHERE guildID=$1
+                AND userID<>$2
+                AND xp > 0
+
+                RETURNING userID AS "userID"
+
+            `, [
+                normalizedGuildID,
+                normalizedThiefUserID,
+                safeAmount
+            ]);
+
+
+        await client.query(`
+
+            UPDATE users
+
+            SET xp = xp + $3
+
+            WHERE guildID=$1
+            AND userID=$2
+
+        `, [
+            normalizedGuildID,
+            normalizedThiefUserID,
+            safeAmount
+        ]);
+
+
+        await client.query(`
+
+            INSERT INTO leaderboard_xp_activity(
+                guildID,
+                userID,
+                amount,
+                timestamp
+            )
+
+            VALUES($1,$2,$3,$4)
+
+        `, [
+            normalizedGuildID,
+            normalizedThiefUserID,
+            safeAmount,
+            Date.now()
+        ]);
+
+
+        await client.query("COMMIT");
+
+
+        userCache.delete(
+            `${normalizedGuildID}:${normalizedThiefUserID}`
+        );
+
+
+        for(const row of drainedUsers.rows){
+
+            userCache.delete(
+                `${normalizedGuildID}:${row.userID}`
+            );
+
+        }
+
+
+        return {
+            reward:
+                safeAmount,
+
+            affectedCount:
+                drainedUsers.rowCount
+                ??
+                drainedUsers.rows.length
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+// =====================================================
+// MYTHIC SERVER-WIDE KISS REWARD
+// =====================================================
+
+async function performMythicKissReward(
+    guildID,
+    kisserUserID,
+    targetUserID,
+    kisserReward,
+    targetReward,
+    everyoneReward
+){
+
+    const normalizedGuildID =
+        String(guildID);
+
+    const normalizedKisserUserID =
+        String(kisserUserID);
+
+    const normalizedTargetUserID =
+        String(targetUserID);
+
+
+    if(
+        normalizedKisserUserID ===
+        normalizedTargetUserID
+    ){
+
+        throw new Error(
+            "Mythic kiss requires two different users."
+        );
+
+    }
+
+
+    const safeKisserReward =
+        Math.max(
+            0,
+            Math.floor(
+                Number(kisserReward) || 0
+            )
+        );
+
+    const safeTargetReward =
+        Math.max(
+            0,
+            Math.floor(
+                Number(targetReward) || 0
+            )
+        );
+
+    const safeEveryoneReward =
+        Math.max(
+            0,
+            Math.floor(
+                Number(everyoneReward) || 0
+            )
+        );
+
+    const timestamp =
+        Date.now();
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        await client.query(`
+
+            INSERT INTO users(
+                guildID,
+                userID
+            )
+
+            VALUES
+                ($1,$2),
+                ($1,$3)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            normalizedGuildID,
+            normalizedKisserUserID,
+            normalizedTargetUserID
+        ]);
+
+
+        // Pay the two command participants and write their leaderboard
+        // activity from the same UPDATE result.
+        await client.query(`
+
+            WITH updated_users AS (
+
+                UPDATE users
+
+                SET xp = xp +
+                    CASE
+                        WHEN userID=$2 THEN $4
+                        ELSE $5
+                    END
+
+                WHERE guildID=$1
+                AND userID IN ($2,$3)
+
+                RETURNING
+                    guildID,
+                    userID,
+                    CASE
+                        WHEN userID=$2 THEN $4
+                        ELSE $5
+                    END AS awarded
+
+            )
+
+            INSERT INTO leaderboard_xp_activity(
+                guildID,
+                userID,
+                amount,
+                timestamp
+            )
+
+            SELECT
+                guildID,
+                userID,
+                awarded,
+                $6
+
+            FROM updated_users
+
+            WHERE awarded > 0
+
+        `, [
+            normalizedGuildID,
+            normalizedKisserUserID,
+            normalizedTargetUserID,
+            safeKisserReward,
+            safeTargetReward,
+            timestamp
+        ]);
+
+
+        let rewardedUsers = {
+            rows: [],
+            rowCount: 0
+        };
+
+
+        if(safeEveryoneReward > 0){
+
+            // Only existing economy users are included. This avoids a guild
+            // member fetch and prevents Discord gateway rate limits while
+            // still rewarding every registered player except the two above.
+            rewardedUsers =
+                await client.query(`
+
+                    WITH updated_users AS (
+
+                        UPDATE users
+
+                        SET xp = xp + $4
+
+                        WHERE guildID=$1
+                        AND userID<>$2
+                        AND userID<>$3
+
+                        RETURNING
+                            guildID,
+                            userID
+
+                    ),
+
+                    logged_users AS (
+
+                        INSERT INTO leaderboard_xp_activity(
+                            guildID,
+                            userID,
+                            amount,
+                            timestamp
+                        )
+
+                        SELECT
+                            guildID,
+                            userID,
+                            $4,
+                            $5
+
+                        FROM updated_users
+
+                        RETURNING userID AS "userID"
+
+                    )
+
+                    SELECT "userID"
+
+                    FROM logged_users
+
+                `, [
+                    normalizedGuildID,
+                    normalizedKisserUserID,
+                    normalizedTargetUserID,
+                    safeEveryoneReward,
+                    timestamp
+                ]);
+
+        }
+
+
+        await client.query("COMMIT");
+
+
+        userCache.delete(
+            `${normalizedGuildID}:${normalizedKisserUserID}`
+        );
+
+        userCache.delete(
+            `${normalizedGuildID}:${normalizedTargetUserID}`
+        );
+
+
+        for(const row of rewardedUsers.rows){
+
+            userCache.delete(
+                `${normalizedGuildID}:${row.userID}`
+            );
+
+        }
+
+
+        return {
+            kisserReward:
+                safeKisserReward,
+
+            targetReward:
+                safeTargetReward,
+
+            everyoneReward:
+                safeEveryoneReward,
+
+            affectedCount:
+                rewardedUsers.rowCount
+                ??
+                rewardedUsers.rows.length
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+// =====================================================
+// LEGENDARY SERVER-WIDE HUG REWARD
+// =====================================================
+
+async function performLegendaryHugReward(
+    guildID,
+    huggerUserID,
+    targetUserID,
+    huggerReward,
+    targetReward,
+    level100PlusReward,
+    level1To99Reward,
+    level100XPThreshold
+){
+
+    const normalizedGuildID =
+        String(guildID);
+
+    const normalizedHuggerUserID =
+        String(huggerUserID);
+
+    const normalizedTargetUserID =
+        String(targetUserID);
+
+
+    if(
+        normalizedHuggerUserID ===
+        normalizedTargetUserID
+    ){
+
+        throw new Error(
+            "Legendary hug requires two different users."
+        );
+
+    }
+
+
+    const safeHuggerReward =
+        Math.max(
+            0,
+            Math.floor(
+                Number(huggerReward) || 0
+            )
+        );
+
+    const safeTargetReward =
+        Math.max(
+            0,
+            Math.floor(
+                Number(targetReward) || 0
+            )
+        );
+
+    const safeLevel100PlusReward =
+        Math.max(
+            0,
+            Math.floor(
+                Number(level100PlusReward) || 0
+            )
+        );
+
+    const safeLevel1To99Reward =
+        Math.max(
+            0,
+            Math.floor(
+                Number(level1To99Reward) || 0
+            )
+        );
+
+    const safeLevel100XPThreshold =
+        Math.max(
+            1,
+            Math.floor(
+                Number(level100XPThreshold) ||
+                2450250
+            )
+        );
+
+    const timestamp =
+        Date.now();
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        await client.query(`
+
+            INSERT INTO users(
+                guildID,
+                userID
+            )
+
+            VALUES
+                ($1,$2),
+                ($1,$3)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            normalizedGuildID,
+            normalizedHuggerUserID,
+            normalizedTargetUserID
+        ]);
+
+
+        // Build the complete reward plan from each user's balance before any
+        // XP is added. This keeps the Level 100 boundary deterministic and
+        // pays both command participants the server-wide share as requested.
+        const rewardedUsers =
+            await client.query(`
+
+                WITH reward_plan AS (
+
+                    SELECT
+                        guildID,
+                        userID,
+                        (
+                            CASE
+                                WHEN xp >= $8 THEN $6
+                                ELSE $7
+                            END
+                            +
+                            CASE
+                                WHEN userID=$2 THEN $4
+                                WHEN userID=$3 THEN $5
+                                ELSE 0
+                            END
+                        )::BIGINT AS awarded
+
+                    FROM users
+
+                    WHERE guildID=$1
+
+                    FOR UPDATE
+
+                ),
+
+                updated_users AS (
+
+                    UPDATE users AS current_user
+
+                    SET xp =
+                        current_user.xp +
+                        reward_plan.awarded
+
+                    FROM reward_plan
+
+                    WHERE
+                        current_user.guildID =
+                            reward_plan.guildID
+                    AND
+                        current_user.userID =
+                            reward_plan.userID
+
+                    RETURNING
+                        current_user.guildID,
+                        current_user.userID,
+                        reward_plan.awarded
+
+                ),
+
+                logged_users AS (
+
+                    INSERT INTO leaderboard_xp_activity(
+                        guildID,
+                        userID,
+                        amount,
+                        timestamp
+                    )
+
+                    SELECT
+                        guildID,
+                        userID,
+                        awarded,
+                        $9
+
+                    FROM updated_users
+
+                    WHERE awarded > 0
+
+                    RETURNING
+                        userID AS "userID",
+                        amount AS awarded
+
+                )
+
+                SELECT
+                    "userID",
+                    awarded
+
+                FROM logged_users
+
+            `, [
+                normalizedGuildID,
+                normalizedHuggerUserID,
+                normalizedTargetUserID,
+                safeHuggerReward,
+                safeTargetReward,
+                safeLevel100PlusReward,
+                safeLevel1To99Reward,
+                safeLevel100XPThreshold,
+                timestamp
+            ]);
+
+
+        await client.query("COMMIT");
+
+
+        for(const row of rewardedUsers.rows){
+
+            userCache.delete(
+                `${normalizedGuildID}:${row.userID}`
+            );
+
+        }
+
+
+        return {
+            huggerReward:
+                safeHuggerReward,
+
+            targetReward:
+                safeTargetReward,
+
+            level100PlusReward:
+                safeLevel100PlusReward,
+
+            level1To99Reward:
+                safeLevel1To99Reward,
+
+            affectedCount:
+                rewardedUsers.rowCount
+                ??
+                rewardedUsers.rows.length,
+
+            rewards:
+                rewardedUsers.rows
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+// =====================================================
+// MYTHIC HUG PARTICIPANT BONUS
+// =====================================================
+
+async function performMythicHugReward(
+    guildID,
+    huggerUserID,
+    targetUserID,
+    huggerReward,
+    targetReward,
+    bonusReward
+){
+
+    const normalizedGuildID =
+        String(guildID);
+
+    const normalizedHuggerUserID =
+        String(huggerUserID);
+
+    const normalizedTargetUserID =
+        String(targetUserID);
+
+
+    if(
+        normalizedHuggerUserID ===
+        normalizedTargetUserID
+    ){
+
+        throw new Error(
+            "Mythic hug requires two different users."
+        );
+
+    }
+
+
+    const safeHuggerReward =
+        Math.max(
+            0,
+            Math.floor(
+                Number(huggerReward) || 0
+            )
+        );
+
+    const safeTargetReward =
+        Math.max(
+            0,
+            Math.floor(
+                Number(targetReward) || 0
+            )
+        );
+
+    const safeBonusReward =
+        Math.max(
+            0,
+            Math.floor(
+                Number(bonusReward) || 0
+            )
+        );
+
+    const timestamp =
+        Date.now();
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        await client.query(`
+
+            INSERT INTO users(
+                guildID,
+                userID
+            )
+
+            VALUES
+                ($1,$2),
+                ($1,$3)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            normalizedGuildID,
+            normalizedHuggerUserID,
+            normalizedTargetUserID
+        ]);
+
+
+        const rewardedUsers =
+            await client.query(`
+
+                WITH updated_users AS (
+
+                    UPDATE users
+
+                    SET xp = xp +
+                        CASE
+                            WHEN userID=$2 THEN $4
+                            ELSE $5
+                        END
+                        + $6
+
+                    WHERE guildID=$1
+                    AND userID IN ($2,$3)
+
+                    RETURNING
+                        guildID,
+                        userID,
+                        CASE
+                            WHEN userID=$2 THEN $4
+                            ELSE $5
+                        END
+                        + $6 AS awarded
+
+                ),
+
+                logged_users AS (
+
+                    INSERT INTO leaderboard_xp_activity(
+                        guildID,
+                        userID,
+                        amount,
+                        timestamp
+                    )
+
+                    SELECT
+                        guildID,
+                        userID,
+                        awarded,
+                        $7
+
+                    FROM updated_users
+
+                    WHERE awarded > 0
+
+                    RETURNING
+                        userID AS "userID",
+                        amount AS awarded
+
+                )
+
+                SELECT
+                    "userID",
+                    awarded
+
+                FROM logged_users
+
+            `, [
+                normalizedGuildID,
+                normalizedHuggerUserID,
+                normalizedTargetUserID,
+                safeHuggerReward,
+                safeTargetReward,
+                safeBonusReward,
+                timestamp
+            ]);
+
+
+        await client.query("COMMIT");
+
+
+        userCache.delete(
+            `${normalizedGuildID}:${normalizedHuggerUserID}`
+        );
+
+        userCache.delete(
+            `${normalizedGuildID}:${normalizedTargetUserID}`
+        );
+
+
+        return {
+            huggerReward:
+                safeHuggerReward,
+
+            targetReward:
+                safeTargetReward,
+
+            bonusReward:
+                safeBonusReward,
+
+            affectedCount:
+                rewardedUsers.rowCount
+                ??
+                rewardedUsers.rows.length,
+
+            rewards:
+                rewardedUsers.rows
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+// =====================================================
+// SERVER-WIDE EZWIN
+// =====================================================
+
+async function performEZWin(
+    guildID,
+    winnerUserID,
+    winnerReward,
+    level100PlusLoss,
+    level1To99Loss,
+    level100XPThreshold,
+    trollBonusUserID = null
+){
+
+    const normalizedGuildID =
+        String(guildID);
+
+    const normalizedWinnerUserID =
+        String(winnerUserID);
+
+    const normalizedTrollBonusUserID =
+        trollBonusUserID == null
+        || String(trollBonusUserID) === normalizedWinnerUserID
+            ? null
+            : String(trollBonusUserID);
+
+    const safeWinnerReward =
+        Math.max(
+            0,
+            Math.floor(
+                Number(winnerReward) || 0
+            )
+        );
+
+    const safeLevel100PlusLoss =
+        Math.max(
+            0,
+            Math.floor(
+                Number(level100PlusLoss) || 0
+            )
+        );
+
+    const safeLevel1To99Loss =
+        Math.max(
+            0,
+            Math.floor(
+                Number(level1To99Loss) || 0
+            )
+        );
+
+    const safeLevel100XPThreshold =
+        Math.max(
+            1,
+            Math.floor(
+                Number(level100XPThreshold) ||
+                2450250
+            )
+        );
+
+    const timestamp =
+        Date.now();
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        await client.query(`
+
+            INSERT INTO users(
+                guildID,
+                userID
+            )
+
+            VALUES($1,$2)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            normalizedGuildID,
+            normalizedWinnerUserID
+        ]);
+
+
+        if(normalizedTrollBonusUserID){
+
+            await client.query(`
+
+                INSERT INTO users(
+                    guildID,
+                    userID
+                )
+
+                VALUES($1,$2)
+
+                ON CONFLICT DO NOTHING
+
+            `, [
+                normalizedGuildID,
+                normalizedTrollBonusUserID
+            ]);
+
+        }
+
+
+        // Classify every victim using their balance before this UPDATE. The
+        // winner is excluded, and GREATEST prevents negative XP balances.
+        const drainedUsers =
+            await client.query(`
+
+                UPDATE users
+
+                SET xp = GREATEST(
+                    0,
+                    xp -
+                        CASE
+                            WHEN xp >= $5 THEN $3
+                            ELSE $4
+                        END
+                )
+
+                WHERE guildID=$1
+                AND userID<>$2
+                AND ($6::TEXT IS NULL OR userID<>$6)
+                AND xp > 0
+
+                RETURNING userID AS "userID"
+
+            `, [
+                normalizedGuildID,
+                normalizedWinnerUserID,
+                safeLevel100PlusLoss,
+                safeLevel1To99Loss,
+                safeLevel100XPThreshold,
+                normalizedTrollBonusUserID
+            ]);
+
+
+        await client.query(`
+
+            UPDATE users
+
+            SET xp = xp + $3
+
+            WHERE guildID=$1
+            AND userID=$2
+
+        `, [
+            normalizedGuildID,
+            normalizedWinnerUserID,
+            safeWinnerReward
+        ]);
+
+
+        await client.query(`
+
+            INSERT INTO leaderboard_xp_activity(
+                guildID,
+                userID,
+                amount,
+                timestamp
+            )
+
+            VALUES($1,$2,$3,$4)
+
+        `, [
+            normalizedGuildID,
+            normalizedWinnerUserID,
+            safeWinnerReward,
+            timestamp
+        ]);
+
+
+        if(normalizedTrollBonusUserID){
+
+            await client.query(`
+
+                UPDATE users
+
+                SET xp = xp + $3
+
+                WHERE guildID=$1
+                AND userID=$2
+
+            `, [
+                normalizedGuildID,
+                normalizedTrollBonusUserID,
+                safeWinnerReward
+            ]);
+
+
+            await client.query(`
+
+                INSERT INTO leaderboard_xp_activity(
+                    guildID,
+                    userID,
+                    amount,
+                    timestamp
+                )
+
+                VALUES($1,$2,$3,$4)
+
+            `, [
+                normalizedGuildID,
+                normalizedTrollBonusUserID,
+                safeWinnerReward,
+                timestamp
+            ]);
+
+        }
+
+
+        await client.query("COMMIT");
+
+
+        userCache.delete(
+            `${normalizedGuildID}:${normalizedWinnerUserID}`
+        );
+
+
+        if(normalizedTrollBonusUserID){
+
+            userCache.delete(
+                `${normalizedGuildID}:${normalizedTrollBonusUserID}`
+            );
+
+        }
+
+
+        for(const row of drainedUsers.rows){
+
+            userCache.delete(
+                `${normalizedGuildID}:${row.userID}`
+            );
+
+        }
+
+
+        return {
+            winnerReward:
+                safeWinnerReward,
+
+            level100PlusLoss:
+                safeLevel100PlusLoss,
+
+            level1To99Loss:
+                safeLevel1To99Loss,
+
+            trollBonusUserID:
+                normalizedTrollBonusUserID,
+
+            affectedCount:
+                drainedUsers.rowCount
+                ??
+                drainedUsers.rows.length,
+
+            affectedUserIDs:
+                drainedUsers.rows.map(
+                    row => String(row.userID)
+                )
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
 
 }
 
@@ -6083,6 +7397,306 @@ async function consumeBoostInventory(
 
 
 // =====================================================
+// POWER RUNE REDEMPTION
+// =====================================================
+
+async function redeemPowerRuneInventory(
+    guildID,
+    userID,
+    tier,
+    requestedQuantity,
+    xpPerRune
+){
+
+    const normalizedGuildID =
+        String(guildID);
+
+
+    const normalizedUserID =
+        String(userID);
+
+
+    const normalizedTier =
+        String(tier || "")
+            .trim()
+            .toLowerCase();
+
+
+    const quantity =
+        Math.floor(
+            Number(requestedQuantity) || 0
+        );
+
+
+    const unitXP =
+        Math.floor(
+            Number(xpPerRune) || 0
+        );
+
+
+    const powerRuneXPByTier = {
+        tier1: 100000,
+        tier2: 1000000,
+        tier3: 10000000
+    };
+
+
+    if(
+        !powerRuneXPByTier[normalizedTier]
+        ||
+        !Number.isSafeInteger(quantity)
+        ||
+        quantity < 1
+        ||
+        quantity > 1000000
+        ||
+        !Number.isSafeInteger(unitXP)
+        ||
+        unitXP !==
+            powerRuneXPByTier[normalizedTier]
+    ){
+
+        return {
+            success: false,
+            status: "invalid-redemption",
+            remaining: 0
+        };
+
+    }
+
+
+    const totalXP =
+        quantity * unitXP;
+
+
+    if(!Number.isSafeInteger(totalXP)){
+
+        return {
+            success: false,
+            status: "invalid-redemption",
+            remaining: 0
+        };
+
+    }
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        await client.query(`
+
+            INSERT INTO users
+            (
+                guildID,
+                userID
+            )
+
+            VALUES($1,$2)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID
+        ]);
+
+
+        // Keep the same user -> inventory lock order used by trades and !sell
+        // so simultaneous redemptions/transfers cannot deadlock each other.
+        await client.query(`
+
+            SELECT xp
+
+            FROM users
+
+            WHERE guildID=$1
+            AND userID=$2
+
+            FOR UPDATE
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID
+        ]);
+
+
+        const inventoryResult =
+            await client.query(`
+
+                SELECT amount
+
+                FROM boost_inventory
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND boostType='rune'
+                AND tier=$3
+
+                FOR UPDATE
+
+            `, [
+                normalizedGuildID,
+                normalizedUserID,
+                normalizedTier
+            ]);
+
+
+        const available =
+            Math.max(
+                0,
+                Number(
+                    inventoryResult
+                        .rows[0]?.amount
+                ) || 0
+            );
+
+
+        if(available < quantity){
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status: "insufficient-inventory",
+                requested: quantity,
+                available,
+                remaining: available
+            };
+
+        }
+
+
+        const remaining =
+            available - quantity;
+
+
+        if(remaining > 0){
+
+            await client.query(`
+
+                UPDATE boost_inventory
+
+                SET amount=$4
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND boostType='rune'
+                AND tier=$3
+
+            `, [
+                normalizedGuildID,
+                normalizedUserID,
+                normalizedTier,
+                remaining
+            ]);
+
+        }
+        else{
+
+            await client.query(`
+
+                DELETE FROM boost_inventory
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND boostType='rune'
+                AND tier=$3
+
+            `, [
+                normalizedGuildID,
+                normalizedUserID,
+                normalizedTier
+            ]);
+
+        }
+
+
+        const updatedUser =
+            await client.query(`
+
+                UPDATE users
+
+                SET xp = xp + $3
+
+                WHERE guildID=$1
+                AND userID=$2
+
+                RETURNING xp
+
+            `, [
+                normalizedGuildID,
+                normalizedUserID,
+                totalXP
+            ]);
+
+
+        await client.query(`
+
+            INSERT INTO leaderboard_xp_activity
+            (
+                guildID,
+                userID,
+                amount,
+                timestamp
+            )
+
+            VALUES($1,$2,$3,$4)
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            totalXP,
+            Date.now()
+        ]);
+
+
+        await client.query("COMMIT");
+
+
+        userCache.delete(
+            `${normalizedGuildID}:${normalizedUserID}`
+        );
+
+
+        return {
+            success: true,
+            status: "redeemed",
+            tier: normalizedTier,
+            quantity,
+            unitXP,
+            totalXP,
+            remaining,
+            balance:
+                Number(
+                    updatedUser.rows[0]?.xp || 0
+                )
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+
+// =====================================================
 // PERSONAL REPLY MUTE SETTINGS
 // =====================================================
 
@@ -6258,6 +7872,810 @@ async function toggleMessageTypeMute(
     return normalizeMessageMuteRow(
         result.rows[0]
     );
+
+}
+
+
+
+
+// =====================================================
+// AFK STATUS
+// =====================================================
+
+function normalizeAFKRow(row){
+
+    if(!row){
+        return null;
+    }
+
+
+    return {
+        originalNickname:
+            row.originalnickname ?? null,
+        startedAt:
+            Number(
+                row.startedat
+            ) || 0
+    };
+
+}
+
+
+async function getAFKStatus(
+    guildID,
+    userID
+){
+
+    const result =
+        await db.query(`
+
+            SELECT
+                originalNickname,
+                startedAt
+
+            FROM afk_users
+
+            WHERE guildID=$1
+            AND userID=$2
+
+        `, [
+            String(guildID),
+            String(userID)
+        ]);
+
+
+    return normalizeAFKRow(
+        result.rows[0]
+    );
+
+}
+
+
+async function setAFKStatus(
+    guildID,
+    userID,
+    originalNickname
+){
+
+    const result =
+        await db.query(`
+
+            INSERT INTO afk_users
+            (
+                guildID,
+                userID,
+                originalNickname,
+                startedAt
+            )
+
+            VALUES
+            ($1,$2,$3,$4)
+
+            ON CONFLICT(
+                guildID,
+                userID
+            )
+
+            DO UPDATE SET
+                originalNickname =
+                    EXCLUDED.originalNickname,
+                startedAt =
+                    EXCLUDED.startedAt
+
+            RETURNING
+                originalNickname,
+                startedAt
+
+        `, [
+            String(guildID),
+            String(userID),
+            originalNickname == null
+                ? null
+                : String(originalNickname),
+            Date.now()
+        ]);
+
+
+    return normalizeAFKRow(
+        result.rows[0]
+    );
+
+}
+
+
+async function clearAFKStatus(
+    guildID,
+    userID
+){
+
+    const result =
+        await db.query(`
+
+            DELETE FROM afk_users
+
+            WHERE guildID=$1
+            AND userID=$2
+
+            RETURNING
+                originalNickname,
+                startedAt
+
+        `, [
+            String(guildID),
+            String(userID)
+        ]);
+
+
+    return normalizeAFKRow(
+        result.rows[0]
+    );
+
+}
+
+
+// =====================================================
+// TROLL STATUS EFFECTS
+// =====================================================
+
+function normalizeTrollEffectRow(row){
+
+    if(!row){
+        return null;
+    }
+
+
+    let payload = row.payload;
+
+    if(typeof payload === "string"){
+
+        try{
+            payload = JSON.parse(payload);
+        }
+        catch{
+            payload = {};
+        }
+
+    }
+
+
+    return {
+        id: String(row.id),
+        guildID: String(row.guildid),
+        sourceUserID: String(row.sourceuserid),
+        targetUserID: String(row.targetuserid),
+        rarity: String(row.rarity),
+        effectType: String(row.effecttype),
+        payload: payload && typeof payload === "object"
+            ? payload
+            : {},
+        status: String(row.status),
+        createdAt: Number(row.createdat) || 0,
+        expiresAt: Number(row.expiresat) || 0,
+        completedAt: row.completedat == null
+            ? null
+            : Number(row.completedat),
+        revealedAt: row.revealedat == null
+            ? null
+            : Number(row.revealedat)
+    };
+
+}
+
+
+async function cleanupExpiredTrollEffects(
+    guildID = null,
+    targetUserID = null
+){
+
+    const now = Date.now();
+    const normalizedGuildID = guildID == null
+        ? null
+        : String(guildID);
+    const normalizedTargetUserID = targetUserID == null
+        ? null
+        : String(targetUserID);
+
+
+    // An activated stolen-luck effect completes when its five-minute overlay
+    // ends. Other uncompleted effects simply disappear after one hour.
+    await db.query(`
+
+        WITH completed_luck AS (
+
+            UPDATE troll_effects
+
+            SET
+                status='completed',
+                completedAt=COALESCE(completedAt, expiresAt)
+
+            WHERE status='active'
+            AND effectType='luck_transfer'
+            AND payload->>'activated'='true'
+            AND expiresAt <= $1
+            AND ($2::TEXT IS NULL OR guildID=$2)
+            AND ($3::TEXT IS NULL OR targetUserID=$3)
+
+            RETURNING id
+
+        )
+
+        DELETE FROM troll_effects
+
+        WHERE status='active'
+        AND expiresAt <= $1
+        AND ($2::TEXT IS NULL OR guildID=$2)
+        AND ($3::TEXT IS NULL OR targetUserID=$3)
+        AND id NOT IN (
+            SELECT id
+            FROM completed_luck
+        )
+
+    `, [
+        now,
+        normalizedGuildID,
+        normalizedTargetUserID
+    ]);
+
+}
+
+
+async function getActiveTrollEffect(
+    guildID,
+    targetUserID
+){
+
+    await cleanupExpiredTrollEffects(
+        guildID,
+        targetUserID
+    );
+
+
+    const result = await db.query(`
+
+        SELECT *
+
+        FROM troll_effects
+
+        WHERE guildID=$1
+        AND targetUserID=$2
+        AND status='active'
+
+        ORDER BY createdAt ASC
+
+        LIMIT 1
+
+    `, [
+        String(guildID),
+        String(targetUserID)
+    ]);
+
+
+    return normalizeTrollEffectRow(
+        result.rows[0]
+    );
+
+}
+
+
+async function createTrollEffect({
+    guildID,
+    sourceUserID,
+    targetUserID,
+    rarity,
+    effectType,
+    payload = {},
+    createdAt = Date.now(),
+    expiresAt
+}){
+
+    await cleanupExpiredTrollEffects(
+        guildID,
+        targetUserID
+    );
+
+
+    const result = await db.query(`
+
+        INSERT INTO troll_effects
+        (
+            guildID,
+            sourceUserID,
+            targetUserID,
+            rarity,
+            effectType,
+            payload,
+            status,
+            createdAt,
+            expiresAt
+        )
+
+        VALUES
+        ($1,$2,$3,$4,$5,$6::jsonb,'active',$7,$8)
+
+        ON CONFLICT DO NOTHING
+
+        RETURNING *
+
+    `, [
+        String(guildID),
+        String(sourceUserID),
+        String(targetUserID),
+        String(rarity),
+        String(effectType),
+        JSON.stringify(payload || {}),
+        Number(createdAt),
+        Number(expiresAt)
+    ]);
+
+
+    return normalizeTrollEffectRow(
+        result.rows[0]
+    );
+
+}
+
+
+async function updateTrollEffect(
+    effectID,
+    payload,
+    complete = false
+){
+
+    const now = Date.now();
+
+    const result = await db.query(`
+
+        UPDATE troll_effects
+
+        SET
+            payload=$2::jsonb,
+            status=CASE
+                WHEN $3::BOOLEAN THEN 'completed'
+                ELSE status
+            END,
+            completedAt=CASE
+                WHEN $3::BOOLEAN THEN $4
+                ELSE completedAt
+            END,
+            revealedAt=CASE
+                WHEN $3::BOOLEAN AND rarity='failed' THEN $4
+                ELSE revealedAt
+            END
+
+        WHERE id=$1
+        AND status='active'
+
+        RETURNING *
+
+    `, [
+        String(effectID),
+        JSON.stringify(payload || {}),
+        Boolean(complete),
+        now
+    ]);
+
+
+    return normalizeTrollEffectRow(
+        result.rows[0]
+    );
+
+}
+
+
+async function completeTrollEffect(
+    effectID,
+    payload = {}
+){
+
+    return updateTrollEffect(
+        effectID,
+        payload,
+        true
+    );
+
+}
+
+
+async function activateTrollLuckTransfer(
+    effectID,
+    roleID,
+    activeUntil
+){
+
+    const result = await db.query(`
+
+        UPDATE troll_effects
+
+        SET
+            payload = payload || $2::jsonb,
+            expiresAt=$3
+
+        WHERE id=$1
+        AND status='active'
+        AND effectType='luck_transfer'
+
+        RETURNING *
+
+    `, [
+        String(effectID),
+        JSON.stringify({
+            activated: true,
+            roleID: String(roleID),
+            activeUntil: Number(activeUntil)
+        }),
+        Number(activeUntil)
+    ]);
+
+
+    return normalizeTrollEffectRow(
+        result.rows[0]
+    );
+
+}
+
+
+async function getActiveTrollLuckModifiers(
+    guildID,
+    userID
+){
+
+    const result = await db.query(`
+
+        SELECT *
+
+        FROM troll_effects
+
+        WHERE guildID=$1
+        AND status='active'
+        AND effectType='luck_transfer'
+        AND payload->>'activated'='true'
+        AND expiresAt > $3
+        AND (
+            sourceUserID=$2
+            OR targetUserID=$2
+        )
+
+        ORDER BY createdAt ASC
+
+    `, [
+        String(guildID),
+        String(userID),
+        Date.now()
+    ]);
+
+
+    return result.rows.map(
+        normalizeTrollEffectRow
+    );
+
+}
+
+
+async function getPendingTrollReveals(
+    guildID,
+    targetUserID
+){
+
+    await cleanupExpiredTrollEffects(
+        guildID,
+        targetUserID
+    );
+
+
+    const result = await db.query(`
+
+        SELECT *
+
+        FROM troll_effects
+
+        WHERE guildID=$1
+        AND targetUserID=$2
+        AND status='completed'
+        AND rarity<>'failed'
+        AND revealedAt IS NULL
+
+        ORDER BY completedAt ASC, id ASC
+
+    `, [
+        String(guildID),
+        String(targetUserID)
+    ]);
+
+
+    return result.rows.map(
+        normalizeTrollEffectRow
+    );
+
+}
+
+
+async function getTrollMessageState(
+    guildID,
+    targetUserID
+){
+
+    await cleanupExpiredTrollEffects(
+        guildID,
+        targetUserID
+    );
+
+
+    const result = await db.query(`
+
+        SELECT *
+
+        FROM troll_effects
+
+        WHERE guildID=$1
+        AND targetUserID=$2
+        AND (
+            status='active'
+            OR (
+                status='completed'
+                AND rarity<>'failed'
+                AND revealedAt IS NULL
+            )
+        )
+
+        ORDER BY createdAt ASC, id ASC
+
+    `, [
+        String(guildID),
+        String(targetUserID)
+    ]);
+
+
+    const effects = result.rows.map(
+        normalizeTrollEffectRow
+    );
+
+
+    return {
+        active: effects.find(effect =>
+            effect.status === "active"
+        ) || null,
+        pending: effects.filter(effect =>
+            effect.status === "completed"
+            && effect.rarity !== "failed"
+            && effect.revealedAt == null
+        )
+    };
+
+}
+
+
+async function markTrollEffectsRevealed(effectIDs){
+
+    const normalizedIDs = Array.from(
+        new Set(
+            (effectIDs || [])
+                .map(String)
+                .filter(Boolean)
+        )
+    );
+
+
+    if(normalizedIDs.length === 0){
+        return 0;
+    }
+
+
+    const result = await db.query(`
+
+        UPDATE troll_effects
+
+        SET revealedAt=$2
+
+        WHERE id = ANY($1::BIGINT[])
+        AND status='completed'
+        AND revealedAt IS NULL
+
+    `, [
+        normalizedIDs,
+        Date.now()
+    ]);
+
+
+    return result.rowCount || 0;
+
+}
+
+
+async function applyTrollXPLoss(
+    guildID,
+    userID,
+    requestedAmount
+){
+
+    const normalizedGuildID = String(guildID);
+    const normalizedUserID = String(userID);
+    const safeRequestedAmount = Math.max(
+        0,
+        Math.floor(Number(requestedAmount) || 0)
+    );
+
+
+    if(safeRequestedAmount <= 0){
+        return 0;
+    }
+
+
+    const client = await db.connect();
+
+    try{
+
+        await client.query("BEGIN");
+
+        await client.query(`
+            INSERT INTO users(guildID,userID)
+            VALUES($1,$2)
+            ON CONFLICT DO NOTHING
+        `, [
+            normalizedGuildID,
+            normalizedUserID
+        ]);
+
+        const locked = await client.query(`
+            SELECT xp
+            FROM users
+            WHERE guildID=$1 AND userID=$2
+            FOR UPDATE
+        `, [
+            normalizedGuildID,
+            normalizedUserID
+        ]);
+
+        const balance = Math.max(
+            0,
+            Number(locked.rows[0]?.xp) || 0
+        );
+        const actualLoss = Math.min(
+            balance,
+            safeRequestedAmount
+        );
+
+        await client.query(`
+            UPDATE users
+            SET xp=xp-$3
+            WHERE guildID=$1 AND userID=$2
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            actualLoss
+        ]);
+
+        await client.query("COMMIT");
+
+        userCache.delete(
+            `${normalizedGuildID}:${normalizedUserID}`
+        );
+
+        return actualLoss;
+
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+}
+
+
+async function applyTrollXPTransfer(
+    guildID,
+    fromUserID,
+    toUserID,
+    requestedAmount
+){
+
+    const normalizedGuildID = String(guildID);
+    const normalizedFromUserID = String(fromUserID);
+    const normalizedToUserID = String(toUserID);
+    const safeRequestedAmount = Math.max(
+        0,
+        Math.floor(Number(requestedAmount) || 0)
+    );
+
+
+    if(
+        safeRequestedAmount <= 0
+        || normalizedFromUserID === normalizedToUserID
+    ){
+        return 0;
+    }
+
+
+    const client = await db.connect();
+
+    try{
+
+        await client.query("BEGIN");
+
+        await client.query(`
+            INSERT INTO users(guildID,userID)
+            VALUES($1,$2),($1,$3)
+            ON CONFLICT DO NOTHING
+        `, [
+            normalizedGuildID,
+            normalizedFromUserID,
+            normalizedToUserID
+        ]);
+
+        const locked = await client.query(`
+            SELECT xp
+            FROM users
+            WHERE guildID=$1 AND userID=$2
+            FOR UPDATE
+        `, [
+            normalizedGuildID,
+            normalizedFromUserID
+        ]);
+
+        const balance = Math.max(
+            0,
+            Number(locked.rows[0]?.xp) || 0
+        );
+        const actualTransfer = Math.min(
+            balance,
+            safeRequestedAmount
+        );
+
+        await client.query(`
+            UPDATE users
+            SET xp=xp-$3
+            WHERE guildID=$1 AND userID=$2
+        `, [
+            normalizedGuildID,
+            normalizedFromUserID,
+            actualTransfer
+        ]);
+
+        await client.query(`
+            UPDATE users
+            SET xp=xp+$3
+            WHERE guildID=$1 AND userID=$2
+        `, [
+            normalizedGuildID,
+            normalizedToUserID,
+            actualTransfer
+        ]);
+
+        if(actualTransfer > 0){
+            await client.query(`
+                INSERT INTO leaderboard_xp_activity(
+                    guildID,userID,amount,timestamp
+                )
+                VALUES($1,$2,$3,$4)
+            `, [
+                normalizedGuildID,
+                normalizedToUserID,
+                actualTransfer,
+                Date.now()
+            ]);
+        }
+
+        await client.query("COMMIT");
+
+        userCache.delete(
+            `${normalizedGuildID}:${normalizedFromUserID}`
+        );
+        userCache.delete(
+            `${normalizedGuildID}:${normalizedToUserID}`
+        );
+
+        return actualTransfer;
+
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
 
 }
 
@@ -14360,6 +16778,16 @@ module.exports = {
 
     getAllUsers,
 
+    performMythicSteal,
+
+    performMythicKissReward,
+
+    performLegendaryHugReward,
+
+    performMythicHugReward,
+
+    performEZWin,
+
     setXP,
 
     setLevel,
@@ -14418,11 +16846,43 @@ module.exports = {
 
     consumeBoostInventory,
 
+    redeemPowerRuneInventory,
+
     getMessageMutePreferences,
 
     isMessageTypeMuted,
 
     toggleMessageTypeMute,
+
+    getAFKStatus,
+
+    setAFKStatus,
+
+    clearAFKStatus,
+
+    cleanupExpiredTrollEffects,
+
+    getActiveTrollEffect,
+
+    createTrollEffect,
+
+    updateTrollEffect,
+
+    completeTrollEffect,
+
+    activateTrollLuckTransfer,
+
+    getActiveTrollLuckModifiers,
+
+    getPendingTrollReveals,
+
+    getTrollMessageState,
+
+    markTrollEffectsRevealed,
+
+    applyTrollXPLoss,
+
+    applyTrollXPTransfer,
 
     QUEST_RESET_CONFIG,
 
