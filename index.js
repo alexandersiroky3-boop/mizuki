@@ -14,6 +14,7 @@ const trolls = require("./systems/trolls");
 const database = require("./database");
 const luck =
     require("./utils/luck");
+const {getCriticalEmojis} = require("./utils/criticalEmojis");
 
 const quests =
     require("./systems/quests");
@@ -92,10 +93,6 @@ const unbanCommand = require("./commands/unban");
 const kickCommand = require("./commands/kick");
 const permabanCommand = require("./commands/permaban");
 const sendStaffRulesMSGCommand = require("./commands/sendstaffrulesmsg");
-
-
-const CRITICAL_50_PLUS_PREFIX =
-    ". ݁⋆✶ ˗ˏˋ 🐦‍🔥🔥💥 ˎˊ˗  ࣪ ✶⋆ ˖ ";
 
 
 // =====================================================
@@ -382,6 +379,8 @@ client.once("clientReady", async () => {
     if(MAIN_GUILD_ID){
         const guild = await client.guilds.fetch(MAIN_GUILD_ID).catch(() => null);
         if(guild){
+            await guild.emojis.fetch().catch(error =>
+                console.error("Could not load critical emojis:", error));
             await guild.commands.create(trollCommand.slashCommand.toJSON())
                 .catch(error => console.error("Could not register /troll:", error));
             await powerRunes.restorePowerRuneRoles(client, MAIN_GUILD_ID)
@@ -1508,22 +1507,24 @@ if(result.critical){
     }
 
 
-    // React to every critical message.
-    message.react(
-        "💥"
-    ).catch(() => {});
+    const criticalEmojis = getCriticalEmojis(
+        message.guild, result.criticalStreak
+    );
+
+    for(const reaction of criticalEmojis.reactions){
+        message.react(reaction).catch(() => {});
+    }
 
 
 
     if(!criticalMessagesMuted){
 
-    // Critical streaks 50+ keep the special announcement; the actual streak
-    // XP multiplier now comes from the user's Chatting upgrades.
+    // 50+ uses the two large custom emojis.
     if(result.criticalStreak >= 50){
 
         message.reply(
 
-            `${CRITICAL_50_PLUS_PREFIX}**${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!**`
+            `${criticalEmojis.text} **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!**`
 
         ).catch(() => {});
 
@@ -1536,7 +1537,7 @@ if(result.critical){
 
         message.reply(
 
-            `🧊🥶 **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!** 🥶🧊`
+            `${criticalEmojis.text} **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!**`
 
         ).catch(() => {});
 
@@ -1544,15 +1545,12 @@ if(result.critical){
 
 
 
-    // Critical streaks 2–5.
-    else if(
-        result.criticalStreak >= 2 &&
-        result.criticalStreak <= 5
-    ){
+    // Critical streaks 1–4.
+    else if(result.criticalStreak < 5){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `${criticalEmojis.text} **${message.author.username} got ${result.criticalStreak} critical streak${result.criticalStreak === 1 ? "" : "s"}!**`
 
         ).catch(() => {});
 
@@ -1560,12 +1558,12 @@ if(result.critical){
 
 
 
-    // Critical streaks above 5.
-    else if(result.criticalStreak > 5){
+    // Critical streaks 5–19.
+    else{
 
         message.reply(
 
-            `🐦‍🔥🔥 **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!** 🔥🐦‍🔥`
+            `${criticalEmojis.text} **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!**`
 
         ).catch(() => {});
 
@@ -1658,28 +1656,7 @@ let prefix = "";
 
 
 if(result.critical){
-
-    if(result.criticalStreak >= 50){
-
-        prefix = CRITICAL_50_PLUS_PREFIX;
-
-    }
-    else if(result.criticalStreak >= 20){
-
-        prefix = "🧊🥶 ";
-
-    }
-    else{
-
-        prefix =
-            "💥".repeat(
-                Math.min(
-                    result.criticalStreak,
-                    5
-                )
-            ) + " ";
-
-    }
+    prefix = `${getCriticalEmojis(message.guild, result.criticalStreak).text} `;
 
 }
 
