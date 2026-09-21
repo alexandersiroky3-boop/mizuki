@@ -2600,6 +2600,9 @@ await db.query(`
         muteCriticalMessages BOOLEAN NOT NULL
             DEFAULT FALSE,
 
+        mutePowerRuneMessages BOOLEAN NOT NULL
+            DEFAULT FALSE,
+
         PRIMARY KEY(
             guildID,
             userID
@@ -2607,6 +2610,35 @@ await db.query(`
 
     )
 
+`);
+
+await db.query(`
+    ALTER TABLE user_message_preferences
+    ADD COLUMN IF NOT EXISTS mutePowerRuneMessages BOOLEAN NOT NULL DEFAULT FALSE
+`);
+
+await db.query(`
+    CREATE TABLE IF NOT EXISTS active_power_rune_roles (
+        guildID TEXT NOT NULL,
+        userID TEXT NOT NULL,
+        tier TEXT NOT NULL CHECK(tier IN ('tier1','tier2','tier3')),
+        expiresAt BIGINT NOT NULL,
+        PRIMARY KEY(guildID,userID,tier)
+    )
+`);
+
+await db.query(`
+    CREATE INDEX IF NOT EXISTS active_power_rune_roles_expiry_idx
+    ON active_power_rune_roles(expiresAt)
+`);
+
+await db.query(`
+    CREATE TABLE IF NOT EXISTS power_rune_owner_roles (
+        guildID TEXT NOT NULL,
+        userID TEXT NOT NULL,
+        tier TEXT NOT NULL CHECK(tier IN ('tier1','tier2','tier3')),
+        PRIMARY KEY(guildID,userID,tier)
+    )
 `);
 
 
@@ -5354,6 +5386,16 @@ await client.query(`
 ]);
 
 await client.query(`
+    DELETE FROM active_power_rune_roles
+    WHERE guildID=$1 AND userID=$2
+`, [guildID, userID]);
+
+await client.query(`
+    DELETE FROM power_rune_owner_roles
+    WHERE guildID=$1 AND userID=$2
+`, [guildID, userID]);
+
+await client.query(`
 
     DELETE FROM user_upgrades
 
@@ -7656,6 +7698,24 @@ async function redeemPowerRuneInventory(
             Date.now()
         ]);
 
+        // The inventory spend, XP reward and 20-second role activation must
+        // commit together. A restart can then still remove the role on time.
+        const activation = await client.query(`
+            INSERT INTO active_power_rune_roles(guildID,userID,tier,expiresAt)
+            VALUES($1,$2,$3,$4)
+            ON CONFLICT(guildID,userID,tier)
+            DO UPDATE SET expiresAt=GREATEST(
+                active_power_rune_roles.expiresAt,
+                EXCLUDED.expiresAt
+            )
+            RETURNING expiresAt
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            normalizedTier,
+            Date.now() + 20000
+        ]);
+
 
         await client.query("COMMIT");
 
@@ -7673,6 +7733,7 @@ async function redeemPowerRuneInventory(
             unitXP,
             totalXP,
             remaining,
+            roleExpiresAt: Number(activation.rows[0]?.expiresat) || 0,
             balance:
                 Number(
                     updatedUser.rows[0]?.xp || 0
@@ -7692,6 +7753,73 @@ async function redeemPowerRuneInventory(
 
     }
 
+}
+
+async function getActivePowerRuneRoles(guildID, userID){
+    const result = await db.query(`
+        SELECT tier, expiresAt
+        FROM active_power_rune_roles
+        WHERE guildID=$1 AND userID=$2 AND expiresAt>$3
+    `, [String(guildID), String(userID), Date.now()]);
+    return result.rows.map(row => ({
+        tier: row.tier,
+        expiresAt: Number(row.expiresat)
+    }));
+}
+
+async function getPowerRuneOwnerRoles(guildID, userID){
+    const result = await db.query(`
+        SELECT tier FROM power_rune_owner_roles
+        WHERE guildID=$1 AND userID=$2
+    `, [String(guildID), String(userID)]);
+    return result.rows.map(row => row.tier);
+}
+
+async function getPowerRuneOwnerRoleUsers(guildID){
+    const result = await db.query(`
+        SELECT DISTINCT userID FROM power_rune_owner_roles WHERE guildID=$1
+    `, [String(guildID)]);
+    return result.rows.map(row => row.userid);
+}
+
+async function setPowerRuneOwnerRole(guildID, userID, tier, enabled){
+    if(!["tier1", "tier2", "tier3"].includes(tier)){
+        throw new TypeError("Unknown Power Rune tier");
+    }
+    if(enabled){
+        await db.query(`
+            INSERT INTO power_rune_owner_roles(guildID,userID,tier)
+            VALUES($1,$2,$3) ON CONFLICT DO NOTHING
+        `, [String(guildID), String(userID), tier]);
+    }
+    else{
+        await db.query(`
+            DELETE FROM power_rune_owner_roles
+            WHERE guildID=$1 AND userID=$2 AND tier=$3
+        `, [String(guildID), String(userID), tier]);
+    }
+}
+
+async function getPowerRuneRoleActivations(guildID){
+    const result = await db.query(`
+        SELECT guildID, userID, tier, expiresAt
+        FROM active_power_rune_roles
+        WHERE guildID=$1
+        ORDER BY expiresAt ASC
+    `, [String(guildID)]);
+    return result.rows.map(row => ({
+        guildID: row.guildid,
+        userID: row.userid,
+        tier: row.tier,
+        expiresAt: Number(row.expiresat)
+    }));
+}
+
+async function deleteExpiredPowerRuneRoles(guildID, userID){
+    await db.query(`
+        DELETE FROM active_power_rune_roles
+        WHERE guildID=$1 AND userID=$2 AND expiresAt<=$3
+    `, [String(guildID), String(userID), Date.now()]);
 }
 
 
@@ -7729,6 +7857,10 @@ function normalizeMessageMuteType(type){
 
     }
 
+    if(["rune", "runes", "power_rune", "power_runes"].includes(normalized)){
+        return "power_rune";
+    }
+
 
     return null;
 
@@ -7745,7 +7877,8 @@ function normalizeMessageMuteRow(row){
         criticalMessages:
             Boolean(
                 row?.mutecriticalmessages
-            )
+            ),
+        powerRuneMessages: Boolean(row?.mutepowerrunemessages)
     };
 
 }
@@ -7761,7 +7894,8 @@ async function getMessageMutePreferences(
 
             SELECT
                 muteXPBoostMessages,
-                muteCriticalMessages
+                muteCriticalMessages,
+                mutePowerRuneMessages
 
             FROM user_message_preferences
 
@@ -7807,7 +7941,9 @@ async function isMessageTypeMuted(
 
     return normalizedType === "xp_boost"
         ? preferences.xpBoostMessages
-        : preferences.criticalMessages;
+        : normalizedType === "critical"
+            ? preferences.criticalMessages
+            : preferences.powerRuneMessages;
 
 }
 
@@ -7834,7 +7970,9 @@ async function toggleMessageTypeMute(
     const column =
         normalizedType === "xp_boost"
             ? "muteXPBoostMessages"
-            : "muteCriticalMessages";
+            : normalizedType === "critical"
+                ? "muteCriticalMessages"
+                : "mutePowerRuneMessages";
 
 
     const result =
@@ -7861,7 +7999,8 @@ async function toggleMessageTypeMute(
 
             RETURNING
                 muteXPBoostMessages,
-                muteCriticalMessages
+                muteCriticalMessages,
+                mutePowerRuneMessages
 
         `, [
             guildID,
@@ -16847,6 +16986,13 @@ module.exports = {
     consumeBoostInventory,
 
     redeemPowerRuneInventory,
+
+    getActivePowerRuneRoles,
+    getPowerRuneOwnerRoles,
+    getPowerRuneOwnerRoleUsers,
+    setPowerRuneOwnerRole,
+    getPowerRuneRoleActivations,
+    deleteExpiredPowerRuneRoles,
 
     getMessageMutePreferences,
 
