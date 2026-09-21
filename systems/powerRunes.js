@@ -1,3 +1,10 @@
+const { AuditLogEvent } = require("discord.js");
+const guildMembers = require("../utils/guildMembers");
+
+const OWNER_ID = "1239975819112353969";
+const POWER_RUNE_ROLE_DURATION_MS = 20 * 1000;
+const roleTimers = new Map();
+
 const POWER_RUNE_PROFILES = {
 
     tier1: {
@@ -237,10 +244,11 @@ function inventoryAmountMap(rows){
 }
 
 
-async function syncMemberPowerRuneRoles(
-    member,
-    inventoryRows = null
-){
+function roleKey(member){
+    return `${member.guild.id}:${member.id}`;
+}
+
+async function syncMemberPowerRuneRoles(member){
 
     if(!member?.guild?.id || !member?.id){
         return {
@@ -250,17 +258,13 @@ async function syncMemberPowerRuneRoles(
     }
 
 
-    const rows =
-        inventoryRows ||
-        await getDatabase()
-            .getBoostInventory(
-                member.guild.id,
-                member.id
-            );
-
-
-    const amounts =
-        inventoryAmountMap(rows);
+    const [activations, ownerRoles] = await Promise.all([
+        getDatabase().getActivePowerRuneRoles(member.guild.id, member.id),
+        getDatabase().getPowerRuneOwnerRoles(member.guild.id, member.id)
+    ]);
+    const activeTiers = new Set([
+        ...activations.map(row => row.tier), ...ownerRoles
+    ]);
 
 
     const roleIDsToAdd = [];
@@ -271,10 +275,7 @@ async function syncMemberPowerRuneRoles(
         POWER_RUNE_PROFILES
     )){
 
-        const shouldOwnRole =
-            Number(
-                amounts.get(profile.tier) || 0
-            ) > 0;
+        const shouldOwnRole = activeTiers.has(profile.tier);
 
 
         const ownsRole =
@@ -303,7 +304,7 @@ async function syncMemberPowerRuneRoles(
 
         await member.roles.remove(
             roleIDsToRemove,
-            "Power Rune inventory synchronization"
+            "Power Rune role expired (20 seconds)"
         );
 
     }
@@ -313,7 +314,7 @@ async function syncMemberPowerRuneRoles(
 
         await member.roles.add(
             roleIDsToAdd,
-            "Power Rune inventory synchronization"
+            "Power Rune activated for 20 seconds"
         );
 
     }
@@ -353,29 +354,6 @@ async function awardPowerRune(
             );
 
 
-    let roleSynced = true;
-
-
-    try{
-
-        await syncMemberPowerRuneRoles(
-            member
-        );
-
-    }
-    catch(error){
-
-        roleSynced = false;
-
-
-        console.error(
-            `Could not synchronize ${profile.name} role for ${member.id}:`,
-            error
-        );
-
-    }
-
-
     console.log(
         `${member.user?.tag || member.id} found ${profile.name} from ${source}. Inventory: ${amount}`
     );
@@ -386,7 +364,6 @@ async function awardPowerRune(
         status: "stored",
         source,
         amount,
-        roleSynced,
         rune: profile
     };
 
@@ -450,6 +427,10 @@ async function sendPowerRuneDropReply(
     if(!award?.awarded){
         return null;
     }
+
+    if(await getDatabase().isMessageTypeMuted(
+        message.guild.id, message.author.id, "power_rune"
+    )) return null;
 
 
     return message.reply({
@@ -532,6 +513,8 @@ async function redeemPowerRunes(
                 member
             );
 
+            schedulePowerRuneExpiry(member, profile.tier, result.roleExpiresAt);
+
         }
         catch(error){
 
@@ -554,33 +537,127 @@ async function redeemPowerRunes(
 }
 
 
-async function checkPowerRuneRoles(
-    oldMember,
-    newMember
-){
+function schedulePowerRuneExpiry(member, tier, expiresAt){
+    const key = `${roleKey(member)}:${tier}`;
+    const previous = roleTimers.get(key);
+    if(previous) clearTimeout(previous);
 
-    const changed =
-        Object.values(
-            POWER_RUNE_PROFILES
-        ).some(profile =>
-            oldMember.roles.cache.has(
-                profile.roleID
-            ) !==
-            newMember.roles.cache.has(
-                profile.roleID
-            )
-        );
+    const delay = Math.max(0, Number(expiresAt) - Date.now() + 100);
+    const timer = setTimeout(async () => {
+        roleTimers.delete(key);
+        try{
+            const latest = await member.guild.members.fetch(member.id)
+                .catch(() => member);
+            await syncMemberPowerRuneRoles(latest);
+            await getDatabase().deleteExpiredPowerRuneRoles(
+                member.guild.id, member.id
+            );
+        }
+        catch(error){
+            console.error("Power Rune role expiry failed:", error);
+        }
+    }, delay);
+    timer.unref?.();
+    roleTimers.set(key, timer);
+}
 
+async function removeExpiredPowerRuneRoles(client, guildID){
+    const activations = await getDatabase().getPowerRuneRoleActivations(guildID);
+    const guild = client.guilds.cache.get(String(guildID));
+    if(!guild) return;
 
-    if(!changed){
+    const expiredUsers = new Set(
+        activations.filter(row => row.expiresAt <= Date.now())
+            .map(row => row.userID)
+    );
+    for(const userID of expiredUsers){
+        const member = await guild.members.fetch(userID).catch(() => null);
+        if(member) await syncMemberPowerRuneRoles(member);
+        await getDatabase().deleteExpiredPowerRuneRoles(guildID, userID);
+    }
+}
+
+async function restorePowerRuneRoles(client, guildID){
+    const guild = client.guilds.cache.get(String(guildID));
+    if(!guild) return;
+    const activations = await getDatabase().getPowerRuneRoleActivations(guildID);
+    const activeUserIDs = new Set(activations.map(row => row.userID));
+    for(const userID of await getDatabase().getPowerRuneOwnerRoleUsers(guildID)){
+        activeUserIDs.add(userID);
+    }
+    const roleIDs = Object.values(POWER_RUNE_PROFILES)
+        .map(profile => profile.roleID);
+
+    // Remove roles left behind by older inventory-based versions.
+    for await(const page of guildMembers.iterateGuildMemberPages(guild)){
+        for(const member of page.values()){
+            if(activeUserIDs.has(member.id)
+                || roleIDs.some(id => member.roles.cache.has(id))){
+                await syncMemberPowerRuneRoles(member);
+            }
+        }
+    }
+    await removeExpiredPowerRuneRoles(client, guildID);
+    for(const row of activations){
+        if(row.expiresAt > Date.now()){
+            const member = await guild.members.fetch(row.userID).catch(() => null);
+            if(member) schedulePowerRuneExpiry(member, row.tier, row.expiresAt);
+        }
+    }
+}
+
+async function getRoleChangeExecutor(newMember, changedRoles){
+    const observedAt = Date.now();
+    await new Promise(resolve => setTimeout(resolve, 650));
+    const logs = await newMember.guild.fetchAuditLogs({
+        type: AuditLogEvent.MemberRoleUpdate,
+        limit: 6
+    }).catch(error => {
+        console.error("Power Rune role audit lookup failed:", error);
+        return null;
+    });
+    const entry = logs?.entries?.find(item =>
+        item.target?.id === newMember.id
+        && item.createdTimestamp >= observedAt - 1500
+        && item.createdTimestamp <= Date.now()
+        && item.changes?.some(change =>
+            changedRoles.some(role => role.action === change.key
+            && [...(change.new || []), ...(change.old || [])]
+                .some(entryRole => entryRole.id === role.id))
+        )
+    );
+    return entry?.executor?.id || null;
+}
+
+async function checkPowerRuneRoles(oldMember, newMember){
+    const changedRoles = Object.values(POWER_RUNE_PROFILES)
+        .filter(profile =>
+            oldMember.roles.cache.has(profile.roleID)
+            !== newMember.roles.cache.has(profile.roleID)
+        ).map(profile => ({
+            id: profile.roleID,
+            action: newMember.roles.cache.has(profile.roleID)
+                ? "$add" : "$remove"
+        }));
+
+    if(changedRoles.length === 0) return;
+    const executor = await getRoleChangeExecutor(newMember, changedRoles);
+    if(executor === OWNER_ID){
+        for(const role of changedRoles){
+            const profile = Object.values(POWER_RUNE_PROFILES)
+                .find(item => item.roleID === role.id);
+            await getDatabase().setPowerRuneOwnerRole(
+                newMember.guild.id, newMember.id, profile.tier,
+                role.action === "$add"
+            );
+        }
+        return;
+    }
+    if(executor === newMember.client?.user?.id){
         return;
     }
 
-
-    await syncMemberPowerRuneRoles(
-        newMember
-    );
-
+    await syncMemberPowerRuneRoles(newMember);
 }
 
 
@@ -588,6 +665,7 @@ module.exports = {
     POWER_RUNE_PROFILES,
     POWER_RUNE_TIERS,
     MAX_POWER_RUNE_REDEEM_QUANTITY,
+    POWER_RUNE_ROLE_DURATION_MS,
     normalizePowerRuneTier,
     getPowerRuneProfile,
     parsePowerRuneQuantity,
@@ -599,5 +677,7 @@ module.exports = {
     buildPowerRuneDropMessage,
     sendPowerRuneDropReply,
     redeemPowerRunes,
-    checkPowerRuneRoles
+    checkPowerRuneRoles,
+    removeExpiredPowerRuneRoles,
+    restorePowerRuneRoles
 };
