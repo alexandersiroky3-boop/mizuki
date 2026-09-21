@@ -380,6 +380,16 @@ client.once("clientReady", async () => {
     await trades.restoreTrades(client);
 
     if(MAIN_GUILD_ID){
+        const guild = await client.guilds.fetch(MAIN_GUILD_ID).catch(() => null);
+        if(guild){
+            await guild.commands.create(trollCommand.slashCommand.toJSON())
+                .catch(error => console.error("Could not register /troll:", error));
+            await powerRunes.restorePowerRuneRoles(client, MAIN_GUILD_ID)
+                .catch(error => console.error("Power Rune role restore failed:", error));
+        }
+    }
+
+    if(MAIN_GUILD_ID){
         await moderation.initialize(client, MAIN_GUILD_ID).catch(error => {
             console.error("Moderation restore failed:", error);
         });
@@ -453,6 +463,12 @@ setInterval(async()=>{
 
 
 },15000);
+
+setInterval(async () => {
+    if(!MAIN_GUILD_ID) return;
+    await powerRunes.removeExpiredPowerRuneRoles(client, MAIN_GUILD_ID)
+        .catch(error => console.error("Power Rune role cleanup failed:", error));
+}, 5000);
 
 
 setInterval(async()=>{
@@ -644,6 +660,27 @@ client.on(
     }
 );
 
+
+client.on("interactionCreate", async interaction => {
+    if(!interaction.isChatInputCommand() || interaction.commandName !== "troll"){
+        return;
+    }
+    if(!interaction.guild || !isMainGuild(interaction.guild.id)){
+        return interaction.reply({
+            content: "This command is only available in the main server.",
+            flags: 64
+        }).catch(() => {});
+    }
+    if(String(interaction.channelId) === "1536777096200720545"){
+        return interaction.reply({
+            content: "🚫 You cannot use commands in this channel.",
+            flags: 64
+        }).catch(() => {});
+    }
+    await trollCommand.executeInteraction(interaction).catch(error => {
+        console.error("Private /troll interaction failed:", error);
+    });
+});
 
 client.on(
     "guildMemberUpdate",
