@@ -364,7 +364,62 @@ Added another new command "!sell" where you can sell boosts for 50% of the boost
         version: "2.0.0",
         description: `# Update 2.0.0
 
-*Update logs coming soon...*`
+## [Update 2.0.0]
+
+### • [Power Runes]
+
+There are 3 types of Power Runes: @🔹Power Rune I , @💠Power Rune II , @🔷Power Rune III .
+
+These Power Runes basically contains specific amount of XP:
+
+@🔹Power Rune I == 100,000 XP
+@💠Power Rune II == 1,000,000 XP
+@🔷Power Rune III == 10,000,000 XP
+
+You obtain these by chatting, through trading and activate them in !boost.
+
+
+### • [!troll]
+
+Added a new fun command where you can troll users by giving them a bad effect for a short amount of time...
+
+This makes you slightly slow down the user and you could perhaps surpass him faster..
+
+### • [!afk]
+
+Added a new command where by typing !afk, it'll add to your username the state [afk]..
+
+After sending a message or typing !afk again will remove that [afk] state...
+
+
+### • [!updates]
+
+Contains a list of updates of the bot.
+
+*From now on i'll only send vague short updates & mainly patches in this channel, I don't want to flood this channel with constant new updates, every detailed update belongs there...*
+
+
+### • [Lore]
+
+There's now lore in the new command's dialogues.
+
+Each rarity on the commands has its own "dialogues", they are in a random sequence, better the rarity, the better da dialogue will be...
+
+*If you perhaps want to be in some of the future lore/dialogues then dm me. (I only take people that are ACTIVE in the events/leaderboards/chatting ect..*
+
+
+### • [QOL / Patches]
+*Completely reworked !roll, !hug, !kiss, !steal, !ezwin.*
+*Made selling alot less OP*
+*On rolling added that when you rolled a big prize you'll know it by it saying "Rolling..." like if its loading*
+*Fixed a bug where now Power Runes stay in inventory when found.*
+*Added that you can mute in !mute the Power Rune replies*
+*Fixed some upgrades in !upgrades*
+*Added some more features to the existing upgrades in !upgrades*
+*Added more upgrades in !upgrades...*
+*Made esthetically criticals look better.*
+*Removed the permanent buffs from the merchant (like permanent 2x chat xp or permanent 3 rolls per 1 roll).
+*You now can obtain permanent 2x chat XP and permanent 3 rolls in the !upgrades*`
     }
 ]);
 
