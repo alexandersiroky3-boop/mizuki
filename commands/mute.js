@@ -3,7 +3,6 @@ const {
     ButtonBuilder,
     ButtonStyle,
     ComponentType,
-    EmbedBuilder,
     MessageFlags
 } = require("discord.js");
 
@@ -12,19 +11,7 @@ const database =
 
 
 const MUTE_PANEL_DURATION_MS =
-    200 * 60 * 1000;
-
-
-const MUTE_PANEL_COLORS = {
-    enabled:
-        0x57F287,
-    mixed:
-        0x5865F2,
-    muted:
-        0xED4245,
-    expired:
-        0x747F8D
-};
+    2 * 60 * 1000;
 
 
 function buildMutePanel(
@@ -42,6 +29,8 @@ function buildMutePanel(
         Boolean(
             preferences?.criticalMessages
         );
+
+    const runeMuted = Boolean(preferences?.powerRuneMessages);
 
 
     const row =
@@ -71,66 +60,25 @@ function buildMutePanel(
                             ? ButtonStyle.Danger
                             : ButtonStyle.Success
                     )
+                    .setDisabled(disabled),
+                new ButtonBuilder()
+                    .setCustomId("mute_power_rune_messages")
+                    .setLabel(`Power Rune Replies: ${runeMuted ? "MUTED" : "ON"}`)
+                    .setEmoji("🔷")
+                    .setStyle(runeMuted ? ButtonStyle.Danger : ButtonStyle.Success)
                     .setDisabled(disabled)
             );
 
 
-    const embedColor =
-        disabled
-            ? MUTE_PANEL_COLORS.expired
-            : xpMuted && criticalMuted
-                ? MUTE_PANEL_COLORS.muted
-                : !xpMuted && !criticalMuted
-                    ? MUTE_PANEL_COLORS.enabled
-                    : MUTE_PANEL_COLORS.mixed;
-
-
-    const embed =
-        new EmbedBuilder()
-            .setColor(
-                embedColor
-            )
-            .setTitle(
-                "🔕 Personal Reply Settings"
-            )
-            .setDescription(
-                "Choose which replies Mizuki should mute **for your account only**. " +
-                "Your rewards, XP, boosts, criticals, reactions, and other users' messages are not affected."
-            )
-            .addFields(
-                {
-                    name:
-                        "⚡ XP Boost Replies",
-                    value:
-                        xpMuted
-                            ? "🔴 **MUTED**"
-                            : "🟢 **ON**",
-                    inline:
-                        true
-                },
-                {
-                    name:
-                        "💥 Critical Replies",
-                    value:
-                        criticalMuted
-                            ? "🔴 **MUTED**"
-                            : "🟢 **ON**",
-                    inline:
-                        true
-                }
-            )
-            .setFooter({
-                text:
-                    disabled
-                        ? "Panel expired • Run !mute to change these settings"
-                        : "Press a button to switch that reply type ON or MUTED"
-            });
-
-
     return {
-        embeds: [
-            embed
-        ],
+        content:
+            "## 🔕 Personal Reply Settings\n" +
+            "Choose which replies Mizuki should mute **for your account only**. " +
+            "Your rewards, XP, boosts, criticals, reactions, and other users' messages are not affected.\n\n" +
+            `⚡ XP Boost replies: **${xpMuted ? "MUTED" : "ON"}**\n` +
+            `💥 Critical streak/loss replies: **${criticalMuted ? "MUTED" : "ON"}**\n` +
+            `🔷 Power Rune drop replies: **${runeMuted ? "MUTED" : "ON"}**` +
+            (disabled ? "\n\n*Run `!mute` again to change these settings.*" : ""),
         components: [row],
         allowedMentions: {
             parse: []
@@ -194,6 +142,8 @@ async function execute(message){
                 ? "xp_boost"
                 : interaction.customId === "mute_critical_messages"
                     ? "critical"
+                    : interaction.customId === "mute_power_rune_messages"
+                        ? "power_rune"
                     : null;
 
 
