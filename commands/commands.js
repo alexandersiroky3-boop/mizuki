@@ -43,6 +43,9 @@ Here are all available commands:
 \`!trade @user/userid\`
 > Trade Boosts or XP with users.
 
+\`!troll @user/userid\`
+> Troll users and give them some bad effects hehe....
+
 \`!values\`
 > Shows the current Trading Values of each Boost.
 
@@ -90,6 +93,12 @@ Here are all available commands:
 
 \`!mute\`
 > You can mute either your Critical replies or your XP boosts replies.
+
+\`!afk\`
+> Make yourself afk.
+
+\`!updates\`
+> Shows all of the previous & current updates on the bot.
 
 \`!commands\`
 > Shows this command list.
