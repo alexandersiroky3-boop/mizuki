@@ -206,10 +206,7 @@ const chatXPMultiplier =
 
 
     const earnedXPBeforeTroll =
-        Math.floor(
-            reward.xp *
-            chatXPMultiplier
-        );
+        xp.getBalancedChatXP(reward, chatXPMultiplier);
 
 
 const trollResolution =
