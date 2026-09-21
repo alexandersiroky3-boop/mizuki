@@ -519,20 +519,6 @@ async function execute(message){
     let lastNotice = "";
 
 
-    await powerRunes
-        .syncMemberPowerRuneRoles(
-            message.member
-        )
-        .catch(error => {
-
-            console.error(
-                "Could not synchronize Power Rune roles while opening !boost:",
-                error
-            );
-
-        });
-
-
     const panel =
         await message.reply(
             await buildBoostPanel(
@@ -741,7 +727,8 @@ async function execute(message){
             lastNotice =
                 `✅ Used **${quantity.toLocaleString()}x** <@&${profile.roleID}> ` +
                 `and received **${Number(result.totalXP).toLocaleString()} XP**. ` +
-                `Inventory remaining: **x${Number(result.remaining).toLocaleString()}**.`;
+                `Inventory remaining: **x${Number(result.remaining).toLocaleString()}**. ` +
+                `The Rune role lasts **20 seconds**.`;
 
 
             await panel.edit(
