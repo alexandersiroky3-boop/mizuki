@@ -1549,7 +1549,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
 
     ).catch(() => {});
 
