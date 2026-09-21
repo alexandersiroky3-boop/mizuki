@@ -141,21 +141,33 @@ async function execute(message){
     const targetID = getTargetID(message);
     if(!targetID) return message.reply("Usage: **!troll @user** or **/troll user**.");
 
-    // Ephemeral responses require an interaction. The button creates one.
-    const deleted = await message.delete().then(() => true).catch(() => false);
-    if(!deleted) return message.reply(
-        "Use `/troll` to do this privately. I need **Manage Messages** to hide your `!troll` message."
-    );
+    // Apply the troll when the command is typed. The button is only for
+    // revealing the result privately; the command stays visible to the target.
+    const privateResult = await runPrivately(message, targetID,
+        async payload => payload);
+    if(!privateResult?.embeds?.length){
+        return message.reply(privateResult || {
+            content: "❌ The troll could not be applied.",
+            allowedMentions: {parse: []}
+        });
+    }
+
+    const emoji = message.guild.emojis?.cache?.find?.(
+        entry => entry.name === "meme_face"
+    )?.toString() || "🎭";
 
     const button = new ButtonBuilder()
         .setCustomId("troll_private_confirm")
-        .setLabel("Continue")
+        .setLabel("View Secret Result")
         .setEmoji("🎭")
         .setStyle(ButtonStyle.Secondary);
-    const panel = await message.channel.send({
-        content: "🎭 Ready when you are.",
+    const panel = await message.reply({
+        embeds: [new EmbedBuilder()
+            .setColor(0x9B59B6)
+            .setTitle(`${emoji} Troll Cast`)
+            .setDescription(`<@${message.author.id}> used **!troll** on <@${targetID}>. The effect stays hidden until it resolves.`)],
         components: [new ActionRowBuilder().addComponents(button)],
-        allowedMentions: {parse: []}
+        allowedMentions: {parse: [], repliedUser: false}
     });
     const collector = panel.createMessageComponentCollector({
         componentType: ComponentType.Button,
@@ -169,12 +181,10 @@ async function execute(message){
             }).catch(() => {});
             return;
         }
+        await interaction.reply({...privateResult, flags: MessageFlags.Ephemeral});
         collector.stop("used");
-        await interaction.deferReply({flags: MessageFlags.Ephemeral});
-        await runPrivately(message, targetID,
-            payload => interaction.editReply(payload));
     });
-    collector.once("end", () => panel.delete().catch(() => {}));
+    collector.once("end", () => panel.edit({components: []}).catch(() => {}));
     return panel;
 }
 
