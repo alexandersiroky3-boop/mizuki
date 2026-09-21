@@ -1064,64 +1064,6 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
     },
 
     {
-        id: "permanent_double_chat_xp",
-        name: "Permanent Double Chat XP",
-        stockOptions: [1],
-        variants: [
-            {
-                cost: merchantSide({
-                    boosts: [
-                        merchantBoost("luck", "omega", 2)
-                    ]
-                }),
-                reward: merchantSide({
-                    perk: {
-                        type:
-                            "chat_xp_permanent",
-                        multiplier: 2
-                    }
-                })
-            }
-        ]
-    },
-
-    {
-        id: "permanent_triple_roll",
-        name: "Permanent Triple Roll License",
-        stockOptions: [1],
-        variants: [
-            {
-                cost: merchantSide({
-                    boosts: [
-                        merchantBoost("luck", "omega", 2)
-                    ]
-                }),
-                reward: merchantSide({
-                    perk: {
-                        type:
-                            "multi_roll_permanent",
-                        rollCount: 3
-                    }
-                })
-            },
-            {
-                cost: merchantSide({
-                    boosts: [
-                        merchantBoost("luck", "omega", 3)
-                    ]
-                }),
-                reward: merchantSide({
-                    perk: {
-                        type:
-                            "multi_roll_permanent",
-                        rollCount: 3
-                    }
-                })
-            }
-        ]
-    },
-
-    {
         id: "timed_nine_roll",
         name: "Nine-Roll License",
         stockOptions: [1],
@@ -1160,6 +1102,11 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
     }
 
 ];
+
+const RETIRED_MERCHANT_DEAL_IDS = new Set([
+    "permanent_double_chat_xp",
+    "permanent_triple_roll"
+]);
 
 
 function safeMerchantRandom(random){
@@ -2987,6 +2934,21 @@ await db.query(`
     )
 
 `);
+
+// A visit created before this update may already contain a permanent deal.
+// Force its current stock to reroll on the next shop request while keeping
+// the visit's original end time. Existing purchased effects are left intact.
+await db.query(`
+    UPDATE traveling_merchant_state
+    SET nextRestockAt=0
+    WHERE id=1 AND active=TRUE AND endsAt>$1
+    AND EXISTS (
+        SELECT 1 FROM traveling_merchant_stock
+        WHERE dealID = ANY($2::TEXT[])
+        OR LOWER(deal -> 'reward' -> 'perk' ->> 'type')
+            IN ('chat_xp_permanent', 'multi_roll_permanent')
+    )
+`, [Date.now(), [...RETIRED_MERCHANT_DEAL_IDS]]);
 
 
 // =====================================================
@@ -10324,6 +10286,13 @@ async function purchaseTravelingMerchantDeal(
 
     }
 
+    if(RETIRED_MERCHANT_DEAL_IDS.has(normalizedDealID)){
+        return {
+            success: false,
+            status: "merchant-refreshed"
+        };
+    }
+
 
     const client =
         await db.connect();
@@ -10460,6 +10429,17 @@ async function purchaseTravelingMerchantDeal(
                 `Traveling Merchant deal ${normalizedDealID} is invalid.`
             );
 
+        }
+
+        if([
+            "chat_xp_permanent",
+            "multi_roll_permanent"
+        ].includes(deal.reward.perk?.type)){
+            await client.query("COMMIT");
+            return {
+                success: false,
+                status: "merchant-refreshed"
+            };
         }
 
 
