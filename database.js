@@ -839,7 +839,7 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
 
     {
         id: "timed_infinity_chat_xp",
-        name: "Infinity Chat XP Surge",
+        name: "Infinity Chat XP Boost",
         stockOptions: [1, 2],
         variants: [
             {
@@ -851,7 +851,22 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
                 reward: merchantSide({
                     perk: {
                         type: "chat_xp_timed",
-                        multiplier: 8,
+                        multiplier: 1.3,
+                        durationMs:
+                            8 * MERCHANT_HOUR
+                    }
+                })
+            },
+            {
+                cost: merchantSide({
+                    boosts: [
+                        merchantBoost("xp", "infinity", 2)
+                    ]
+                }),
+                reward: merchantSide({
+                    perk: {
+                        type: "chat_xp_timed",
+                        multiplier: 1.6,
                         durationMs:
                             12 * MERCHANT_HOUR
                     }
@@ -866,24 +881,9 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
                 reward: merchantSide({
                     perk: {
                         type: "chat_xp_timed",
-                        multiplier: 12,
+                        multiplier: 1.9,
                         durationMs:
                             12 * MERCHANT_HOUR
-                    }
-                })
-            },
-            {
-                cost: merchantSide({
-                    boosts: [
-                        merchantBoost("xp", "infinity", 2)
-                    ]
-                }),
-                reward: merchantSide({
-                    perk: {
-                        type: "chat_xp_timed",
-                        multiplier: 15,
-                        durationMs:
-                            16 * MERCHANT_HOUR
                     }
                 })
             }
@@ -2947,6 +2947,11 @@ await db.query(`
         WHERE dealID = ANY($2::TEXT[])
         OR LOWER(deal -> 'reward' -> 'perk' ->> 'type')
             IN ('chat_xp_permanent', 'multi_roll_permanent')
+        OR (
+            dealID='timed_infinity_chat_xp'
+            AND deal -> 'reward' -> 'perk' ->> 'multiplier'
+                IN ('8', '12', '15')
+        )
     )
 `, [Date.now(), [...RETIRED_MERCHANT_DEAL_IDS]]);
 
@@ -3131,6 +3136,12 @@ await db.query(`
 
         chatXP1m75Until BIGINT NOT NULL DEFAULT 0,
 
+        chatXP1m3Until BIGINT NOT NULL DEFAULT 0,
+
+        chatXP1m6Until BIGINT NOT NULL DEFAULT 0,
+
+        chatXP1m9Until BIGINT NOT NULL DEFAULT 0,
+
         chatXP2Until BIGINT NOT NULL DEFAULT 0,
 
         chatXP3Until BIGINT NOT NULL DEFAULT 0,
@@ -3213,6 +3224,9 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS rollWindowUses INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP1m5Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP1m75Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP1m3Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP1m6Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP1m9Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP2Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP3Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP5Until BIGINT NOT NULL DEFAULT 0,
@@ -3238,9 +3252,8 @@ await db.query(`
 `);
 
 
-// Preserve every existing 20x merchant reward and its exact remaining time,
-// but apply the new 15x balance cap. This migration is idempotent, and the
-// legacy column stays available so rolling deployments cannot lose a reward.
+// Preserve the remaining time of older 20x rewards before the current tier
+// migration below brings them into the 1.9x merchant tier.
 await db.query(`
 
     UPDATE quest_effects
@@ -3259,8 +3272,7 @@ await db.query(`
 
 
 // Old quest rules awarded 3x/5x/7x/10x chat XP. Preserve the exact remaining
-// time of those active rewards while capping them at the new 2x quest maximum.
-// Merchant rewards use 8x/12x/15x and are deliberately left untouched.
+// time of those active rewards while capping them at the 2x quest maximum.
 await db.query(`
 
     UPDATE quest_effects
@@ -3284,6 +3296,27 @@ await db.query(`
         OR chatXP5Until > 0
         OR chatXP7Until > 0
         OR chatXP10Until > 0
+
+`);
+
+
+// Active merchant rewards keep their expiration time, but no longer retain
+// the old 8x/12x/15x strength after this balance update.
+await db.query(`
+
+    UPDATE quest_effects
+
+    SET
+        chatXP1m3Until = GREATEST(chatXP1m3Until, chatXP8Until),
+        chatXP1m6Until = GREATEST(chatXP1m6Until, chatXP12Until),
+        chatXP1m9Until = GREATEST(chatXP1m9Until, chatXP15Until),
+        chatXP8Until = 0,
+        chatXP12Until = 0,
+        chatXP15Until = 0
+
+    WHERE chatXP8Until > 0
+       OR chatXP12Until > 0
+       OR chatXP15Until > 0
 
 `);
 
@@ -9837,11 +9870,7 @@ function normalizeTravelingMerchantPerk(
     if(type === "chat_xp_timed"){
 
         const rawMultiplier =
-            Math.floor(
-                Number(
-                    rawPerk.multiplier
-                ) || 8
-            );
+            Number(rawPerk.multiplier) || 1.3;
 
 
         const rawDuration =
@@ -9849,22 +9878,28 @@ function normalizeTravelingMerchantPerk(
                 Number(
                     rawPerk.durationMs
                 ) ||
-                12 * MERCHANT_HOUR
+                8 * MERCHANT_HOUR
             );
 
         return {
             type,
             multiplier:
-                rawMultiplier >= 15
-                    ? 15
-                    : rawMultiplier >= 12
-                        ? 12
-                        : 8,
+                rawMultiplier >= 8
+                    ? rawMultiplier >= 15
+                        ? 1.9
+                        : rawMultiplier >= 12
+                            ? 1.6
+                            : 1.3
+                    : rawMultiplier >= 1.9
+                        ? 1.9
+                        : rawMultiplier >= 1.6
+                            ? 1.6
+                            : 1.3,
             durationMs:
                 rawDuration >=
-                    16 * MERCHANT_HOUR
-                    ? 16 * MERCHANT_HOUR
-                    : 12 * MERCHANT_HOUR
+                    12 * MERCHANT_HOUR
+                    ? 12 * MERCHANT_HOUR
+                    : 8 * MERCHANT_HOUR
         };
 
     }
@@ -9988,18 +10023,20 @@ function resolveChatXPMultiplier(
 
 
     const timedMultipliers = [
-        [15, "chatxp15until"],
-        // A pre-migration 20x expiry is still treated as 15x, never deleted.
-        [15, "chatxp20until"],
-        [12, "chatxp12until"],
-        [10, "chatxp10until"],
-        [8, "chatxp8until"],
-        [7, "chatxp7until"],
-        [5, "chatxp5until"],
-        [3, "chatxp3until"],
         [2, "chatxp2until"],
+        [2, "chatxp10until"],
+        [2, "chatxp7until"],
+        [2, "chatxp5until"],
+        [2, "chatxp3until"],
+        [1.9, "chatxp1m9until"],
+        [1.9, "chatxp15until"],
+        [1.9, "chatxp20until"],
         [1.75, "chatxp1m75until"],
-        [1.5, "chatxp1m5until"]
+        [1.6, "chatxp1m6until"],
+        [1.6, "chatxp12until"],
+        [1.5, "chatxp1m5until"],
+        [1.3, "chatxp1m3until"],
+        [1.3, "chatxp8until"]
     ];
 
 
@@ -10412,6 +10449,16 @@ async function purchaseTravelingMerchantDeal(
 
         }
 
+        const storedDeal = parseTravelingMerchantDeal(stockRow.deal);
+        if(normalizedDealID === "timed_infinity_chat_xp"
+            && Number(storedDeal?.reward?.perk?.multiplier) > 1.9){
+            await client.query("COMMIT");
+            return {
+                success: false,
+                status: "merchant-refreshed"
+            };
+        }
+
 
         const deal =
             normalizeTravelingMerchantDeal(
@@ -10522,10 +10569,7 @@ async function purchaseTravelingMerchantDeal(
             ||
             deal.reward.boosts.length > 0
             ||
-            [
-                "chat_xp_timed",
-                "multi_roll_timed"
-            ].includes(
+            ["multi_roll_timed"].includes(
                 String(
                     deal.reward.perk?.type || ""
                 ).toLowerCase()
@@ -10716,8 +10760,7 @@ async function purchaseTravelingMerchantDeal(
 
         const alreadyOwned =
             (
-                perk?.type ===
-                    "chat_xp_permanent"
+                ["chat_xp_permanent", "chat_xp_timed"].includes(perk?.type)
                 &&
                 Number(
                     effects
@@ -10911,9 +10954,9 @@ async function purchaseTravelingMerchantDeal(
 
 
             const expiryColumns = {
-                8: "chatXP8Until",
-                12: "chatXP12Until",
-                15: "chatXP15Until"
+                1.3: "chatXP1m3Until",
+                1.6: "chatXP1m6Until",
+                1.9: "chatXP1m9Until"
             };
 
 
