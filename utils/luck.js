@@ -1732,13 +1732,15 @@ function getWeightedChanceTable(
 
 const ROLLING_UPGRADE_WEIGHT_FACTORS = {
     neutral: [1, 0.97, 0.90, 0.85, 0.75, 0.65, 0.50],
-    negative: [1, 0.80, 0.80, 0.55, 0.35, 0.30, 0.22],
+    negative: [1, 0.80, 0.70, 0.48, 0.30, 0.25, 0.17],
     common: [1, 1.15, 1.35, 1.50, 2, 2.20, 2.50],
     fiveThousand: [1, 1.20, 2, 3, 4, 7, 8],
-    twentyFiveThousand: [1, 1.10, 1.40, 2.50, 3.50, 4, 8],
-    rare: [1, 1.12, 1.45, 2.70, 4, 5, 10],
-    mega: [1, 1.15, 1.55, 3, 4.50, 6, 12],
-    ultra: [1, 1.18, 1.70, 3.30, 5, 7, 14]
+    // Keep each higher reward band's step-up at least as strong as the band
+    // below it. Normalization can otherwise make an upgrade hurt jackpot odds.
+    twentyFiveThousand: [1, 1.25, 2.10, 3.20, 4.30, 7.60, 9],
+    rare: [1, 1.30, 2.20, 3.40, 4.60, 8.20, 10],
+    mega: [1, 1.35, 2.30, 3.60, 4.90, 8.80, 12],
+    ultra: [1, 1.40, 2.40, 3.80, 5.20, 9.40, 14]
 };
 
 
