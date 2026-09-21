@@ -25,6 +25,30 @@ const CRITICAL_STREAK_CHANCE_BONUS = 3;
 const DEFAULT_CRITICAL_CHANCE_CAP = 95;
 const OMEGA_MAX_CRITICAL_CHANCE_CAP = 98;
 const OMEGA_INFINITY_CRITICAL_CHANCE_CAP = 99;
+const MAX_CRITICAL_EXTRA_XP = 250000;
+
+
+function getCriticalExtraXPCap(criticalStreak){
+    const streak = Math.max(0, Math.floor(Number(criticalStreak) || 0));
+    return Math.min(MAX_CRITICAL_EXTRA_XP, 5000 + 3000 * streak);
+}
+
+
+// Limit the EXTRA XP from a critical after XP Boost, quest and Chatting
+// multipliers. Normal message XP retains those bonuses, while a streak cannot
+// turn one boosted chat message into millions of additional XP.
+function getBalancedChatXP(reward, chatXPMultiplier){
+    const multiplier = Math.max(1, Number(chatXPMultiplier) || 1);
+    const boostedTotal = Math.floor(Math.max(0, Number(reward.xp) || 0) * multiplier);
+    if(!reward.critical) return boostedTotal;
+    const boostedNormal = Math.floor(
+        Math.max(0, Number(reward.normalXP) || 0) * multiplier
+    );
+    return Math.min(
+        boostedTotal,
+        boostedNormal + getCriticalExtraXPCap(reward.criticalStreak)
+    );
+}
 
 
 const CRITICAL_STREAK_REWARD_TABLE =
@@ -579,6 +603,8 @@ function getXPAmount(
             max
         );
 
+    const normalXP = Math.floor(earnedXP * xpBoostMultiplier);
+
 
 
     // ======================
@@ -777,6 +803,8 @@ function getXPAmount(
 
         xp:
             earnedXP,
+
+        normalXP,
 
 
         xpBeforeBoost,
@@ -999,6 +1027,10 @@ module.exports = {
 
 
     getCriticalStreakXPMultiplier,
+
+    getCriticalExtraXPCap,
+
+    getBalancedChatXP,
 
 
     getLevel,
