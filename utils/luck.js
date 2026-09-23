@@ -1086,6 +1086,30 @@ async function syncMemberLuckRoles(
 // GET ACTIVE LUCK BOOST
 // ==============================
 
+async function attachLeaderboardRollLuck(
+    member,
+    profile
+){
+
+    const resolvedProfile =
+        await profile;
+
+
+    const leaderboardRollLuckMultiplier =
+        await database.getQuestRollLuckMultiplier(
+            member.guild.id,
+            member.id
+        );
+
+
+    return {
+        ...resolvedProfile,
+        leaderboardRollLuckMultiplier
+    };
+
+}
+
+
 async function getActiveLuckBoost(
     member,
     options = {}
@@ -1106,12 +1130,15 @@ async function getActiveLuckBoost(
         );
 
         const noLuck = getNoLuckProfile();
-        return options.ignoreTrolls
-            ? noLuck
-            : applyTrollLuckModifiers(
-                member,
-                noLuck
-            );
+        return attachLeaderboardRollLuck(
+            member,
+            options.ignoreTrolls
+                ? noLuck
+                : applyTrollLuckModifiers(
+                    member,
+                    noLuck
+                )
+        );
 
     }
 
@@ -1137,12 +1164,15 @@ async function getActiveLuckBoost(
 
 
         const noLuck = getNoLuckProfile();
-        return options.ignoreTrolls
-            ? noLuck
-            : applyTrollLuckModifiers(
-                member,
-                noLuck
-            );
+        return attachLeaderboardRollLuck(
+            member,
+            options.ignoreTrolls
+                ? noLuck
+                : applyTrollLuckModifiers(
+                    member,
+                    noLuck
+                )
+        );
 
     }
 
@@ -1168,12 +1198,15 @@ async function getActiveLuckBoost(
 
 
         const noLuck = getNoLuckProfile();
-        return options.ignoreTrolls
-            ? noLuck
-            : applyTrollLuckModifiers(
-                member,
-                noLuck
-            );
+        return attachLeaderboardRollLuck(
+            member,
+            options.ignoreTrolls
+                ? noLuck
+                : applyTrollLuckModifiers(
+                    member,
+                    noLuck
+                )
+        );
 
     }
 
@@ -1219,12 +1252,15 @@ async function getActiveLuckBoost(
     };
 
 
-    return options.ignoreTrolls
-        ? activeProfile
-        : applyTrollLuckModifiers(
-            member,
-            activeProfile
-        );
+    return attachLeaderboardRollLuck(
+        member,
+        options.ignoreTrolls
+            ? activeProfile
+            : applyTrollLuckModifiers(
+                member,
+                activeProfile
+            )
+    );
 
 }
 
@@ -1255,26 +1291,6 @@ function getRollLuckProfile(
         ][tier];
 
 
-    if(!settings){
-
-        return {
-
-            ...safeProfile,
-
-            rollLevelGroup:
-                levelGroup,
-
-            rollCooldownMs:
-                null,
-
-            rollWeightFactor:
-                1
-
-        };
-
-    }
-
-
     const baseMultiplier =
         Math.max(
             1,
@@ -1291,8 +1307,18 @@ function getRollLuckProfile(
             Number(
                 safeProfile.multiplier
             ) ||
-                Number(settings.multiplier) ||
+                Number(settings?.multiplier) ||
                 1
+        );
+
+
+    const leaderboardRollLuckMultiplier =
+        Math.max(
+            1,
+            Number(
+                safeProfile
+                    .leaderboardRollLuckMultiplier
+            ) || 1
         );
 
 
@@ -1303,23 +1329,35 @@ function getRollLuckProfile(
         baseMultiplier,
 
         multiplier:
-            rollMultiplier,
+            rollMultiplier *
+            leaderboardRollLuckMultiplier,
+
+        order:
+            leaderboardRollLuckMultiplier >= 50
+                ? Math.max(
+                    Number(safeProfile.order) || 0,
+                    4
+                )
+                : Number(safeProfile.order) || 0,
 
         rollLevelGroup:
             levelGroup,
 
         rollCooldownMs:
-            Number(
-                settings.cooldownMs
-            ),
+            settings
+                ? Number(settings.cooldownMs)
+                : null,
 
         // Boost Upgrade multipliers gently bias the normalized roll weights;
         // user level is deliberately absent from this calculation.
         rollWeightFactor:
             Math.max(
                 1,
-                rollMultiplier /
+                (
+                    rollMultiplier /
                     baseMultiplier
+                ) *
+                leaderboardRollLuckMultiplier
             )
 
     };
@@ -2068,6 +2106,74 @@ function rollGuaranteedMinimumWithLuck(
             LUCK_MEGA_ROLL_MAX_XP
         ),
         profile
+    );
+
+}
+
+
+// Rolls from a purpose-built guarantee table while still respecting the
+// user's permanent Rolling and Boost upgrades. Active Luck adds a gentle
+// high-range bias instead of replacing the guarantee table with a normal
+// Luck table (which could reintroduce low or negative results).
+function rollGuaranteedChanceTableWithLuck(
+    guaranteeChanceTable,
+    profile = null,
+    rollingLevel = 0
+){
+
+    if(
+        !Array.isArray(guaranteeChanceTable)
+        ||
+        guaranteeChanceTable.length === 0
+    ){
+
+        throw new Error(
+            "rollGuaranteedChanceTableWithLuck received an empty chance table."
+        );
+
+    }
+
+
+    const safeProfile =
+        profile || getNoLuckProfile();
+
+
+    const activeLuckScale =
+        1 +
+        getCommandLuckOrder(
+            safeProfile
+        ) * 0.15;
+
+
+    const guaranteeProfile = {
+        ...safeProfile,
+
+        rollWeightFactor:
+            Math.max(
+                1,
+                Number(
+                    safeProfile.rollWeightFactor
+                ) || 1
+            ) * activeLuckScale
+    };
+
+
+    const upgradedTable =
+        getRollingUpgradeChanceTable(
+            guaranteeChanceTable,
+            rollingLevel
+        );
+
+
+    const resolvedTable =
+        getWeightedChanceTable(
+            upgradedTable,
+            guaranteeProfile
+        );
+
+
+    return rollFromExactPercentTable(
+        resolvedTable
     );
 
 }
@@ -3666,6 +3772,8 @@ module.exports = {
     rollWithLuck,
 
     rollGuaranteedMinimumWithLuck,
+
+    rollGuaranteedChanceTableWithLuck,
 
     getLuckMegaRollChance,
 
