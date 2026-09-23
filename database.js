@@ -158,6 +158,21 @@ const ROLL_COOLDOWN_MS =
     30 * 1000;
 
 
+const LEADERBOARD_HOUR_MS =
+    60 * 60 * 1000;
+
+
+const LEADERBOARD_WEEK_MS =
+    7 * 24 * LEADERBOARD_HOUR_MS;
+
+
+const LEADERBOARD_PERIODS =
+    new Set([
+        "weekly",
+        "monthly"
+    ]);
+
+
 // =======================
 // GLOBAL BOOST SHOP
 // =======================
@@ -2449,9 +2464,9 @@ await db.query(`
 `);
 
 
-// Positive XP earned after this update is recorded here so the bot can
-// build rolling weekly and monthly leaderboards. Spending or losing XP does
-// not erase XP that was legitimately earned during the selected period.
+// Positive XP earned after this update is recorded here so the bot can build
+// exact weekly and monthly cycles. Spending or losing XP does not erase XP
+// that was legitimately earned during the active cycle.
 await db.query(`
 
     CREATE TABLE IF NOT EXISTS leaderboard_xp_activity (
@@ -2480,6 +2495,124 @@ await db.query(`
         guildID,
         timestamp,
         userID
+    )
+
+`);
+
+
+// Each guild has one persistent weekly cycle and one persistent monthly
+// cycle. The reward JSON is rolled when a cycle begins, so !rank can show
+// the exact prizes that are currently being competed for.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS leaderboard_cycles (
+
+        guildID TEXT NOT NULL,
+
+        period TEXT NOT NULL
+            CHECK(period IN ('weekly','monthly')),
+
+        cycleStart BIGINT NOT NULL,
+
+        cycleEnd BIGINT NOT NULL,
+
+        rewardMode TEXT NOT NULL DEFAULT 'normal',
+
+        rewards JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+        updatedAt BIGINT NOT NULL,
+
+        PRIMARY KEY(
+            guildID,
+            period
+        )
+
+    )
+
+`);
+
+
+// Automatic resets are written to an outbox in the same transaction as the
+// rewards. If Discord is unavailable, the announcement remains pending and
+// is retried without ever paying the winners twice.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS leaderboard_reset_events (
+
+        id BIGSERIAL PRIMARY KEY,
+
+        guildID TEXT NOT NULL,
+
+        period TEXT NOT NULL,
+
+        cycleStart BIGINT NOT NULL,
+
+        cycleEnd BIGINT NOT NULL,
+
+        rewardMode TEXT NOT NULL,
+
+        winners JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+        createdAt BIGINT NOT NULL,
+
+        announcedAt BIGINT,
+
+        UNIQUE(
+            guildID,
+            period,
+            cycleStart,
+            cycleEnd
+        )
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    leaderboard_reset_events_pending_idx
+
+    ON leaderboard_reset_events(
+        guildID,
+        announcedAt,
+        id
+    )
+
+`);
+
+
+// Discord cannot transfer real money. Money-month prizes are therefore
+// persisted as pending payouts so the owner has a durable record to pay.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS leaderboard_cash_payouts (
+
+        id BIGSERIAL PRIMARY KEY,
+
+        resetEventID BIGINT NOT NULL
+            REFERENCES leaderboard_reset_events(id)
+            ON DELETE CASCADE,
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        place INTEGER NOT NULL,
+
+        amountCents INTEGER NOT NULL,
+
+        status TEXT NOT NULL DEFAULT 'pending',
+
+        createdAt BIGINT NOT NULL,
+
+        UNIQUE(
+            resetEventID,
+            userID,
+            place
+        )
+
     )
 
 `);
@@ -3102,6 +3235,8 @@ await db.query(`
 
         guaranteed1m INTEGER NOT NULL DEFAULT 0,
 
+        guaranteed2m INTEGER NOT NULL DEFAULT 0,
+
         guaranteed2m5 INTEGER NOT NULL DEFAULT 0,
 
         guaranteed5m INTEGER NOT NULL DEFAULT 0,
@@ -3122,6 +3257,8 @@ await db.query(`
 
         nextRollBurst50 INTEGER NOT NULL DEFAULT 0,
 
+        nextRollBurst200 INTEGER NOT NULL DEFAULT 0,
+
         tripleRollUntil BIGINT NOT NULL DEFAULT 0,
 
         multiRollUntil BIGINT NOT NULL DEFAULT 0,
@@ -3133,6 +3270,10 @@ await db.query(`
         rollWindowUses INTEGER NOT NULL DEFAULT 0,
 
         chatXP1m5Until BIGINT NOT NULL DEFAULT 0,
+
+        chatXP1m2Until BIGINT NOT NULL DEFAULT 0,
+
+        chatXP1m4Until BIGINT NOT NULL DEFAULT 0,
 
         chatXP1m75Until BIGINT NOT NULL DEFAULT 0,
 
@@ -3175,7 +3316,11 @@ await db.query(`
 
         socialTripleUntil BIGINT NOT NULL DEFAULT 0,
 
+        hugTripleUntil BIGINT NOT NULL DEFAULT 0,
+
         nextHugTripleUses INTEGER NOT NULL DEFAULT 0,
+
+        rollLuck50Until BIGINT NOT NULL DEFAULT 0,
 
         merchantPermanentChatXPMultiplier
             INTEGER NOT NULL DEFAULT 1,
@@ -3208,6 +3353,7 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS guaranteed250k INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteed500k INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteed1m INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS guaranteed2m INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteed2m5 INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteed5m INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteed7m5 INTEGER NOT NULL DEFAULT 0,
@@ -3218,11 +3364,14 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS nextRollBurst10 INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS nextRollBurst20 INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS nextRollBurst50 INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextRollBurst200 INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS multiRollUntil BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS multiRollCount INTEGER NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS rollWindowEndsAt BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS rollWindowUses INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP1m5Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP1m2Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP1m4Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP1m75Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP1m3Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP1m6Until BIGINT NOT NULL DEFAULT 0,
@@ -3244,6 +3393,8 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS guaranteedCriticalsRemaining INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS socialTripleUntil BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS nextHugTripleUses INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS hugTripleUntil BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS rollLuck50Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS merchantPermanentChatXPMultiplier INTEGER NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS merchantPermanentRollCount INTEGER NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS merchantTimedRollCount INTEGER NOT NULL DEFAULT 1,
@@ -3661,8 +3812,8 @@ await db.query(`
 `);
 
 
-// Weekly/monthly rankings only need the most recent 30 days. Keep two extra
-// days as a safety margin so this table stays small even on active servers.
+// Keep enough history to settle missed calendar resets after a long outage.
+// The current-cycle queries still use their exact stored start/end bounds.
 await db.query(`
 
     DELETE FROM leaderboard_xp_activity
@@ -3671,7 +3822,7 @@ await db.query(`
 
 `, [
     Date.now() -
-    32 * 24 * 60 * 60 * 1000
+    400 * 24 * 60 * 60 * 1000
 ]);
 
 
@@ -4901,6 +5052,405 @@ async function getLeaderboard(
 
 
 
+function normalizeLeaderboardPeriod(period){
+    const value = String(period || "").trim().toLowerCase();
+    if(!LEADERBOARD_PERIODS.has(value)){
+        throw new Error(`Unknown leaderboard period: ${period}`);
+    }
+    return value;
+}
+
+
+function normalizeMonthlyRewardMode(mode){
+    const value = String(mode || "normal").trim().toLowerCase();
+    if(value !== "normal" && value !== "money"){
+        throw new Error(`Unknown monthly leaderboard reward mode: ${mode}`);
+    }
+    return value;
+}
+
+
+function leaderboardChoice(options){
+    return options[Math.floor(Math.random() * options.length)];
+}
+
+
+function leaderboardWeightedChoice(options){
+    const roll = Math.random() * 100;
+    let cumulative = 0;
+    for(const option of options){
+        cumulative += Number(option.chance) || 0;
+        if(roll < cumulative) return option.value;
+    }
+    return options[options.length - 1].value;
+}
+
+
+function leaderboardReward(type, label, details = {}){
+    return {type, label, ...details};
+}
+
+
+function leaderboardXP(amount){
+    return leaderboardReward(
+        "xp",
+        `**${amount.toLocaleString()} XP**`,
+        {amount}
+    );
+}
+
+
+function leaderboardBoost(boostType, tier, amount, name){
+    return leaderboardReward(
+        "boost",
+        `**x${amount}** ${name}`,
+        {boostType, tier, amount}
+    );
+}
+
+
+function leaderboardHours(durationMs){
+    return Math.round(durationMs / LEADERBOARD_HOUR_MS);
+}
+
+
+function rollWeeklyLeaderboardRewards(){
+    const firstXP = leaderboardChoice([150000000, 200000000, 300000000]);
+    const firstLuckMax = leaderboardChoice([5, 8, 12]);
+    const firstInfinity = leaderboardChoice([1, 3, 4]);
+    const firstLuckIII = leaderboardChoice([6, 12, 15]);
+    const firstChat = leaderboardChoice([1.5, 1.75, 2]);
+    const firstChatTime = leaderboardChoice([12, 18]) * LEADERBOARD_HOUR_MS;
+    const firstExtraRolls = leaderboardChoice([3, 6, 9]);
+    const firstRollTime = leaderboardChoice([8, 12]) * LEADERBOARD_HOUR_MS;
+
+    const secondXP = leaderboardChoice([75000000, 100000000, 125000000]);
+    const secondLuckMax = leaderboardChoice([3, 5, 8]);
+    const secondLuckIII = leaderboardChoice([4, 6, 10]);
+    const secondChat = leaderboardChoice([1.2, 1.4]);
+    const secondChatTime = leaderboardChoice([18, 24]) * LEADERBOARD_HOUR_MS;
+
+    const thirdXP = leaderboardChoice([35000000, 50000000, 65000000]);
+    const thirdLuckMax = leaderboardChoice([2, 4, 6]);
+    const thirdLuckIII = leaderboardChoice([3, 6, 9]);
+
+    return {
+        "1": [
+            leaderboardXP(firstXP),
+            leaderboardBoost("luck", "max", firstLuckMax, "🍀 Luck Boost MAX"),
+            leaderboardBoost("xp", "infinity", firstInfinity, "🧿 XP Boost ထ"),
+            leaderboardBoost("luck", "omega", 1, "👁️‍🗨️ Luck Boost Ω"),
+            leaderboardBoost("luck", "tier3", firstLuckIII, "☘️ Luck Boost III"),
+            leaderboardReward(
+                "chat_xp_multiplier",
+                `**${firstChat}x chat XP** for **${leaderboardHours(firstChatTime)} hours**`,
+                {multiplier: firstChat, durationMs: firstChatTime}
+            ),
+            leaderboardReward(
+                "hug_triple_timed",
+                "Every `!hug` runs **3 times** for **24 hours**",
+                {durationMs: 24 * LEADERBOARD_HOUR_MS}
+            ),
+            leaderboardReward(
+                "multi_roll",
+                `Each \`!roll\` gives **+${firstExtraRolls} extra rolls** for **${leaderboardHours(firstRollTime)} hours**`,
+                {
+                    rollCount: firstExtraRolls + 1,
+                    extraRolls: firstExtraRolls,
+                    durationMs: firstRollTime
+                }
+            )
+        ],
+        "2": [
+            leaderboardXP(secondXP),
+            leaderboardBoost("luck", "max", secondLuckMax, "🍀 Luck Boost MAX"),
+            leaderboardBoost("xp", "infinity", 1, "🧿 XP Boost ထ"),
+            leaderboardBoost("luck", "tier3", secondLuckIII, "☘️ Luck Boost III"),
+            leaderboardReward(
+                "chat_xp_multiplier",
+                `**${secondChat}x chat XP** for **${leaderboardHours(secondChatTime)} hours**`,
+                {multiplier: secondChat, durationMs: secondChatTime}
+            ),
+            leaderboardReward(
+                "next_roll_burst",
+                "Your next `!roll` rolls **50 times**",
+                {rollCount: 50, amount: 1}
+            ),
+            leaderboardReward(
+                "next_hug_triple",
+                "Your next `!hug` runs **3 times**",
+                {amount: 1}
+            )
+        ],
+        "3": [
+            leaderboardXP(thirdXP),
+            leaderboardBoost("luck", "max", thirdLuckMax, "🍀 Luck Boost MAX"),
+            leaderboardBoost("xp", "infinity", 1, "🧿 XP Boost ထ"),
+            leaderboardBoost("luck", "tier3", thirdLuckIII, "☘️ Luck Boost III"),
+            leaderboardReward(
+                "guaranteed_roll_minimum",
+                "Your next `!roll` is guaranteed to be **at least 1,000,000 XP**",
+                {minXP: 1000000, amount: 1}
+            )
+        ]
+    };
+}
+
+
+function rollMonthlyNormalLeaderboardRewards(){
+    const firstOmega = leaderboardChoice([3, 4]);
+    const firstInfinity = leaderboardChoice([4, 8, 12]);
+    const firstSocialTime = leaderboardChoice([24, 48]) * LEADERBOARD_HOUR_MS;
+    const firstLuckTime = leaderboardChoice([12, 18]) * LEADERBOARD_HOUR_MS;
+    const secondOmega = leaderboardChoice([2, 3]);
+    const secondInfinity = leaderboardChoice([3, 5, 7]);
+    const thirdInfinity = leaderboardChoice([2, 3, 4]);
+
+    return {
+        "1": [
+            leaderboardBoost("luck", "omega", firstOmega, "👁️‍🗨️ Luck Boost Ω"),
+            leaderboardBoost("xp", "infinity", firstInfinity, "🧿 XP Boost ထ"),
+            leaderboardReward(
+                "social_command_triple",
+                `\`!hug\`, \`!steal\`, \`!kiss\`, and \`!ezwin\` run **3 times** for **${leaderboardHours(firstSocialTime)} hours**`,
+                {durationMs: firstSocialTime}
+            ),
+            leaderboardReward(
+                "roll_luck_multiplier",
+                `**50x bonus roll luck** for **${leaderboardHours(firstLuckTime)} hours**`,
+                {multiplier: 50, durationMs: firstLuckTime}
+            ),
+            leaderboardReward(
+                "chat_xp_multiplier",
+                "**2x chat XP** for **148 hours**",
+                {multiplier: 2, durationMs: 148 * LEADERBOARD_HOUR_MS}
+            )
+        ],
+        "2": [
+            leaderboardBoost("luck", "omega", secondOmega, "👁️‍🗨️ Luck Boost Ω"),
+            leaderboardBoost("xp", "infinity", secondInfinity, "🧿 XP Boost ထ"),
+            leaderboardReward(
+                "next_roll_burst",
+                "Your next `!roll` rolls **200 times**",
+                {rollCount: 200, amount: 1}
+            ),
+            leaderboardReward(
+                "guaranteed_roll_minimum",
+                "Your next `!roll` is guaranteed to be **at least 5,000,000 XP**",
+                {minXP: 5000000, amount: 1}
+            )
+        ],
+        "3": [
+            leaderboardBoost("luck", "omega", 1, "👁️‍🗨️ Luck Boost Ω"),
+            leaderboardBoost("xp", "infinity", thirdInfinity, "🧿 XP Boost ထ"),
+            leaderboardReward(
+                "guaranteed_roll_minimum",
+                "Your next `!roll` is guaranteed to be **at least 2,000,000 XP**",
+                {minXP: 2000000, amount: 1}
+            )
+        ]
+    };
+}
+
+
+function rollMonthlyMoneyLeaderboardRewards(){
+    const firstCash = leaderboardWeightedChoice([
+        {value: 35, chance: 10},
+        {value: 30, chance: 20},
+        {value: 25, chance: 30},
+        {value: 20, chance: 40}
+    ]);
+    const secondCash = leaderboardWeightedChoice([
+        {value: 15, chance: 45},
+        {value: 10, chance: 55}
+    ]);
+
+    return {
+        "1": [leaderboardReward("cash", `**$${firstCash} cash prize**`, {amountUSD: firstCash})],
+        "2": [leaderboardReward("cash", `**$${secondCash} cash prize**`, {amountUSD: secondCash})],
+        "3": [
+            leaderboardReward("cash", "**$5 cash prize**", {amountUSD: 5}),
+            leaderboardXP(100000000)
+        ]
+    };
+}
+
+
+function rollLeaderboardRewards(period, rewardMode = "normal"){
+    const normalizedPeriod = normalizeLeaderboardPeriod(period);
+    if(normalizedPeriod === "weekly") return rollWeeklyLeaderboardRewards();
+    return normalizeMonthlyRewardMode(rewardMode) === "money"
+        ? rollMonthlyMoneyLeaderboardRewards()
+        : rollMonthlyNormalLeaderboardRewards();
+}
+
+
+function getCalendarLeaderboardBounds(period, timestamp = Date.now()){
+    const normalizedPeriod = normalizeLeaderboardPeriod(period);
+    const date = new Date(timestamp);
+
+    if(normalizedPeriod === "weekly"){
+        const midnight = Date.UTC(
+            date.getUTCFullYear(),
+            date.getUTCMonth(),
+            date.getUTCDate()
+        );
+        const daysSinceMonday = (date.getUTCDay() + 6) % 7;
+        const cycleStart = midnight - daysSinceMonday * 24 * LEADERBOARD_HOUR_MS;
+        return {cycleStart, cycleEnd: cycleStart + LEADERBOARD_WEEK_MS};
+    }
+
+    const cycleStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
+    const cycleEnd = Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1);
+    return {cycleStart, cycleEnd};
+}
+
+
+function addLeaderboardPeriod(period, timestamp){
+    const normalizedPeriod = normalizeLeaderboardPeriod(period);
+    if(normalizedPeriod === "weekly") return Number(timestamp) + LEADERBOARD_WEEK_MS;
+
+    const date = new Date(Number(timestamp));
+    const wantedDay = date.getUTCDate();
+    const targetMonthIndex = date.getUTCMonth() + 1;
+    const targetYear = date.getUTCFullYear() + Math.floor(targetMonthIndex / 12);
+    const targetMonth = targetMonthIndex % 12;
+    const lastTargetDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+
+    return Date.UTC(
+        targetYear,
+        targetMonth,
+        Math.min(wantedDay, lastTargetDay),
+        date.getUTCHours(),
+        date.getUTCMinutes(),
+        date.getUTCSeconds(),
+        date.getUTCMilliseconds()
+    );
+}
+
+
+function parseLeaderboardJSON(value, fallback){
+    if(value === null || value === undefined) return fallback;
+    if(typeof value !== "string") return value;
+    try{
+        return JSON.parse(value);
+    }
+    catch(_error){
+        return fallback;
+    }
+}
+
+
+function normalizeLeaderboardCycleRow(row){
+    if(!row) return null;
+    return {
+        guildID: String(row.guildid ?? row.guildID),
+        period: String(row.period),
+        cycleStart: Number(row.cyclestart ?? row.cycleStart),
+        cycleEnd: Number(row.cycleend ?? row.cycleEnd),
+        rewardMode: String(row.rewardmode ?? row.rewardMode ?? "normal"),
+        rewards: parseLeaderboardJSON(row.rewards, {}),
+        updatedAt: Number(row.updatedat ?? row.updatedAt ?? 0)
+    };
+}
+
+
+function normalizeLeaderboardResetEvent(row){
+    if(!row) return null;
+    return {
+        id: String(row.id),
+        guildID: String(row.guildid ?? row.guildID),
+        period: String(row.period),
+        cycleStart: Number(row.cyclestart ?? row.cycleStart),
+        cycleEnd: Number(row.cycleend ?? row.cycleEnd),
+        rewardMode: String(row.rewardmode ?? row.rewardMode ?? "normal"),
+        winners: parseLeaderboardJSON(row.winners, []),
+        createdAt: Number(row.createdat ?? row.createdAt ?? 0),
+        announcedAt: row.announcedat == null ? null : Number(row.announcedat)
+    };
+}
+
+
+async function ensureLeaderboardCycle(guildID, period, queryable = db){
+    const normalizedGuildID = String(guildID);
+    const normalizedPeriod = normalizeLeaderboardPeriod(period);
+    const existing = await queryable.query(`
+        SELECT * FROM leaderboard_cycles
+        WHERE guildID=$1 AND period=$2
+    `, [normalizedGuildID, normalizedPeriod]);
+
+    if(existing.rows[0]) return normalizeLeaderboardCycleRow(existing.rows[0]);
+
+    const now = Date.now();
+    const bounds = getCalendarLeaderboardBounds(normalizedPeriod, now);
+    const rewardMode = "normal";
+    const rewards = rollLeaderboardRewards(normalizedPeriod, rewardMode);
+
+    await queryable.query(`
+        INSERT INTO leaderboard_cycles(
+            guildID, period, cycleStart, cycleEnd,
+            rewardMode, rewards, updatedAt
+        )
+        VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)
+        ON CONFLICT(guildID,period) DO NOTHING
+    `, [
+        normalizedGuildID,
+        normalizedPeriod,
+        bounds.cycleStart,
+        bounds.cycleEnd,
+        rewardMode,
+        JSON.stringify(rewards),
+        now
+    ]);
+
+    const created = await queryable.query(`
+        SELECT * FROM leaderboard_cycles
+        WHERE guildID=$1 AND period=$2
+    `, [normalizedGuildID, normalizedPeriod]);
+
+    return normalizeLeaderboardCycleRow(created.rows[0]);
+}
+
+
+async function getLeaderboardCycle(guildID, period){
+    return ensureLeaderboardCycle(guildID, period);
+}
+
+
+async function queryPeriodLeaderboard(
+    queryable,
+    guildID,
+    cycleStart,
+    cycleEnd,
+    limit = 10
+){
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 10, 25));
+    const result = await queryable.query(`
+        SELECT
+            activity.userID,
+            SUM(activity.amount)::BIGINT AS "periodXP",
+            users.xp,
+            users.level
+        FROM leaderboard_xp_activity AS activity
+        INNER JOIN users
+            ON users.guildID=activity.guildID
+            AND users.userID=activity.userID
+        WHERE activity.guildID=$1
+        AND activity.timestamp >= $2
+        AND activity.timestamp < $3
+        GROUP BY activity.userID, users.xp, users.level
+        ORDER BY
+            SUM(activity.amount) DESC,
+            users.xp DESC,
+            activity.userID ASC
+        LIMIT $4
+    `, [String(guildID), Number(cycleStart), Number(cycleEnd), safeLimit]);
+
+    return result.rows;
+}
+
+
+
 
 async function getPeriodLeaderboard(
     guildID,
@@ -4908,105 +5458,405 @@ async function getPeriodLeaderboard(
     limit = 10
 ){
 
-
-    const durations = {
-
-        weekly:
-            7 * 24 * 60 * 60 * 1000,
-
-        monthly:
-            30 * 24 * 60 * 60 * 1000
-
-    };
-
-
-    const duration =
-        durations[
-            String(period).toLowerCase()
-        ];
-
-
-    if(!duration){
-
-        throw new Error(
-            `Unknown leaderboard period: ${period}`
-        );
-
-    }
-
-
-    const safeLimit =
-        Math.max(
-            1,
-            Math.min(
-                Number(limit) || 10,
-                25
-            )
-        );
-
-
-    const result =
-        await db.query(`
-
-            SELECT
-
-                activity.userID,
-
-                SUM(activity.amount)::BIGINT
-                    AS "periodXP",
-
-                users.xp,
-
-                users.level
-
-            FROM leaderboard_xp_activity
-                AS activity
-
-            INNER JOIN users
-
-                ON users.guildID =
-                    activity.guildID
-
-                AND users.userID =
-                    activity.userID
-
-            WHERE activity.guildID=$1
-
-            AND activity.timestamp >= $2
-
-            GROUP BY
-
-                activity.userID,
-
-                users.xp,
-
-                users.level
-
-            ORDER BY
-
-                SUM(activity.amount) DESC,
-
-                users.xp DESC,
-
-                activity.userID ASC
-
-            LIMIT $3
-
-
-        `, [
+    const cycle =
+        await ensureLeaderboardCycle(
             guildID,
-            Date.now() - duration,
-            safeLimit
-        ]);
+            period
+        );
 
 
-    return result.rows;
+    return queryPeriodLeaderboard(
+        db,
+        guildID,
+        cycle.cycleStart,
+        cycle.cycleEnd,
+        limit
+    );
 
 }
 
 
 
 
+
+
+async function applyLeaderboardReward(client, guildID, userID, reward, now){
+    const type = String(reward?.type || "").toLowerCase();
+
+    if(type === "xp"){
+        await client.query(`
+            UPDATE users
+            SET xp=GREATEST(0,xp+$3)
+            WHERE guildID=$1 AND userID=$2
+        `, [guildID, userID, Math.max(0, Math.floor(Number(reward.amount) || 0))]);
+        return;
+    }
+
+    if(type === "boost"){
+        await client.query(`
+            INSERT INTO boost_inventory(guildID,userID,boostType,tier,amount)
+            VALUES($1,$2,$3,$4,$5)
+            ON CONFLICT(guildID,userID,boostType,tier)
+            DO UPDATE SET amount=boost_inventory.amount+EXCLUDED.amount
+        `, [
+            guildID,
+            userID,
+            String(reward.boostType || "").toLowerCase(),
+            String(reward.tier || "").toLowerCase(),
+            Math.max(1, Math.floor(Number(reward.amount) || 1))
+        ]);
+        return;
+    }
+
+    // Cash is recorded after the reset event receives its durable event ID.
+    if(type === "cash") return;
+
+    await client.query(`
+        INSERT INTO quest_effects(guildID,userID)
+        VALUES($1,$2)
+        ON CONFLICT DO NOTHING
+    `, [guildID, userID]);
+
+    const durationMs = Math.max(
+        1,
+        Math.floor(Number(reward.durationMs) || 24 * LEADERBOARD_HOUR_MS)
+    );
+
+    if(type === "chat_xp_multiplier"){
+        const columns = {
+            "1.2": "chatXP1m2Until",
+            "1.4": "chatXP1m4Until",
+            "1.5": "chatXP1m5Until",
+            "1.75": "chatXP1m75Until",
+            "2": "chatXP2Until"
+        };
+        const column = columns[String(Number(reward.multiplier))];
+        if(column){
+            await client.query(`
+                UPDATE quest_effects
+                SET ${column}=GREATEST(${column},$3)+$4
+                WHERE guildID=$1 AND userID=$2
+            `, [guildID, userID, now, durationMs]);
+        }
+        return;
+    }
+
+    if(type === "hug_triple_timed" || type === "social_command_triple"){
+        const column = type === "hug_triple_timed"
+            ? "hugTripleUntil"
+            : "socialTripleUntil";
+        await client.query(`
+            UPDATE quest_effects
+            SET ${column}=GREATEST(${column},$3)+$4
+            WHERE guildID=$1 AND userID=$2
+        `, [guildID, userID, now, durationMs]);
+        return;
+    }
+
+    if(type === "next_hug_triple"){
+        await client.query(`
+            UPDATE quest_effects
+            SET nextHugTripleUses=nextHugTripleUses+$3
+            WHERE guildID=$1 AND userID=$2
+        `, [guildID, userID, Math.max(1, Math.floor(Number(reward.amount) || 1))]);
+        return;
+    }
+
+    if(type === "multi_roll"){
+        const rollCount = Math.max(2, Math.floor(Number(reward.rollCount) || 2));
+        await client.query(`
+            UPDATE quest_effects
+            SET
+                multiRollCount=CASE
+                    WHEN multiRollUntil>$3 THEN GREATEST(multiRollCount,$4)
+                    ELSE $4
+                END,
+                multiRollUntil=GREATEST(multiRollUntil,$3)+$5,
+                rollWindowEndsAt=0,
+                rollWindowUses=0
+            WHERE guildID=$1 AND userID=$2
+        `, [guildID, userID, now, rollCount, durationMs]);
+        return;
+    }
+
+    if(type === "next_roll_burst"){
+        const columns = {50: "nextRollBurst50", 200: "nextRollBurst200"};
+        const column = columns[Number(reward.rollCount)];
+        if(column){
+            await client.query(`
+                UPDATE quest_effects
+                SET ${column}=${column}+$3
+                WHERE guildID=$1 AND userID=$2
+            `, [guildID, userID, Math.max(1, Math.floor(Number(reward.amount) || 1))]);
+        }
+        return;
+    }
+
+    if(type === "guaranteed_roll_minimum"){
+        const columns = {
+            1000000: "guaranteed1m",
+            2000000: "guaranteed2m",
+            5000000: "guaranteed5m"
+        };
+        const column = columns[Number(reward.minXP)];
+        if(column){
+            await client.query(`
+                UPDATE quest_effects
+                SET ${column}=${column}+$3
+                WHERE guildID=$1 AND userID=$2
+            `, [guildID, userID, Math.max(1, Math.floor(Number(reward.amount) || 1))]);
+        }
+        return;
+    }
+
+    if(type === "roll_luck_multiplier"){
+        await client.query(`
+            UPDATE quest_effects
+            SET rollLuck50Until=GREATEST(rollLuck50Until,$3)+$4
+            WHERE guildID=$1 AND userID=$2
+        `, [guildID, userID, now, durationMs]);
+    }
+}
+
+
+async function resetLeaderboardCycleWithoutRewards(guildID, period, rewardMode = "normal"){
+    const normalizedGuildID = String(guildID);
+    const normalizedPeriod = normalizeLeaderboardPeriod(period);
+    const normalizedMode = normalizedPeriod === "monthly"
+        ? normalizeMonthlyRewardMode(rewardMode)
+        : "normal";
+    const client = await db.connect();
+
+    try{
+        await client.query("BEGIN");
+        await ensureLeaderboardCycle(normalizedGuildID, normalizedPeriod, client);
+        await client.query(`
+            SELECT 1 FROM leaderboard_cycles
+            WHERE guildID=$1 AND period=$2
+            FOR UPDATE
+        `, [normalizedGuildID, normalizedPeriod]);
+
+        const now = Date.now();
+        const cycleEnd = addLeaderboardPeriod(normalizedPeriod, now);
+        const rewards = rollLeaderboardRewards(normalizedPeriod, normalizedMode);
+        const result = await client.query(`
+            UPDATE leaderboard_cycles
+            SET
+                cycleStart=$3,
+                cycleEnd=$4,
+                rewardMode=$5,
+                rewards=$6::jsonb,
+                updatedAt=$3
+            WHERE guildID=$1 AND period=$2
+            RETURNING *
+        `, [
+            normalizedGuildID,
+            normalizedPeriod,
+            now,
+            cycleEnd,
+            normalizedMode,
+            JSON.stringify(rewards)
+        ]);
+
+        await client.query("COMMIT");
+        return normalizeLeaderboardCycleRow(result.rows[0]);
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+}
+
+
+async function processOneDueLeaderboardCycle(guildID, period){
+    const normalizedGuildID = String(guildID);
+    const normalizedPeriod = normalizeLeaderboardPeriod(period);
+    const client = await db.connect();
+
+    try{
+        await client.query("BEGIN");
+        await ensureLeaderboardCycle(normalizedGuildID, normalizedPeriod, client);
+
+        const locked = await client.query(`
+            SELECT * FROM leaderboard_cycles
+            WHERE guildID=$1 AND period=$2
+            FOR UPDATE
+        `, [normalizedGuildID, normalizedPeriod]);
+        const cycle = normalizeLeaderboardCycleRow(locked.rows[0]);
+        const now = Date.now();
+
+        if(!cycle || cycle.cycleEnd > now){
+            await client.query("COMMIT");
+            return null;
+        }
+
+        const leaderboard = await queryPeriodLeaderboard(
+            client,
+            normalizedGuildID,
+            cycle.cycleStart,
+            cycle.cycleEnd,
+            3
+        );
+        const rewards = cycle.rewards && Object.keys(cycle.rewards).length
+            ? cycle.rewards
+            : rollLeaderboardRewards(normalizedPeriod, cycle.rewardMode);
+        const winners = [];
+
+        for(let index = 0; index < leaderboard.length; index++){
+            const entry = leaderboard[index];
+            const userID = String(entry.userid ?? entry.userID);
+            const place = index + 1;
+            const winnerRewards = Array.isArray(rewards[String(place)])
+                ? rewards[String(place)]
+                : [];
+
+            await client.query(`
+                INSERT INTO users(guildID,userID)
+                VALUES($1,$2)
+                ON CONFLICT DO NOTHING
+            `, [normalizedGuildID, userID]);
+
+            for(const reward of winnerRewards){
+                await applyLeaderboardReward(
+                    client,
+                    normalizedGuildID,
+                    userID,
+                    reward,
+                    now
+                );
+            }
+
+            winners.push({
+                place,
+                userID,
+                periodXP: Number(entry.periodXP ?? entry.periodxp ?? 0),
+                rewards: winnerRewards
+            });
+        }
+
+        const eventResult = await client.query(`
+            INSERT INTO leaderboard_reset_events(
+                guildID,period,cycleStart,cycleEnd,
+                rewardMode,winners,createdAt
+            )
+            VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)
+            RETURNING *
+        `, [
+            normalizedGuildID,
+            normalizedPeriod,
+            cycle.cycleStart,
+            cycle.cycleEnd,
+            cycle.rewardMode,
+            JSON.stringify(winners),
+            now
+        ]);
+        const resetEventID = eventResult.rows[0].id;
+
+        for(const winner of winners){
+            for(const reward of winner.rewards){
+                if(String(reward.type).toLowerCase() !== "cash") continue;
+                await client.query(`
+                    INSERT INTO leaderboard_cash_payouts(
+                        resetEventID,guildID,userID,place,
+                        amountCents,createdAt
+                    )
+                    VALUES($1,$2,$3,$4,$5,$6)
+                    ON CONFLICT(resetEventID,userID,place) DO NOTHING
+                `, [
+                    resetEventID,
+                    normalizedGuildID,
+                    winner.userID,
+                    winner.place,
+                    Math.max(0, Math.round(Number(reward.amountUSD) * 100)),
+                    now
+                ]);
+            }
+        }
+
+        const nextStart = cycle.cycleEnd;
+        const nextEnd = addLeaderboardPeriod(normalizedPeriod, nextStart);
+        const nextRewards = rollLeaderboardRewards(normalizedPeriod, cycle.rewardMode);
+        const nextResult = await client.query(`
+            UPDATE leaderboard_cycles
+            SET
+                cycleStart=$3,
+                cycleEnd=$4,
+                rewards=$5::jsonb,
+                updatedAt=$6
+            WHERE guildID=$1 AND period=$2
+            RETURNING *
+        `, [
+            normalizedGuildID,
+            normalizedPeriod,
+            nextStart,
+            nextEnd,
+            JSON.stringify(nextRewards),
+            now
+        ]);
+
+        await client.query("COMMIT");
+
+        for(const winner of winners){
+            userCache.delete(`${normalizedGuildID}:${winner.userID}`);
+        }
+
+        return {
+            event: normalizeLeaderboardResetEvent(eventResult.rows[0]),
+            nextCycle: normalizeLeaderboardCycleRow(nextResult.rows[0])
+        };
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+}
+
+
+async function processDueLeaderboardResets(guildID, maxCyclesPerPeriod = 24){
+    const completed = [];
+    const maximum = Math.max(1, Math.min(Number(maxCyclesPerPeriod) || 24, 100));
+
+    for(const period of ["weekly", "monthly"]){
+        for(let index = 0; index < maximum; index++){
+            const result = await processOneDueLeaderboardCycle(guildID, period);
+            if(!result) break;
+            completed.push(result);
+        }
+    }
+
+    return completed;
+}
+
+
+async function getUnannouncedLeaderboardResetEvents(guildID, limit = 50){
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 100));
+    const result = await db.query(`
+        SELECT * FROM leaderboard_reset_events
+        WHERE guildID=$1 AND announcedAt IS NULL
+        ORDER BY id ASC
+        LIMIT $2
+    `, [String(guildID), safeLimit]);
+
+    return result.rows.map(normalizeLeaderboardResetEvent);
+}
+
+
+async function markLeaderboardResetEventAnnounced(eventID){
+    const result = await db.query(`
+        UPDATE leaderboard_reset_events
+        SET announcedAt=$2
+        WHERE id=$1 AND announcedAt IS NULL
+        RETURNING id
+    `, [String(eventID), Date.now()]);
+
+    return result.rowCount > 0;
+}
 
 
 // =====================================================
@@ -10035,8 +10885,10 @@ function resolveChatXPMultiplier(
         [1.6, "chatxp1m6until"],
         [1.6, "chatxp12until"],
         [1.5, "chatxp1m5until"],
+        [1.4, "chatxp1m4until"],
         [1.3, "chatxp1m3until"],
-        [1.3, "chatxp8until"]
+        [1.3, "chatxp8until"],
+        [1.2, "chatxp1m2until"]
     ];
 
 
@@ -12369,6 +13221,7 @@ async function claimQuestCycleRewards(
                     250000: "guaranteed250k",
                     500000: "guaranteed500k",
                     1000000: "guaranteed1m",
+                    2000000: "guaranteed2m",
                     2500000: "guaranteed2m5",
                     5000000: "guaranteed5m",
                     7500000: "guaranteed7m5",
@@ -12413,7 +13266,8 @@ async function claimQuestCycleRewards(
                 const burstColumns = {
                     10: "nextRollBurst10",
                     20: "nextRollBurst20",
-                    50: "nextRollBurst50"
+                    50: "nextRollBurst50",
+                    200: "nextRollBurst200"
                 };
 
 
@@ -12791,6 +13645,27 @@ async function getQuestChatXPMultiplier(
 }
 
 
+async function getQuestRollLuckMultiplier(
+    guildID,
+    userID
+){
+
+    const effects =
+        await getQuestEffects(
+            guildID,
+            userID
+        );
+
+
+    return Number(
+        effects?.rollluck50until || 0
+    ) > Date.now()
+        ? 50
+        : 1;
+
+}
+
+
 async function getQuestShopDiscount(
     guildID,
     userID
@@ -12963,6 +13838,14 @@ async function getQuestSocialCommandRepeatCount(
         ) > Date.now();
 
 
+    const timedHugRewardActive =
+        String(commandName || "").toLowerCase() === "hug"
+        &&
+        Number(
+            effects?.hugtripleuntil || 0
+        ) > Date.now();
+
+
     const oneTimeHugAvailable =
         String(commandName || "").toLowerCase() === "hug"
         &&
@@ -12973,6 +13856,8 @@ async function getQuestSocialCommandRepeatCount(
 
     return (
         timedRewardActive
+        ||
+        timedHugRewardActive
         ||
         oneTimeHugAvailable
     )
@@ -13022,6 +13907,7 @@ async function consumeQuestSocialCommandRepeat(
             SET nextHugTripleUses =
                 CASE
                     WHEN socialTripleUntil <= $4
+                    AND hugTripleUntil <= $4
                     AND $3 = 'hug'
                     AND nextHugTripleUses > 0
                         THEN nextHugTripleUses - 1
@@ -13032,6 +13918,10 @@ async function consumeQuestSocialCommandRepeat(
             AND userID=$2
             AND (
                 socialTripleUntil > $4
+                OR (
+                    $3 = 'hug'
+                    AND hugTripleUntil > $4
+                )
                 OR (
                     $3 = 'hug'
                     AND nextHugTripleUses > 0
@@ -13148,6 +14038,11 @@ async function consumeGuaranteedQuestRoll(
                 field: "guaranteed2m5",
                 rowField: "guaranteed2m5",
                 minXP: 2500000
+            },
+            {
+                field: "guaranteed2m",
+                rowField: "guaranteed2m",
+                minXP: 2000000
             },
             {
                 field: "guaranteed1m",
@@ -13343,6 +14238,11 @@ async function useQuestRollCooldown(
 
 
         const burstOptions = [
+            {
+                rowField: "nextrollburst200",
+                column: "nextRollBurst200",
+                rollCount: 200
+            },
             {
                 rowField: "nextrollburst50",
                 column: "nextRollBurst50",
@@ -16958,6 +17858,16 @@ module.exports = {
 
     getPeriodLeaderboard,
 
+    getLeaderboardCycle,
+
+    resetLeaderboardCycleWithoutRewards,
+
+    processDueLeaderboardResets,
+
+    getUnannouncedLeaderboardResetEvents,
+
+    markLeaderboardResetEventAnnounced,
+
     addBoostActivity,
 
     getHourlyBoostXP,
@@ -17074,6 +17984,8 @@ module.exports = {
     getQuestEffects,
 
     getQuestChatXPMultiplier,
+
+    getQuestRollLuckMultiplier,
 
     getQuestShopDiscount,
 
