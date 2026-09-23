@@ -196,7 +196,7 @@ const ROLL_SETTINGS = {
                 chancePercent: 0.000001,
                 type: "positive",
                 min: 250000001,
-                max: 1500000000
+                max: 500000000
             }
 
         ]
@@ -316,6 +316,55 @@ const ROLL_GUARANTEE_MIN_XP =
     500000;
 
 
+// The milestone roll strongly favors 500,000–2,000,000 XP while giving it
+// dramatically better odds of climbing higher than an ordinary roll:
+// 70% main range, 20% 2M–10M, 8% 10M–100M and 2% above 100M.
+const ROLL_GUARANTEE_CHANCE_TABLE = [
+    {
+        chancePercent: 70,
+        type: "positive",
+        min: 500000,
+        max: 2000000
+    },
+    {
+        chancePercent: 20,
+        type: "positive",
+        min: 2000001,
+        max: 10000000
+    },
+    {
+        chancePercent: 5,
+        type: "positive",
+        min: 10000001,
+        max: 30000000
+    },
+    {
+        chancePercent: 2,
+        type: "positive",
+        min: 30000001,
+        max: 50000000
+    },
+    {
+        chancePercent: 1,
+        type: "positive",
+        min: 50000001,
+        max: 100000000
+    },
+    {
+        chancePercent: 1.5,
+        type: "positive",
+        min: 100000001,
+        max: 250000000
+    },
+    {
+        chancePercent: 0.5,
+        type: "positive",
+        min: 250000001,
+        max: 1500000000
+    }
+];
+
+
 function buildRollGuaranteeFooter(
     rollGuarantee
 ){
@@ -343,7 +392,7 @@ function buildRollGuaranteeFooter(
         +
         (
             rollGuarantee?.guaranteed
-                ? `\n🎁 **Milestone reached — this roll was guaranteed ${ROLL_GUARANTEE_MIN_XP.toLocaleString()}+ XP!**`
+                ? `\n🎁 **Milestone reached — ${ROLL_GUARANTEE_MIN_XP.toLocaleString()} XP minimum, with greatly boosted odds for more than 2,000,000 XP!**`
                 : ""
         )
     );
@@ -996,6 +1045,13 @@ function getRollEmojis(guild){
                 "🌃"
             ),
 
+        rainbowRoll:
+            getCustomEmoji(
+                guild,
+                "rainbow_roll",
+                "🌈"
+            ),
+
         giftHeart:
             getCustomEmoji(
                 guild,
@@ -1440,6 +1496,14 @@ function getRollBonusPercentRange(
         Number(rolledXP) || 0;
 
 
+    if(safeXP >= 100000000){
+        return {
+            minimumPercentLess: 5,
+            maximumPercentLess: 10
+        };
+    }
+
+
     if(safeXP > 5000000){
         return {
             minimumPercentLess: 15,
@@ -1589,6 +1653,63 @@ function buildPositiveRollDialogue({
     const resultExtras =
         rollCooldownExtra +
         rollContextExtras;
+
+
+    if(rolledXP >= 100000000){
+
+        return `${emojis.rainbowRoll} ${author} ROLLED A JACKPOT 🎰 **[${formattedRolledXP} XP]**${resultExtras}
+
+### The future?
+
+*While beyondborder_08386 & ${author} keep working on the teleportation gun, after a few hours of working on it, beyondborder_08386 calmly says:*
+
+"It's almost finished..."
+
+*While they are still creating it, the crew behind them are quite quiet...
+
+That's because gorjezz is sleeping on the couch, thezdrink is sitting on an armchair, still in anguish and still thinking that they failed—which they did...
+
+Zero & kdc came back from obtaining some well-earned power, and then they went to their bedroom to sleep.
+
+But... Kape is hovering in the air, meditating, his head twitching violently as if he's looking at the future and all the different outcomes of the incoming conflict.
+
+beyondborder_08386 looks back and sees this, then glances at ${author}.*
+
+"Uh... ${author}...? What is Kape doing?" *beyondborder_08386 asks while ${author} says "idk" with a gesture.*
+
+*${author} & beyondborder_08386 slowly walk toward Kape before Kape drops to the ground, breathing heavily and, most importantly... looking shocked...
+
+beyondborder_08386 blinks at Kape before crouching beside him.*
+
+"You good, Kape?" *beyondborder_08386 asks before ${author} adds:*
+
+"Hey... what were you doing?" *${author} asks curiously.*
+
+*Kape looks at them, still in slight shock, before answering:*
+
+"I looked into the near future, at all of the possible outcomes of the incoming conflict..."
+
+*beyondborder_08386 & ${author} keep looking at him in shock, while gorjezz wakes up and listens as well.
+
+gorjezz then decides to ask:*
+
+"How many did you see, Kape...?" *Kape looks at gorjezz and, still in shock, answers:*
+
+"273,302,067..." *Kape answers.*
+
+*beyondborder_08386 & ${author} look at each other before looking back at Kape.*
+
+"How many did we win...?" *beyondborder_08386 asks slightly coldly.*
+
+*Kape gulps before answering:*
+
+"Twelve..."
+
+*Kape says as beyondborder_08386, ${author} & gorjezz watch in pure shock.*
+
+**${emojis.rainbowRoll} The shocked future made ${author} gain some bonus power by ${formattedBonusXP} XP!**${rollGuaranteeFooter}`;
+
+    }
 
 
     if(rolledXP > 5000000){
@@ -2112,13 +2233,13 @@ const rollGuarantee =
 if(rollGuarantee.guaranteed){
 
     rolledXP =
-        luck.rollGuaranteedMinimumWithLuck(
+        Math.max(
             rolledXP,
-            ROLL_GUARANTEE_MIN_XP,
-            rollChanceTable,
-            levelTableName,
-            rollLuckProfile,
-            upgradeEffects.rollingLevel
+            luck.rollGuaranteedChanceTableWithLuck(
+                ROLL_GUARANTEE_CHANCE_TABLE,
+                rollLuckProfile,
+                upgradeEffects.rollingLevel
+            )
         );
 
 }
@@ -2304,7 +2425,7 @@ const guaranteedRollExtra =
 
 const megaRollExtra =
     !forcedNegativeByTroll
-    && luckResult.megaRoll
+    && rolledXP >= luck.LUCK_MEGA_ROLL_MIN_XP
         ? "\n💎 **MEGA ROLL!** This result landed in the **10,000,000+ XP** range."
         : "";
 
@@ -2545,6 +2666,8 @@ module.exports = {
 
     rollGuaranteedNegative,
 
-    ROLL_SETTINGS
+    ROLL_SETTINGS,
+
+    ROLL_GUARANTEE_CHANCE_TABLE
 
 };
