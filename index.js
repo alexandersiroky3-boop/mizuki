@@ -778,34 +778,63 @@ client.once("clientReady", async () => {
 
     if(MAIN_GUILD_ID){
 
-        await rankCommand.processScheduledResets(
-            client,
-            MAIN_GUILD_ID
-        ).catch(error => {
+        // Older rank.js versions do not export processScheduledResets().
+        // Calling a missing method throws synchronously, so attaching .catch()
+        // cannot prevent the Client error event from crashing the bot.
+        if(
+            typeof rankCommand
+                ?.processScheduledResets ===
+                "function"
+        ){
 
-            console.error(
-                "Initial leaderboard reset check failed:",
-                error
+            const runScheduledResetCheck =
+                async label => {
+
+                    try{
+
+                        await rankCommand
+                            .processScheduledResets(
+                                client,
+                                MAIN_GUILD_ID
+                            );
+
+                    }
+                    catch(error){
+
+                        console.error(
+                            `${label} leaderboard reset check failed:`,
+                            error
+                        );
+
+                    }
+
+                };
+
+
+            await runScheduledResetCheck(
+                "Initial"
             );
 
-        });
 
+            setInterval(
+                () => {
 
-        setInterval(() => {
+                    void runScheduledResetCheck(
+                        "Scheduled"
+                    );
 
-            rankCommand.processScheduledResets(
-                client,
-                MAIN_GUILD_ID
-            ).catch(error => {
+                },
+                60 * 1000
+            );
 
-                console.error(
-                    "Scheduled leaderboard reset check failed:",
-                    error
-                );
+        }
+        else{
 
-            });
+            console.warn(
+                "Scheduled leaderboard resets are disabled because commands/rank.js does not export processScheduledResets(). The bot will continue running normally."
+            );
 
-        }, 60 * 1000);
+        }
 
     }
 
