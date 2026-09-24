@@ -67,7 +67,109 @@ function pickRandom(values, random = Math.random){
 }
 
 
-function rollTrollRarity(random = Math.random){
+function getTrollLuckOrder(profile){
+
+    return Math.max(
+        0,
+        Math.min(
+            5,
+            Number(profile?.order) || 0
+        )
+    );
+
+}
+
+
+function getLuckWeightedTrollRarities(profile){
+
+    const order =
+        getTrollLuckOrder(profile);
+
+
+    if(order <= 0){
+        return null;
+    }
+
+
+    const luckRating =
+        Math.max(
+            1,
+            Number(
+                profile?.commandMultiplier ??
+                profile?.multiplier
+            ) || 1
+        );
+
+
+    // Ordered from the worst result to the best so stronger Luck pushes
+    // probability away from a backfire/common troll and toward rare/legendary.
+    const outcomes = [
+        {rarity: "failed", chancePercent: 24.5},
+        {rarity: "common", chancePercent: 60},
+        {rarity: "rare", chancePercent: 14.5},
+        {rarity: "legendary", chancePercent: 1}
+    ];
+
+
+    const lastIndex =
+        outcomes.length - 1;
+
+
+    return outcomes.map((outcome, index) => ({
+        rarity: outcome.rarity,
+        weight:
+            outcome.chancePercent *
+            Math.pow(
+                luckRating,
+                (index / lastIndex) * 2
+            )
+    }));
+
+}
+
+
+function rollTrollRarity(
+    random = Math.random,
+    luckProfile = null
+){
+
+    const weighted =
+        getLuckWeightedTrollRarities(
+            luckProfile
+        );
+
+
+    if(weighted){
+
+        const totalWeight =
+            weighted.reduce(
+                (sum, outcome) =>
+                    sum + outcome.weight,
+                0
+            );
+
+
+        let roll =
+            random() * totalWeight;
+
+
+        for(const outcome of weighted){
+
+            roll -= outcome.weight;
+
+
+            if(roll <= 0){
+                return outcome.rarity;
+            }
+
+        }
+
+
+        return weighted[
+            weighted.length - 1
+        ].rarity;
+
+    }
 
     const roll = random();
 
@@ -285,10 +387,14 @@ async function createTrollAttempt({
     targetID,
     actorLevel,
     targetLevel,
+    luckProfile = null,
     random = Math.random
 }){
 
-    const rarity = rollTrollRarity(random);
+    const rarity = rollTrollRarity(
+        random,
+        luckProfile
+    );
     const now = Date.now();
 
 
@@ -962,6 +1068,8 @@ module.exports = {
     LUCK_TRANSFER_DURATION,
     randomInteger,
     pickRandom,
+    getTrollLuckOrder,
+    getLuckWeightedTrollRarities,
     rollTrollRarity,
     createEffectDefinition,
     hasActiveEffect,
