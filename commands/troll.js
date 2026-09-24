@@ -1,10 +1,11 @@
 const database = require("../database");
 const xp = require("../utils/xp");
+const luck = require("../utils/luck");
 const leveling = require("../systems/leveling");
 const trolls = require("../systems/trolls");
 const {
     ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType,
-    EmbedBuilder, MessageFlags, SlashCommandBuilder
+    MessageFlags, SlashCommandBuilder
 } = require("discord.js");
 
 const COOLDOWN = 5 * 60 * 1000;
@@ -52,28 +53,133 @@ function formatSecretEffect(effect){
     }[effect?.effectType] || "A secret bad effect was applied.";
 }
 
-function resultPayload(message, targetID, result){
+function resultPayload(
+    message,
+    targetID,
+    result,
+    usedLuckExtra = ""
+){
     const emoji = message.guild.emojis?.cache?.find?.(
         entry => entry.name === "meme_face"
     )?.toString() || "🎭";
     const backfired = result.rarity === "failed";
-    const embed = new EmbedBuilder()
-        .setColor(backfired ? 0xED4245 : 0x9B59B6)
-        .setTitle(`${emoji} Troll ${backfired ? "Backfired" : "Activated"}`)
-        .setDescription(backfired
-            ? `Target: <@${targetID}>\n\n💥 ${result.publicDescription || "The troll backfired."}`
-            : `Target: <@${targetID}>\nRarity: **${result.rarity.toUpperCase()}**\n\n**Secret effect**\n${formatSecretEffect(result.effect)}`)
-        .setFooter({text: backfired
-            ? "A failed troll affects you instead."
-            : "The target learns the effect when it triggers."});
-    return {embeds: [embed], allowedMentions: {parse: []}};
+
+
+    const luckLine =
+        String(usedLuckExtra || "")
+            .replace(/^\s+/, "");
+
+
+    const content = backfired
+        ? [
+            `${emoji} **Your troll on <@${targetID}> backfired!**`,
+            `**Rarity:** FAILED`,
+            `**Result:** ${result.publicDescription || "The troll affected you instead."}`,
+            luckLine
+        ]
+        : [
+            `${emoji} **Your secret troll result for <@${targetID}>:**`,
+            `**Rarity:** ${result.rarity.toUpperCase()}`,
+            `**Effect:** ${formatSecretEffect(result.effect)}`,
+            "*Only you can see this. The target learns the effect when it triggers.*",
+            luckLine
+        ];
+
+
+    return {
+        content:
+            content
+                .filter(Boolean)
+                .join("\n"),
+        allowedMentions: {
+            parse: []
+        }
+    };
 }
 
-async function applyTroll(message, targetID, respond){
-    const reply = text => respond({
-        content: text, allowedMentions: {parse: [], repliedUser: false}
+function replyPayload(text){
+    return {
+        content: text,
+        allowedMentions: {
+            parse: [],
+            repliedUser: false
+        }
+    };
+}
+
+
+function getMemeEmoji(guild){
+    return guild.emojis?.cache?.find?.(
+        entry => entry.name === "meme_face"
+    )?.toString() || "🎭";
+}
+
+
+async function getActorLuck(
+    message,
+    actorID,
+    actorLevel
+){
+    const cachedMember =
+        message.guild.members.cache?.get(
+            actorID
+        );
+
+
+    const actorMember =
+        cachedMember ||
+        message.member ||
+        await message.guild.members
+            .fetch(actorID)
+            .catch(() => null);
+
+
+    if(!actorMember){
+        return {
+            activeLuck: null,
+            commandLuck: null,
+            usedLuckExtra: ""
+        };
+    }
+
+
+    const activeLuck =
+        await luck.getActiveLuckBoost(
+            actorMember
+        );
+
+
+    const commandLuck =
+        actorLevel >= 100
+            ? luck.getLevel100PlusCommandLuckProfile(
+                activeLuck
+            )
+            : activeLuck;
+
+
+    return {
+        activeLuck,
+        commandLuck,
+        usedLuckExtra:
+            luck.buildUsedCommandLuckExtra(
+                activeLuck
+            )
+    };
+}
+
+
+async function applyTroll(message, targetID){
+    const reply = text => ({
+        success: false,
+        payload: replyPayload(text)
     });
-    if(!message.guild || message.author.bot) return null;
+
+
+    if(!message.guild || message.author.bot){
+        return reply("This command can only be used inside the server.");
+    }
+
+
     const guildID = message.guild.id;
     const actorID = message.author.id;
 
@@ -98,10 +204,27 @@ async function applyTroll(message, targetID, respond){
         database.getUser(guildID, actorID),
         database.getUser(guildID, targetID)
     ]);
+
+
+    const actorLevel =
+        xp.getLevel(
+            Number(actorUser?.xp) || 0
+        );
+
+
+    const actorLuck =
+        await getActorLuck(
+            message,
+            actorID,
+            actorLevel
+        );
+
+
     const result = await trolls.createTrollAttempt({
         guildID, actorID, targetID,
-        actorLevel: xp.getLevel(Number(actorUser?.xp) || 0),
-        targetLevel: xp.getLevel(Number(targetUser?.xp) || 0)
+        actorLevel,
+        targetLevel: xp.getLevel(Number(targetUser?.xp) || 0),
+        luckProfile: actorLuck.commandLuck
     });
     if(!result?.success && result?.status === "target-active") return reply(
         "That user already has a troll effect active."
@@ -117,24 +240,119 @@ async function applyTroll(message, targetID, respond){
             message.client, guildID, userID
         ).catch(error => console.error("!troll level sync failed:", error));
     }
-    return respond(resultPayload(message, targetID, result));
+
+
+    return {
+        success: true,
+        payload: resultPayload(
+            message,
+            targetID,
+            result,
+            actorLuck.usedLuckExtra
+        ),
+        result
+    };
 }
 
-async function runPrivately(message, targetID, respond){
+
+async function runPrivately(message, targetID){
     try{
-        return await applyTroll(message, targetID, respond);
+        return await applyTroll(message, targetID);
     }
     catch(error){
         console.error("Troll command failed:", error);
-        return respond({
-            content: "❌ The troll failed. Check the bot log for details.",
-            allowedMentions: {parse: []}
-        }).catch(replyError => {
-            console.error("Could not show troll error:", replyError);
-            return null;
-        });
+        return {
+            success: false,
+            payload: replyPayload(
+                "❌ The troll failed. Check the bot log for details."
+            )
+        };
     }
 }
+
+
+function buildRevealButton(){
+    return new ButtonBuilder()
+        .setCustomId("troll_private_confirm")
+        .setLabel("View My Secret Troll")
+        .setEmoji("🎭")
+        .setStyle(ButtonStyle.Secondary);
+}
+
+
+function buildPublicTrollPayload(
+    message,
+    targetID,
+    showRevealButton = true
+){
+    const payload = {
+        content:
+            `${getMemeEmoji(message.guild)} <@${targetID}> got trolled by ` +
+            `<@${message.author.id}>! **The troll remains secret...**`,
+        allowedMentions: {
+            parse: [],
+            repliedUser: false
+        }
+    };
+
+
+    if(showRevealButton){
+        payload.components = [
+            new ActionRowBuilder()
+                .addComponents(
+                    buildRevealButton()
+                )
+        ];
+    }
+
+
+    return payload;
+}
+
+
+function attachPrivateResultCollector(
+    panel,
+    authorID,
+    privateResult
+){
+    const collector =
+        panel.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            time: 15 * 60 * 1000
+        });
+
+
+    collector.on("collect", async interaction => {
+        if(interaction.user.id !== authorID){
+            await interaction.reply({
+                content:
+                    "Only the person who used `!troll` can view this secret result.",
+                flags: MessageFlags.Ephemeral
+            }).catch(() => {});
+            return;
+        }
+
+
+        await interaction.reply({
+            ...privateResult,
+            flags: MessageFlags.Ephemeral
+        });
+
+
+        collector.stop("used");
+    });
+
+
+    collector.once(
+        "end",
+        () => panel.edit({components: []})
+            .catch(() => {})
+    );
+
+
+    return collector;
+}
+
 
 async function execute(message){
     if(!message.guild || message.author.bot) return null;
@@ -143,48 +361,39 @@ async function execute(message){
 
     // Apply the troll when the command is typed. The button is only for
     // revealing the result privately; the command stays visible to the target.
-    const privateResult = await runPrivately(message, targetID,
-        async payload => payload);
-    if(!privateResult?.embeds?.length){
-        return message.reply(privateResult || {
-            content: "❌ The troll could not be applied.",
-            allowedMentions: {parse: []}
-        });
+    const attempt =
+        await runPrivately(
+            message,
+            targetID
+        );
+
+
+    if(!attempt?.success){
+        return message.reply(
+            attempt?.payload ||
+            replyPayload(
+                "❌ The troll could not be applied."
+            )
+        );
     }
 
-    const emoji = message.guild.emojis?.cache?.find?.(
-        entry => entry.name === "meme_face"
-    )?.toString() || "🎭";
 
-    const button = new ButtonBuilder()
-        .setCustomId("troll_private_confirm")
-        .setLabel("View Secret Result")
-        .setEmoji("🎭")
-        .setStyle(ButtonStyle.Secondary);
-    const panel = await message.reply({
-        embeds: [new EmbedBuilder()
-            .setColor(0x9B59B6)
-            .setTitle(`${emoji} Troll Cast`)
-            .setDescription(`<@${message.author.id}> used **!troll** on <@${targetID}>. The effect stays hidden until it resolves.`)],
-        components: [new ActionRowBuilder().addComponents(button)],
-        allowedMentions: {parse: [], repliedUser: false}
-    });
-    const collector = panel.createMessageComponentCollector({
-        componentType: ComponentType.Button,
-        time: 2 * 60 * 1000
-    });
-    collector.on("collect", async interaction => {
-        if(interaction.user.id !== message.author.id){
-            await interaction.reply({
-                content: "This button belongs to someone else.",
-                flags: MessageFlags.Ephemeral
-            }).catch(() => {});
-            return;
-        }
-        await interaction.reply({...privateResult, flags: MessageFlags.Ephemeral});
-        collector.stop("used");
-    });
-    collector.once("end", () => panel.edit({components: []}).catch(() => {}));
+    const panel =
+        await message.reply(
+            buildPublicTrollPayload(
+                message,
+                targetID
+            )
+        );
+
+
+    attachPrivateResultCollector(
+        panel,
+        message.author.id,
+        attempt.payload
+    );
+
+
     return panel;
 }
 
@@ -201,6 +410,7 @@ async function executeInteraction(interaction){
     const user = interaction.options.getUser("user", true);
     const message = {
         guild: interaction.guild,
+        member: interaction.member,
         author: interaction.user,
         client: interaction.client,
         mentions: {
@@ -209,8 +419,44 @@ async function executeInteraction(interaction){
         },
         content: `!troll <@${user.id}>`
     };
-    return runPrivately(message, user.id,
-        payload => interaction.editReply(payload));
+
+
+    const attempt =
+        await runPrivately(
+            message,
+            user.id
+        );
+
+
+    if(!attempt?.success){
+        return interaction.editReply(
+            attempt?.payload ||
+            replyPayload(
+                "❌ The troll could not be applied."
+            )
+        );
+    }
+
+
+    if(interaction.channel?.isTextBased()){
+        await interaction.channel.send(
+            buildPublicTrollPayload(
+                message,
+                user.id,
+                false
+            )
+        ).catch(error => {
+            console.error(
+                "Could not post the public /troll message:",
+                error
+            );
+        });
+    }
+
+
+    return interaction.editReply(
+        attempt.payload
+    );
 }
 
 module.exports = {
