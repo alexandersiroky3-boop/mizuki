@@ -45,6 +45,13 @@ const PERIODS = {
         buttonLabel: "Weekly",
         buttonEmoji: "📅",
         footer: "XP earned in the current weekly cycle"
+    },
+
+    info: {
+        title: "ℹ️ Rank Rewards & Info",
+        buttonLabel: "Info",
+        buttonEmoji: "ℹ️",
+        footer: "Current weekly and monthly prize pools"
     }
 
 };
@@ -111,28 +118,23 @@ function formatRewardList(rewards){
 }
 
 
-function buildRankCommandsField(){
-
-    return {
-        name: "⌨️ Rank Commands",
-        value: [
-            "`!rank` — open the interactive leaderboard",
-            "`!leaderboard` — alias for `!rank`",
-            "`!resetweeklyrank` — owner only; start a fresh weekly contest without paying the old winners",
-            "`!resetmonthlyrank normal` — owner only; start a normal-reward month without paying the old winners",
-            "`!resetmonthlyrank money` — owner only; start a cash-prize month without paying the old winners"
-        ].join("\n"),
-        inline: false
-    };
-
-}
-
-
-function buildCycleFields(cycle){
+function buildCycleFields(
+    cycle,
+    options = {}
+){
 
     if(!cycle){
         return [];
     }
+
+
+    const includeRewards =
+        options.includeRewards !== false;
+
+
+    const cycleLabel =
+        String(options.cycleLabel || "")
+            .trim();
 
 
     const resetTimestamp =
@@ -157,26 +159,41 @@ function buildCycleFields(cycle){
     }
 
 
+    const fields = [
+        {
+            name: cycleLabel
+                ? `${cycle.period === "weekly" ? "📅" : "🗓️"} ${cycleLabel} Cycle`
+                : "⏳ Current Cycle",
+            value: resetValue.join("\n"),
+            inline: false
+        }
+    ];
+
+
+    if(!includeRewards){
+        return fields;
+    }
+
+
     const medals = ["🥇", "🥈", "🥉"];
 
 
-    return [
-        {
-            name: "⏳ Current Cycle",
-            value: resetValue.join("\n"),
-            inline: false
-        },
+    fields.push(
         ...medals.map((medal, index) => ({
-            name: `${medal} ${index + 1}${index === 0 ? "st" : index === 1 ? "nd" : "rd"} Place Rewards`,
+            name:
+                `${medal} ${cycleLabel ? `${cycleLabel} ` : ""}` +
+                `${index + 1}${index === 0 ? "st" : index === 1 ? "nd" : "rd"} Place Rewards`,
             value: formatRewardList(
                 cycle.rewards?.[
                     String(index + 1)
                 ]
             ),
             inline: false
-        })),
-        buildRankCommandsField()
-    ];
+        }))
+    );
+
+
+    return fields;
 
 }
 
@@ -425,10 +442,70 @@ function buildDescription(
 }
 
 
+async function buildInfoEmbed(message){
+
+    const [weeklyCycle, monthlyCycle] =
+        await Promise.all([
+            database.getLeaderboardCycle(
+                message.guild.id,
+                "weekly"
+            ),
+            database.getLeaderboardCycle(
+                message.guild.id,
+                "monthly"
+            )
+        ]);
+
+
+    return new EmbedBuilder()
+        .setColor("#F1C40F")
+        .setTitle(
+            PERIODS.info.title
+        )
+        .setDescription(
+            "These are the exact prizes currently available for the " +
+            "**Weekly** and **Monthly** leaderboards. The top three players " +
+            "receive their listed rewards when each timer ends."
+        )
+        .setThumbnail(
+            message.guild.iconURL({
+                size: 1024
+            })
+        )
+        .addFields(
+            ...buildCycleFields(
+                weeklyCycle,
+                {
+                    cycleLabel: "Weekly"
+                }
+            ),
+            ...buildCycleFields(
+                monthlyCycle,
+                {
+                    cycleLabel: "Monthly"
+                }
+            )
+        )
+        .setFooter({
+            text:
+                "Prize pools refresh when a new leaderboard cycle begins"
+        })
+        .setTimestamp();
+
+}
+
+
 async function buildEmbed(
     message,
     period
 ){
+
+
+    if(period === "info"){
+        return buildInfoEmbed(
+            message
+        );
+    }
 
 
     const [leaderboard, cycle] =
@@ -489,7 +566,12 @@ async function buildEmbed(
 
 
     const cycleFields =
-        buildCycleFields(cycle);
+        buildCycleFields(
+            cycle,
+            {
+                includeRewards: false
+            }
+        );
 
 
     if(cycleFields.length > 0){
@@ -505,11 +587,10 @@ async function buildEmbed(
             {
                 name: "🎁 Weekly & Monthly Prizes",
                 value:
-                    "Use the **Weekly** or **Monthly** button below to view " +
-                    "the live standings, exact prize pool, and reset timer.",
+                    "Use the **Info** button below to view both exact prize " +
+                    "pools and their live reset timers.",
                 inline: false
-            },
-            buildRankCommandsField()
+            }
         );
 
     }
