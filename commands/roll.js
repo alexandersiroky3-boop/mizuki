@@ -316,53 +316,100 @@ const ROLL_GUARANTEE_MIN_XP =
     500000;
 
 
-// The milestone roll strongly favors 500,000–2,000,000 XP while giving it
-// dramatically better odds of climbing higher than an ordinary roll:
-// 70% main range, 20% 2M–10M, 8% 10M–100M and 2% above 100M.
-const ROLL_GUARANTEE_CHANCE_TABLE = [
-    {
-        chancePercent: 70,
-        type: "positive",
-        min: 500000,
-        max: 2000000
-    },
-    {
-        chancePercent: 20,
-        type: "positive",
-        min: 2000001,
-        max: 10000000
-    },
-    {
-        chancePercent: 5,
-        type: "positive",
-        min: 10000001,
-        max: 30000000
-    },
-    {
-        chancePercent: 2,
-        type: "positive",
-        min: 30000001,
-        max: 50000000
-    },
-    {
-        chancePercent: 1,
-        type: "positive",
-        min: 50000001,
-        max: 100000000
-    },
-    {
-        chancePercent: 1.5,
-        type: "positive",
-        min: 100000001,
-        max: 250000000
-    },
-    {
-        chancePercent: 0.5,
-        type: "positive",
-        min: 250000001,
-        max: 1500000000
-    }
+// The 100-roll milestone has its own capped Luck tables. This prevents
+// permanent Boost and Rolling upgrades from multiplying an already-guaranteed
+// result into an uncontrolled high-range chance. No Luck through MAX still
+// favor 500,000–10,000,000 XP, while the rare three-minute Ω boost is
+// intentionally allowed to be extremely powerful.
+const ROLL_GUARANTEE_XP_RANGES = [
+    { type: "positive", min: 500000, max: 2000000 },
+    { type: "positive", min: 2000001, max: 10000000 },
+    { type: "positive", min: 10000001, max: 30000000 },
+    { type: "positive", min: 30000001, max: 50000000 },
+    { type: "positive", min: 50000001, max: 100000000 },
+    { type: "positive", min: 100000001, max: 250000000 },
+    { type: "positive", min: 250000001, max: 1500000000 }
 ];
+
+
+// Array positions match ROLL_GUARANTEE_XP_RANGES above.
+// 0 = no boost, 1 = Luck I, 2 = Luck II, 3 = Luck III,
+// 4 = Luck MAX, 5 = Luck Ω.
+const ROLL_GUARANTEE_CHANCES_BY_LUCK_ORDER = {
+    0: [75, 23, 1.4, 0.3, 0.15, 0.1, 0.05],
+    1: [70, 26.5, 2.4, 0.5, 0.25, 0.25, 0.1],
+    2: [65, 30, 3.4, 0.8, 0.4, 0.3, 0.1],
+    3: [58, 34.5, 5, 1.2, 0.6, 0.5, 0.2],
+    4: [50, 40, 6, 1.5, 0.8, 1.2, 0.5],
+    5: [10, 20, 25, 18, 12, 10, 5]
+};
+
+
+const ROLL_GUARANTEE_CHANCE_TABLES =
+    Object.fromEntries(
+        Object.entries(
+            ROLL_GUARANTEE_CHANCES_BY_LUCK_ORDER
+        ).map(([luckOrder, chances]) => [
+            luckOrder,
+            ROLL_GUARANTEE_XP_RANGES.map(
+                (range, index) => ({
+                    ...range,
+                    chancePercent:
+                        chances[index]
+                })
+            )
+        ])
+    );
+
+
+for(
+    const [luckOrder, table] of
+    Object.entries(
+        ROLL_GUARANTEE_CHANCE_TABLES
+    )
+){
+    validateRollChanceTable(
+        `100-roll guarantee Luck order ${luckOrder}`,
+        table
+    );
+}
+
+
+// Retained as the no-boost source table for compatibility with any existing
+// tests or utilities that import this constant directly.
+const ROLL_GUARANTEE_CHANCE_TABLE =
+    ROLL_GUARANTEE_CHANCE_TABLES[0];
+
+
+function getRollGuaranteeLuckOrder(
+    rollLuckProfile
+){
+    return Math.max(
+        0,
+        Math.min(
+            5,
+            Math.floor(
+                Number(
+                    rollLuckProfile?.order
+                ) || 0
+            )
+        )
+    );
+}
+
+
+function getRollGuaranteeChanceTable(
+    rollLuckProfile
+){
+    return (
+        ROLL_GUARANTEE_CHANCE_TABLES[
+            getRollGuaranteeLuckOrder(
+                rollLuckProfile
+            )
+        ]
+        || ROLL_GUARANTEE_CHANCE_TABLE
+    );
+}
 
 
 function buildRollGuaranteeFooter(
@@ -2232,15 +2279,30 @@ const rollGuarantee =
 
 if(rollGuarantee.guaranteed){
 
-    rolledXP =
-        Math.max(
-            rolledXP,
-            luck.rollGuaranteedChanceTableWithLuck(
-                ROLL_GUARANTEE_CHANCE_TABLE,
-                rollLuckProfile,
-                upgradeEffects.rollingLevel
-            )
+    const milestoneRolledXP =
+        luck.rollGuaranteedChanceTableWithLuck(
+            getRollGuaranteeChanceTable(
+                rollLuckProfile
+            ),
+
+            // The selected table already contains the exact odds for the
+            // active Luck tier. Neutral inputs keep Boost and Rolling
+            // upgrades from reweighting this milestone a second time.
+            null,
+            0
         );
+
+
+    // The milestone table is the complete 100th-roll result, rather than an
+    // extra draw placed on top of a normal Luck roll. A separately consumed
+    // quest guarantee is still protected so two rewards cannot cancel out.
+    rolledXP =
+        guaranteedRoll
+            ? Math.max(
+                rolledXP,
+                milestoneRolledXP
+            )
+            : milestoneRolledXP;
 
 }
 
@@ -2668,6 +2730,14 @@ module.exports = {
 
     ROLL_SETTINGS,
 
-    ROLL_GUARANTEE_CHANCE_TABLE
+    ROLL_GUARANTEE_CHANCE_TABLE,
+
+    ROLL_GUARANTEE_CHANCE_TABLES,
+
+    ROLL_GUARANTEE_CHANCES_BY_LUCK_ORDER,
+
+    getRollGuaranteeLuckOrder,
+
+    getRollGuaranteeChanceTable
 
 };
