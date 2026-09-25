@@ -26,6 +26,65 @@ const DEFAULT_CRITICAL_CHANCE_CAP = 95;
 const OMEGA_MAX_CRITICAL_CHANCE_CAP = 98;
 const OMEGA_INFINITY_CRITICAL_CHANCE_CAP = 99;
 const MAX_CRITICAL_EXTRA_XP = 250000;
+const LONG_CRITICAL_STREAK_THRESHOLD = 20;
+const LONG_CRITICAL_STREAK_GROWTH_PER_CRITICAL = 0.05;
+
+
+// Guaranteed streak-reward floors for a 20x critical streak. Normal message
+// XP is added afterward, so the final reward is slightly above each floor.
+// Chatting levels 1–5 rise gradually toward the requested 400K/700K targets,
+// levels 6–7 bridge the gap, and fully upgraded Chatting reaches 5M/11M.
+const LONG_CRITICAL_MAX_BASE_XP_BY_CHAT_LEVEL =
+    Object.freeze([
+        100000,
+        160000,
+        220000,
+        280000,
+        340000,
+        400000,
+        1250000,
+        2750000,
+        5000000
+    ]);
+
+
+const LONG_CRITICAL_INFINITY_BASE_XP_BY_CHAT_LEVEL =
+    Object.freeze([
+        300000,
+        380000,
+        460000,
+        540000,
+        620000,
+        700000,
+        2500000,
+        6000000,
+        11000000
+    ]);
+
+
+const LONG_CRITICAL_CAP_XP_BY_CHAT_LEVEL =
+    Object.freeze([
+        1000000,
+        1500000,
+        1500000,
+        1500000,
+        1500000,
+        1500000,
+        5000000,
+        12000000,
+        30000000
+    ]);
+
+
+// XP Boost I/II still benefit from the new system, but MAX and Infinity keep
+// their explicitly configured floors above.
+const LONG_CRITICAL_XP_TIER_SCALE =
+    Object.freeze({
+        none: 0.10,
+        tier1: 0.25,
+        tier2: 0.55,
+        max: 1
+    });
 
 
 function getCriticalExtraXPCap(criticalStreak){
@@ -34,9 +93,151 @@ function getCriticalExtraXPCap(criticalStreak){
 }
 
 
-// Limit the EXTRA XP from a critical after XP Boost, quest and Chatting
-// multipliers. Normal message XP retains those bonuses, while a streak cannot
-// turn one boosted chat message into millions of additional XP.
+function getLongCriticalStreakRewardProfile(
+    xpBoostTier,
+    chattingUpgradeLevel = 0
+){
+    const chatLevel =
+        Math.max(
+            0,
+            Math.min(
+                LONG_CRITICAL_CAP_XP_BY_CHAT_LEVEL.length - 1,
+                Math.floor(
+                    Number(chattingUpgradeLevel) || 0
+                )
+            )
+        );
+
+
+    const normalizedTier =
+        String(xpBoostTier || "none")
+            .trim()
+            .toLowerCase();
+
+
+    const minimumXP =
+        normalizedTier === "infinity"
+            ? LONG_CRITICAL_INFINITY_BASE_XP_BY_CHAT_LEVEL[
+                chatLevel
+            ]
+            : Math.floor(
+                LONG_CRITICAL_MAX_BASE_XP_BY_CHAT_LEVEL[
+                    chatLevel
+                ]
+                *
+                (
+                    LONG_CRITICAL_XP_TIER_SCALE[
+                        normalizedTier
+                    ]
+                    ?? LONG_CRITICAL_XP_TIER_SCALE.none
+                )
+            );
+
+
+    return {
+        chatLevel,
+        xpBoostTier:
+            normalizedTier,
+        minimumXP,
+        maximumXP:
+            LONG_CRITICAL_CAP_XP_BY_CHAT_LEVEL[
+                chatLevel
+            ]
+    };
+}
+
+
+function getLongCriticalStreakXP(
+    reward,
+    chatXPMultiplier,
+    boostedNormalXP = 0
+){
+    const criticalStreak =
+        Math.max(
+            0,
+            Math.floor(
+                Number(reward?.criticalStreak) || 0
+            )
+        );
+
+
+    if(
+        !reward?.critical
+        || criticalStreak < LONG_CRITICAL_STREAK_THRESHOLD
+    ){
+        return null;
+    }
+
+
+    const profile =
+        getLongCriticalStreakRewardProfile(
+            reward.xpBoostTier,
+            reward.chattingUpgradeLevel
+        );
+
+
+    const permanentChatMultiplier =
+        Math.max(
+            1,
+            Number(
+                reward.upgradeChatXPMultiplier
+            ) || 1
+        );
+
+
+    // Quest/merchant chat multipliers may still improve the reward, while the
+    // permanent Chatting multiplier is already represented by the profile.
+    const temporaryChatMultiplier =
+        Math.max(
+            1,
+            (
+                Number(chatXPMultiplier) || 1
+            ) / permanentChatMultiplier
+        );
+
+
+    // Boost upgrades use a deliberately gentle 5% per-level curve instead of
+    // the general 1.2x/1.5x active-boost scale.
+    const boostUpgradeScale =
+        Math.max(
+            1,
+            Number(
+                reward.criticalStreakRewardScale
+            ) || 1
+        );
+
+
+    const streakGrowth =
+        1 +
+        (
+            criticalStreak -
+            LONG_CRITICAL_STREAK_THRESHOLD
+        ) * LONG_CRITICAL_STREAK_GROWTH_PER_CRITICAL;
+
+
+    const streakReward =
+        Math.floor(
+            profile.minimumXP *
+            streakGrowth *
+            boostUpgradeScale *
+            temporaryChatMultiplier
+        );
+
+
+    return Math.min(
+        profile.maximumXP,
+        Math.max(
+            0,
+            Math.floor(
+                Number(boostedNormalXP) || 0
+            )
+        ) + streakReward
+    );
+}
+
+
+// Before a 20x streak, retain the smaller safety cap. At 20x and above, use
+// the dedicated XP Boost/Chatting profile with its own hard maximum.
 function getBalancedChatXP(reward, chatXPMultiplier){
     const multiplier = Math.max(1, Number(chatXPMultiplier) || 1);
     const boostedTotal = Math.floor(Math.max(0, Number(reward.xp) || 0) * multiplier);
@@ -44,6 +245,21 @@ function getBalancedChatXP(reward, chatXPMultiplier){
     const boostedNormal = Math.floor(
         Math.max(0, Number(reward.normalXP) || 0) * multiplier
     );
+
+
+    const longCriticalStreakXP =
+        getLongCriticalStreakXP(
+            reward,
+            multiplier,
+            boostedNormal
+        );
+
+
+    if(longCriticalStreakXP != null){
+        return longCriticalStreakXP;
+    }
+
+
     return Math.min(
         boostedTotal,
         boostedNormal + getCriticalExtraXPCap(reward.criticalStreak)
@@ -817,6 +1033,47 @@ function getXPAmount(
         xpBoostMultiplier,
 
 
+        chattingUpgradeLevel:
+            Math.max(
+                0,
+                Math.floor(
+                    Number(
+                        upgradeEffects.levels?.chatting
+                    ) || 0
+                )
+            ),
+
+
+        boostUpgradeLevel:
+            Math.max(
+                0,
+                Math.floor(
+                    Number(
+                        upgradeEffects.levels?.boosts
+                    ) || 0
+                )
+            ),
+
+
+        upgradeChatXPMultiplier:
+            Math.max(
+                1,
+                Number(
+                    upgradeEffects.chatXPMultiplier
+                ) || 1
+            ),
+
+
+        criticalStreakRewardScale:
+            Math.max(
+                1,
+                Number(
+                    upgradeEffects
+                        .criticalStreakRewardScale
+                ) || 1
+            ),
+
+
         xpBoostCriticalBonus:
             chanceData.xpBoostCriticalBonus,
 
@@ -1029,6 +1286,10 @@ module.exports = {
     getCriticalStreakXPMultiplier,
 
     getCriticalExtraXPCap,
+
+    getLongCriticalStreakRewardProfile,
+
+    getLongCriticalStreakXP,
 
     getBalancedChatXP,
 
