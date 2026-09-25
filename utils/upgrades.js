@@ -51,32 +51,32 @@ const UPGRADE_DEFINITIONS = Object.freeze({
         emoji: "💬",
         summary: "Gain more chat XP, improve criticals, and find XP Boosts more often.",
         upgrades: Object.freeze([
-            upgrade(freezeCost(50000), "Gain +20% chat XP."),
-            upgrade(freezeCost(200000), "Gain another +30% chat XP and improve the base critical chance."),
-            upgrade(freezeCost(1250000), "Improve critical odds again and buff chat XP Boost drops."),
-            upgrade(freezeCost(7500000), "Gain another +50% chat XP."),
+            upgrade(freezeCost(50000), "Gain +20% chat XP and strengthen 20+ critical-streak rewards."),
+            upgrade(freezeCost(200000), "Gain another +30% chat XP, improve the base critical chance, and strengthen 20+ critical-streak rewards."),
+            upgrade(freezeCost(1250000), "Improve critical odds and XP Boost drops, and strengthen 20+ critical-streak rewards again."),
+            upgrade(freezeCost(7500000), "Gain another +50% chat XP and strengthen 20+ critical-streak rewards again."),
             upgrade(
                 freezeCost(50000000, [
                     { boostType: "luck", tier: "max", amount: 3 }
                 ]),
-                "Gain another +75% chat XP and unlock a 2% ten-critical burst."
+                "Gain another +75% chat XP, unlock a 2% ten-critical burst, and set the 20+ XP MAX/Infinity streak floors to 400K/700K with a 1.5M cap."
             ),
             upgrade(
                 freezeCost(500000000, [
                     { boostType: "xp", tier: "infinity", amount: 2 },
                     { boostType: "luck", tier: "max", amount: 5 }
                 ]),
-                "Gain another +100% chat XP, improve critical odds, and add +8% to the ten-critical burst chance."
+                "Gain another +100% chat XP, improve critical odds, add +8% burst chance, and raise the 20+ XP MAX/Infinity streak floors to 1.25M/2.5M with a 5M cap."
             ),
             upgrade(
                 freezeCost(2000000000, [
                     { boostType: "luck", tier: "omega", amount: 1 }
                 ]),
-                "Gain another +200% chat XP, improve critical odds, add +15% burst chance, and buff chat XP Boost drops."
+                "Gain another +200% chat XP, improve critical odds and drops, add +15% burst chance, and raise the 20+ XP MAX/Infinity streak floors to 2.75M/6M with a 12M cap."
             ),
             upgrade(
                 freezeCost(5000000000),
-                "Gain another +500% chat XP and improve critical odds and XP Boost drops."
+                "Gain another +500% chat XP, improve critical odds and drops, and raise the 20+ XP MAX/Infinity streak floors to 5M/11M with a 30M cap."
             )
         ])
     }),
@@ -113,20 +113,23 @@ const UPGRADE_DEFINITIONS = Object.freeze({
         emoji: "🧪",
         summary: "Strengthen active boost multipliers and extend activation time.",
         upgrades: Object.freeze([
-            upgrade(freezeCost(500000), "Multiply every active boost's effect by 1.2x across supported commands."),
+            upgrade(
+                freezeCost(500000),
+                "Multiply every active boost's effect by 1.2x across supported commands and make 20+ critical-streak rewards 5% stronger."
+            ),
             upgrade(
                 freezeCost(12500000, [
                     { boostType: "luck", tier: "max", amount: 1 },
                     { boostType: "xp", tier: "max", amount: 1 },
                     { boostType: "luck", tier: "tier3", amount: 3 }
                 ]),
-                "Extend every newly activated XP and Luck Boost by 50%."
+                "Extend every newly activated XP and Luck Boost by 50% and raise the 20+ critical-streak reward bonus to 10%."
             ),
             upgrade(
                 freezeCost(0, [
                     { boostType: "luck", tier: "omega", amount: 1 }
                 ]),
-                "Raise active boost strength to 1.5x and double every newly activated boost's timer."
+                "Raise active boost strength to 1.5x, double every newly activated boost's timer, and raise the 20+ critical-streak reward bonus to 15%."
             )
         ])
     }),
@@ -257,6 +260,7 @@ function getUpgradeEffects(levels = {}){
     const criticalChanceByLevel = [0, 0, 1, 2.5, 2.5, 2.5, 5, 8, 12];
     const chatDropByLevel = [1, 1, 1, 1.25, 1.25, 1.25, 1.25, 1.6, 2];
     const burstChanceByLevel = [0, 0, 0, 0, 0, 2, 10, 25, 25];
+    const criticalStreakRewardScaleByBoostLevel = [1, 1.05, 1.10, 1.15];
 
     return Object.freeze({
         levels: Object.freeze(safe),
@@ -272,6 +276,8 @@ function getUpgradeEffects(levels = {}){
 
         boostMultiplierScale: boost >= 3 ? 1.5 : (boost >= 1 ? 1.2 : 1),
         boostDurationScale: boost >= 3 ? 2 : (boost >= 2 ? 1.5 : 1),
+        criticalStreakRewardScale:
+            criticalStreakRewardScaleByBoostLevel[boost],
 
         questLevel: quest,
         questResetUnlocked: quest >= 2,
