@@ -7292,25 +7292,31 @@ async function performMythicHugReward(
 
 async function performEZWin(
     guildID,
-    winnerUserID,
+    commandUserID,
     winnerReward,
     level100PlusLoss,
     level1To99Loss,
     level100XPThreshold,
-    trollBonusUserID = null
+    reflectedWinnerUserID = null
 ){
 
     const normalizedGuildID =
         String(guildID);
 
-    const normalizedWinnerUserID =
-        String(winnerUserID);
+    const normalizedCommandUserID =
+        String(commandUserID);
 
-    const normalizedTrollBonusUserID =
-        trollBonusUserID == null
-        || String(trollBonusUserID) === normalizedWinnerUserID
+    const normalizedReflectedWinnerUserID =
+        reflectedWinnerUserID == null
+        || String(reflectedWinnerUserID) === normalizedCommandUserID
             ? null
-            : String(trollBonusUserID);
+            : String(reflectedWinnerUserID);
+
+    // A reflected !ezwin changes who the winner is. The command user must not
+    // receive a duplicate reward; they become one of the server-wide victims.
+    const normalizedWinnerUserID =
+        normalizedReflectedWinnerUserID
+        || normalizedCommandUserID;
 
     const safeWinnerReward =
         Math.max(
@@ -7371,11 +7377,11 @@ async function performEZWin(
 
         `, [
             normalizedGuildID,
-            normalizedWinnerUserID
+            normalizedCommandUserID
         ]);
 
 
-        if(normalizedTrollBonusUserID){
+        if(normalizedReflectedWinnerUserID){
 
             await client.query(`
 
@@ -7390,14 +7396,16 @@ async function performEZWin(
 
             `, [
                 normalizedGuildID,
-                normalizedTrollBonusUserID
+                normalizedReflectedWinnerUserID
             ]);
 
         }
 
 
-        // Classify every victim using their balance before this UPDATE. The
-        // winner is excluded, and GREATEST prevents negative XP balances.
+        // Classify every victim using their balance before this UPDATE. Only
+        // the real winner is excluded. When a troll reflects !ezwin, this
+        // intentionally includes the command user and excludes the troller.
+        // GREATEST prevents negative XP balances.
         const drainedUsers =
             await client.query(`
 
@@ -7414,7 +7422,6 @@ async function performEZWin(
 
                 WHERE guildID=$1
                 AND userID<>$2
-                AND ($6::TEXT IS NULL OR userID<>$6)
                 AND xp > 0
 
                 RETURNING userID AS "userID"
@@ -7424,8 +7431,7 @@ async function performEZWin(
                 normalizedWinnerUserID,
                 safeLevel100PlusLoss,
                 safeLevel1To99Loss,
-                safeLevel100XPThreshold,
-                normalizedTrollBonusUserID
+                safeLevel100XPThreshold
             ]);
 
 
@@ -7464,45 +7470,6 @@ async function performEZWin(
         ]);
 
 
-        if(normalizedTrollBonusUserID){
-
-            await client.query(`
-
-                UPDATE users
-
-                SET xp = xp + $3
-
-                WHERE guildID=$1
-                AND userID=$2
-
-            `, [
-                normalizedGuildID,
-                normalizedTrollBonusUserID,
-                safeWinnerReward
-            ]);
-
-
-            await client.query(`
-
-                INSERT INTO leaderboard_xp_activity(
-                    guildID,
-                    userID,
-                    amount,
-                    timestamp
-                )
-
-                VALUES($1,$2,$3,$4)
-
-            `, [
-                normalizedGuildID,
-                normalizedTrollBonusUserID,
-                safeWinnerReward,
-                timestamp
-            ]);
-
-        }
-
-
         await client.query("COMMIT");
 
 
@@ -7511,10 +7478,10 @@ async function performEZWin(
         );
 
 
-        if(normalizedTrollBonusUserID){
+        if(normalizedCommandUserID !== normalizedWinnerUserID){
 
             userCache.delete(
-                `${normalizedGuildID}:${normalizedTrollBonusUserID}`
+                `${normalizedGuildID}:${normalizedCommandUserID}`
             );
 
         }
@@ -7539,8 +7506,20 @@ async function performEZWin(
             level1To99Loss:
                 safeLevel1To99Loss,
 
+            winnerUserID:
+                normalizedWinnerUserID,
+
+            commandUserID:
+                normalizedCommandUserID,
+
+            reflected:
+                Boolean(normalizedReflectedWinnerUserID),
+
+            // Keep this legacy field so older ezwin.js versions still sync
+            // the reflected winner's level correctly after this database
+            // file is deployed first.
             trollBonusUserID:
-                normalizedTrollBonusUserID,
+                normalizedReflectedWinnerUserID,
 
             affectedCount:
                 drainedUsers.rowCount
