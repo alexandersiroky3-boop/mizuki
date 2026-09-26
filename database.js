@@ -9120,6 +9120,49 @@ async function getActiveTrollEffect(
 }
 
 
+async function clearTrollEffectsForTarget(
+    guildID,
+    targetUserID
+){
+
+    const result = await db.query(`
+
+        DELETE FROM troll_effects
+
+        WHERE guildID=$1
+        AND targetUserID=$2
+
+        RETURNING status
+
+    `, [
+        String(guildID),
+        String(targetUserID)
+    ]);
+
+
+    const rows = result.rows || [];
+
+
+    return {
+        total:
+            result.rowCount
+            ??
+            rows.length,
+
+        active:
+            rows.filter(row =>
+                String(row.status) === "active"
+            ).length,
+
+        completed:
+            rows.filter(row =>
+                String(row.status) === "completed"
+            ).length
+    };
+
+}
+
+
 async function createTrollEffect({
     guildID,
     sourceUserID,
@@ -17921,6 +17964,8 @@ module.exports = {
     cleanupExpiredTrollEffects,
 
     getActiveTrollEffect,
+
+    clearTrollEffectsForTarget,
 
     createTrollEffect,
 
