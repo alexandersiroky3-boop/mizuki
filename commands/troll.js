@@ -10,6 +10,9 @@ const {
 
 const COOLDOWN = 5 * 60 * 1000;
 
+const OWNER_ID =
+    "1239975819112353969";
+
 function formatCooldown(ms){
     const seconds = Math.ceil(Math.max(0, ms) / 1000);
     return seconds < 60 ? `${seconds}s` :
@@ -105,6 +108,88 @@ function replyPayload(text){
             repliedUser: false
         }
     };
+}
+
+
+function getClearTrollTargetID(message){
+
+    const content =
+        String(message.content || "")
+            .trim();
+
+    const match = content.match(
+        /^!cleartroll(?:\s+(?:<@!?)?(\d{16,22})>?)?\s*$/i
+    );
+
+
+    if(!match){
+        return null;
+    }
+
+
+    return match[1]
+        || String(message.author.id);
+
+}
+
+
+async function clearTrollEffect(message){
+
+    if(!message.guild || message.author?.bot){
+        return null;
+    }
+
+
+    if(String(message.author.id) !== OWNER_ID){
+        return message.reply(
+            replyPayload(
+                "❌ Only the bot owner can use **!cleartroll**."
+            )
+        );
+    }
+
+
+    const targetID =
+        getClearTrollTargetID(message);
+
+
+    if(!targetID){
+        return message.reply(
+            replyPayload(
+                "Usage: **!cleartroll** or **!cleartroll @user**."
+            )
+        );
+    }
+
+
+    const cleared =
+        await database.clearTrollEffectsForTarget(
+            message.guild.id,
+            targetID
+        );
+
+
+    if(cleared.total === 0){
+        return message.reply(
+            replyPayload(
+                `✅ <@${targetID}> has no stored troll effects.`
+            )
+        );
+    }
+
+
+    const effectWord =
+        cleared.total === 1
+            ? "effect"
+            : "effects";
+
+
+    return message.reply(
+        replyPayload(
+            `✅ Cleared **${cleared.total} troll ${effectWord}** from <@${targetID}>. They can now be trolled again.`
+        )
+    );
+
 }
 
 
@@ -460,7 +545,8 @@ async function executeInteraction(interaction){
 }
 
 module.exports = {
-    execute, executeInteraction, slashCommand,
+    execute, executeInteraction, clearTrollEffect, slashCommand,
     COOLDOWN, formatCooldown, getTargetID, resolveTarget,
-    formatSecretEffect, resultPayload
+    formatSecretEffect, resultPayload,
+    OWNER_ID, getClearTrollTargetID
 };
