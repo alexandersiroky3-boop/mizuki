@@ -179,7 +179,20 @@ async function runMessageHooksSafely(
     let changedUserIDs = [];
 
 
+    const isTrollRecoveryCommand =
+        String(message.author?.id) ===
+            String(trollCommand.OWNER_ID)
+        &&
+        /^!cleartroll(?:\s|$)/i.test(
+            normalizedMessageContent
+        );
+
+
+    // The owner's recovery command must run before a stuck effect can trigger
+    // from the recovery message itself.
     if(
+        !isTrollRecoveryCommand
+        &&
         typeof trolls
             ?.handleMessageStart ===
             "function"
@@ -213,7 +226,7 @@ async function runMessageHooksSafely(
         }
 
     }
-    else{
+    else if(!isTrollRecoveryCommand){
 
         warnAboutMissingMessageHook(
             "systems/trolls.handleMessageStart"
@@ -417,6 +430,7 @@ async function dispatchPrefixCommand(
         ["!ban", /^!ban(?:\s|$)/i, banCommand],
         ["!trade", /^!trade(?:\s|$)/i, tradeCommand],
         ["!setlevel", /^!setlevel(?:\s|$)/i, setLevelCommand],
+        ["!cleartroll", /^!cleartroll(?:\s|$)/i, trollCommand, "clearTrollEffect"],
         ["!troll", /^!troll(?:\s|$)/i, trollCommand],
         ["!kiss", /^!kiss(?:\s|$)/i, kissCommand],
         ["!warn", /^!warn(?:\s|$)/i, warnCommand],
