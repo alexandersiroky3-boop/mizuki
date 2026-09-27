@@ -6766,6 +6766,8 @@ async function performMythicKissReward(
 
         // Pay the two command participants and write their leaderboard
         // activity from the same UPDATE result.
+        // Explicit INTEGER casts prevent PostgreSQL from resolving the
+        // parameter-only CASE result as TEXT (`integer + text`).
         await client.query(`
 
             WITH updated_users AS (
@@ -6774,8 +6776,9 @@ async function performMythicKissReward(
 
                 SET xp = xp +
                     CASE
-                        WHEN userID=$2 THEN $4
-                        ELSE $5
+                        WHEN userID=$2
+                            THEN $4::INTEGER
+                        ELSE $5::INTEGER
                     END
 
                 WHERE guildID=$1
@@ -6785,8 +6788,9 @@ async function performMythicKissReward(
                     guildID,
                     userID,
                     CASE
-                        WHEN userID=$2 THEN $4
-                        ELSE $5
+                        WHEN userID=$2
+                            THEN $4::INTEGER
+                        ELSE $5::INTEGER
                     END AS awarded
 
             )
@@ -7052,6 +7056,8 @@ async function performLegendaryHugReward(
         // Build the complete reward plan from each user's balance before any
         // XP is added. This keeps the Level 100 boundary deterministic and
         // pays both command participants the server-wide share as requested.
+        // The casts keep both CASE expressions numeric before PostgreSQL
+        // resolves their addition.
         const rewardedUsers =
             await client.query(`
 
@@ -7062,14 +7068,17 @@ async function performLegendaryHugReward(
                         userID,
                         (
                             CASE
-                                WHEN xp >= $8 THEN $6
-                                ELSE $7
+                                WHEN xp >= $8::INTEGER
+                                    THEN $6::INTEGER
+                                ELSE $7::INTEGER
                             END
                             +
                             CASE
-                                WHEN userID=$2 THEN $4
-                                WHEN userID=$3 THEN $5
-                                ELSE 0
+                                WHEN userID=$2
+                                    THEN $4::INTEGER
+                                WHEN userID=$3
+                                    THEN $5::INTEGER
+                                ELSE 0::INTEGER
                             END
                         )::BIGINT AS awarded
 
@@ -7292,6 +7301,8 @@ async function performMythicHugReward(
         ]);
 
 
+        // Without explicit casts, PostgreSQL treats this parameter-only CASE
+        // as TEXT and cannot add the separate bonus parameter to it.
         const rewardedUsers =
             await client.query(`
 
@@ -7301,10 +7312,11 @@ async function performMythicHugReward(
 
                     SET xp = xp +
                         CASE
-                            WHEN userID=$2 THEN $4
-                            ELSE $5
+                            WHEN userID=$2
+                                THEN $4::INTEGER
+                            ELSE $5::INTEGER
                         END
-                        + $6
+                        + $6::INTEGER
 
                     WHERE guildID=$1
                     AND userID IN ($2,$3)
@@ -7313,10 +7325,11 @@ async function performMythicHugReward(
                         guildID,
                         userID,
                         CASE
-                            WHEN userID=$2 THEN $4
-                            ELSE $5
+                            WHEN userID=$2
+                                THEN $4::INTEGER
+                            ELSE $5::INTEGER
                         END
-                        + $6 AS awarded
+                        + $6::INTEGER AS awarded
 
                 ),
 
