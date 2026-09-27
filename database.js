@@ -6555,18 +6555,24 @@ async function performMythicSteal(
         // victim is classified by their XP before the UPDATE so protected
         // Level 1-99 and Level 100-199 users cannot be dropped by the full
         // server-wide Mythic amount.
+        //
+        // Explicit INTEGER casts are required because PostgreSQL otherwise
+        // resolves CASE branches made only from parameters as TEXT, producing
+        // an invalid `integer - text` expression.
         const drainedUsers =
             await client.query(`
 
                 UPDATE users
 
                 SET xp = GREATEST(
-                    0,
+                    0::INTEGER,
                     xp -
                         CASE
-                            WHEN xp < $4 THEN $5
-                            WHEN xp < $6 THEN $7
-                            ELSE $3
+                            WHEN xp < $4::INTEGER
+                                THEN $5::INTEGER
+                            WHEN xp < $6::INTEGER
+                                THEN $7::INTEGER
+                            ELSE $3::INTEGER
                         END
                 )
 
@@ -7524,17 +7530,20 @@ async function performEZWin(
         // the real winner is excluded. When a troll reflects !ezwin, this
         // intentionally includes the command user and excludes the troller.
         // GREATEST prevents negative XP balances.
+        // Explicit casts keep the parameter-only CASE expression numeric;
+        // without them PostgreSQL can resolve it as TEXT (`integer - text`).
         const drainedUsers =
             await client.query(`
 
                 UPDATE users
 
                 SET xp = GREATEST(
-                    0,
+                    0::INTEGER,
                     xp -
                         CASE
-                            WHEN xp >= $5 THEN $3
-                            ELSE $4
+                            WHEN xp >= $5::INTEGER
+                                THEN $3::INTEGER
+                            ELSE $4::INTEGER
                         END
                 )
 
