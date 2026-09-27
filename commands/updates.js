@@ -420,6 +420,30 @@ Each rarity on the commands has its own "dialogues", they are in a random sequen
 *Made esthetically criticals look better.*
 *Removed the permanent buffs from the merchant (like permanent 2x chat xp or permanent 3 rolls per 1 roll).
 *You now can obtain permanent 2x chat XP and permanent 3 rolls in the !upgrades*`
+    },
+        {
+        version: "2.1",
+        description: `# Update 2.1
+
+## [──Update 2.1──]
+
+### • [!rank/!leaderboard]
+
+Added to the monthly/weekly leaderboard rewards for the top 3.
+
+These "giveaways" will happen everytime the monthly/weekly resets.
+
+Every prize are described in detail in #🎁┃giveaways
+
+*There even can be money prizes*
+
+*command: !rank/!leaderboard*
+
+### • [QOL / Patches]
+*Fixed a bug where criticals would mention users that they got the first critical.*
+*Added a new "jackpot" rarity into !roll.*
+*Reworked !troll.*
+*Luck boosts now affect !troll.*
     }
 ]);
 
