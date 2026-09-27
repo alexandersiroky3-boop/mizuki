@@ -6390,7 +6390,8 @@ async function getAllUsers(guildID){
 async function performMythicSteal(
     guildID,
     thiefUserID,
-    amount
+    amount,
+    protection = null
 ){
 
     const normalizedGuildID =
@@ -6404,6 +6405,63 @@ async function performMythicSteal(
             0,
             Math.floor(
                 Number(amount) || 0
+            )
+        );
+
+    const protectionConfig =
+        protection
+        &&
+        typeof protection === "object"
+            ? protection
+            : null;
+
+    const safeLevel1To99Amount =
+        protectionConfig
+            ? Math.min(
+                safeAmount,
+                Math.max(
+                    0,
+                    Math.floor(
+                        Number(
+                            protectionConfig.level1To99Amount
+                        ) || 0
+                    )
+                )
+            )
+            : safeAmount;
+
+    const safeLevel100To199Amount =
+        protectionConfig
+            ? Math.min(
+                safeAmount,
+                Math.max(
+                    0,
+                    Math.floor(
+                        Number(
+                            protectionConfig.level100To199Amount
+                        ) || 0
+                    )
+                )
+            )
+            : safeAmount;
+
+    const safeLevel100XPThreshold =
+        Math.max(
+            1,
+            Math.floor(
+                Number(
+                    protectionConfig?.level100XPThreshold
+                ) || 2450250
+            )
+        );
+
+    const safeLevel200XPThreshold =
+        Math.max(
+            safeLevel100XPThreshold + 1,
+            Math.floor(
+                Number(
+                    protectionConfig?.level200XPThreshold
+                ) || Number.MAX_SAFE_INTEGER
             )
         );
 
@@ -6445,7 +6503,10 @@ async function performMythicSteal(
 
 
         // One atomic UPDATE prevents chat XP earned during the Mythic steal
-        // from being overwritten by an old per-user balance snapshot.
+        // from being overwritten by an old per-user balance snapshot. Each
+        // victim is classified by their XP before the UPDATE so protected
+        // Level 1-99 and Level 100-199 users cannot be dropped by the full
+        // server-wide Mythic amount.
         const drainedUsers =
             await client.query(`
 
@@ -6453,7 +6514,12 @@ async function performMythicSteal(
 
                 SET xp = GREATEST(
                     0,
-                    xp - $3
+                    xp -
+                        CASE
+                            WHEN xp < $4 THEN $5
+                            WHEN xp < $6 THEN $7
+                            ELSE $3
+                        END
                 )
 
                 WHERE guildID=$1
@@ -6465,7 +6531,11 @@ async function performMythicSteal(
             `, [
                 normalizedGuildID,
                 normalizedThiefUserID,
-                safeAmount
+                safeAmount,
+                safeLevel100XPThreshold,
+                safeLevel1To99Amount,
+                safeLevel200XPThreshold,
+                safeLevel100To199Amount
             ]);
 
 
