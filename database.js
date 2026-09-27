@@ -1518,6 +1518,54 @@ function isTradeOfferEmpty(offer){
 }
 
 
+function getTradeOfferReadiness(offer){
+
+    const normalized =
+        normalizeTradeOffer(
+            offer
+        );
+
+    const hasContents =
+        !isTradeOfferEmpty(
+            normalized
+        );
+
+    const hasValidXPAmount =
+        economyLimits
+            .isValidTradeXPAmount(
+                normalized.xp
+            );
+
+
+    return {
+        valid:
+            hasContents
+            &&
+            hasValidXPAmount,
+
+        hasContents,
+
+        hasValidXPAmount,
+
+        xp:
+            normalized.xp,
+
+        hasBoostOrRune:
+            Object.keys(
+                normalized.boosts
+            ).length > 0,
+
+        minimumXP:
+            economyLimits
+                .MINIMUM_TRADE_XP_OFFER,
+
+        offer:
+            normalized
+    };
+
+}
+
+
 function calculateTradeFee(
     offer,
     feeReductionPercent = 0
@@ -16450,6 +16498,96 @@ async function confirmTrade(
         }
 
 
+        // Validate both sides while the trade row is locked. This prevents an
+        // empty gift trade from ever reaching the Processing state, even if an
+        // old Discord panel still has an enabled Confirm button.
+        const currentTrade =
+            parseTradeRow(
+                row
+            );
+
+        const offerReadiness = [
+            {
+                userID:
+                    String(row.user1id),
+                ...getTradeOfferReadiness(
+                    currentTrade.user1offer
+                )
+            },
+            {
+                userID:
+                    String(row.user2id),
+                ...getTradeOfferReadiness(
+                    currentTrade.user2offer
+                )
+            }
+        ];
+
+        const minimumXPViolations =
+            offerReadiness.filter(
+                readiness =>
+                    !readiness.hasValidXPAmount
+            );
+
+
+        if(minimumXPViolations.length > 0){
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status: "trade-xp-minimum",
+                minimumXP:
+                    economyLimits
+                        .MINIMUM_TRADE_XP_OFFER,
+                violations:
+                    minimumXPViolations.map(
+                        readiness => ({
+                            userID:
+                                readiness.userID,
+                            amount:
+                                readiness.xp
+                        })
+                    ),
+                trade:
+                    currentTrade
+            };
+
+        }
+
+
+        const missingUserIDs =
+            offerReadiness
+                .filter(
+                    readiness =>
+                        !readiness.hasContents
+                )
+                .map(
+                    readiness =>
+                        readiness.userID
+                );
+
+
+        if(missingUserIDs.length > 0){
+
+            await client.query("COMMIT");
+
+
+            return {
+                success: false,
+                status: "offer-required",
+                minimumXP:
+                    economyLimits
+                        .MINIMUM_TRADE_XP_OFFER,
+                missingUserIDs,
+                trade:
+                    currentTrade
+            };
+
+        }
+
+
         const updated =
             await client.query(`
 
@@ -16768,7 +16906,7 @@ async function executeTradeTransaction(
                         status='active',
                         user1Confirmed=FALSE,
                         user2Confirmed=FALSE,
-                        failureReason='Gift trades are disabled. Both users must offer at least 1,000 XP or one boost.',
+                        failureReason='Gift trades are disabled. Both users must offer at least 1,000 XP, one boost, or one Power Rune.',
                         updatedAt=$2,
                         expiresAt=$3
 
@@ -18123,6 +18261,8 @@ module.exports = {
     recordCompletedTradeBoostValues,
 
     normalizeTradeOffer,
+
+    getTradeOfferReadiness,
 
     calculateTradeFee,
 
