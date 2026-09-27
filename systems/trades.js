@@ -21,6 +21,9 @@ const leveling =
 const boosts =
     require("./boosts");
 
+const powerRunes =
+    require("./powerRunes");
+
 const luck =
     require("../utils/luck");
 
@@ -77,6 +80,95 @@ function normalizeOffer(offer){
     return database.normalizeTradeOffer(
         offer
     );
+
+}
+
+
+function getOfferReadiness(offer){
+
+    const normalized =
+        normalizeOffer(
+            offer
+        );
+
+
+    if(
+        typeof database
+            .getTradeOfferReadiness ===
+            "function"
+    ){
+
+        return database
+            .getTradeOfferReadiness(
+                normalized
+            );
+
+    }
+
+
+    // Deployment-order fallback for a process that briefly has the updated
+    // trade panel with the previous database module loaded.
+    const hasContents =
+        economyLimits.offerHasContents(
+            normalized
+        );
+
+    const hasValidXPAmount =
+        economyLimits.isValidTradeXPAmount(
+            normalized.xp
+        );
+
+
+    return {
+        valid:
+            hasContents
+            &&
+            hasValidXPAmount,
+        hasContents,
+        hasValidXPAmount,
+        xp:
+            normalized.xp,
+        hasBoostOrRune:
+            Object.keys(
+                normalized.boosts
+            ).length > 0,
+        minimumXP:
+            economyLimits
+                .MINIMUM_TRADE_XP_OFFER,
+        offer:
+            normalized
+    };
+
+}
+
+
+function formatOfferReadiness(
+    userID,
+    readiness
+){
+
+    if(!readiness.hasValidXPAmount){
+
+        return (
+            `<@${userID}> ❌ XP must be **0** or at least ` +
+            `**${readiness.minimumXP.toLocaleString()} XP**.`
+        );
+
+    }
+
+
+    if(!readiness.hasContents){
+
+        return (
+            `<@${userID}> ❌ Must offer at least ` +
+            `**${readiness.minimumXP.toLocaleString()} XP**, ` +
+            "one boost, or one Power Rune."
+        );
+
+    }
+
+
+    return `<@${userID}> ✅ Offer is ready`;
 
 }
 
@@ -229,7 +321,11 @@ const TRADE_BOOST_ROLE_IDS = {
     "luck:tier2": "1533960540240478432",
     "luck:tier3": "1533960965949886534",
     "luck:max": "1533961286310953042",
-    "luck:omega": "1535700310402670592"
+    "luck:omega": "1535700310402670592",
+
+    "rune:tier1": "1551186904903450685",
+    "rune:tier2": "1551190089256665168",
+    "rune:tier3": "1551190400599855165"
 
 };
 
@@ -247,7 +343,12 @@ function getBoostPlainLabel(key){
     const profile =
         boostType === "xp"
             ? boosts.BOOST_PROFILES[tier]
-            : luck.LUCK_ROLES[tier];
+            : boostType === "luck"
+                ? luck.LUCK_ROLES[tier]
+                : boostType === "rune"
+                    ? powerRunes
+                        .POWER_RUNE_PROFILES[tier]
+                    : null;
 
 
     if(profile?.name){
@@ -257,6 +358,9 @@ function getBoostPlainLabel(key){
 
         if(boostType === "xp")
             return `⚡ ${profile.name}`;
+
+        if(boostType === "rune")
+            return `🔷 ${profile.name}`;
 
         return profile.name;
 
@@ -353,7 +457,7 @@ function formatFee(
         `**${fee.total.toLocaleString()} XP**\n` +
         `Base: ${fee.baseFee.toLocaleString()} | ` +
         `XP fee: ${fee.xpFee.toLocaleString()} | ` +
-        `Boost fee: ${fee.boostFee.toLocaleString()}` +
+        `Item fee: ${fee.boostFee.toLocaleString()}` +
         (
             fee.reductionPercent > 0
                 ? ` | Upgrade: ${fee.reductionPercent}% off`
@@ -442,6 +546,21 @@ async function buildTradePanel(trade){
             trade.user2offer
         );
 
+    const offerReadiness1 =
+        getOfferReadiness(
+            offer1
+        );
+
+    const offerReadiness2 =
+        getOfferReadiness(
+            offer2
+        );
+
+    const bothOffersReady =
+        offerReadiness1.valid
+        &&
+        offerReadiness2.valid;
+
 
     const [upgradeEffects1, upgradeEffects2] =
         await Promise.all([
@@ -505,6 +624,18 @@ async function buildTradePanel(trade){
 
                 {
                     name:
+                        "Offer Requirements",
+
+                    value:
+                        `${formatOfferReadiness(trade.user1id, offerReadiness1)}\n` +
+                        `${formatOfferReadiness(trade.user2id, offerReadiness2)}`,
+
+                    inline:
+                        false
+                },
+
+                {
+                    name:
                         "Trade Fees",
 
                     value:
@@ -532,7 +663,7 @@ async function buildTradePanel(trade){
             .setFooter({
 
                 text:
-                    "XP offers: minimum 1,000. Level 50-99: max 500,000 incoming XP. Both users must offer something."
+                    "Each user must offer at least 1,000 XP, one boost, or one Power Rune. Level 50-99: max 500,000 incoming XP."
 
             })
 
@@ -596,7 +727,7 @@ async function buildTradePanel(trade){
                     )
 
                     .setLabel(
-                        "Add Boost"
+                        "Add Boost / Rune"
                     )
 
                     .setEmoji(
@@ -649,6 +780,8 @@ async function buildTradePanel(trade){
 
                     .setDisabled(
                         disabled
+                        ||
+                        !bothOffersReady
                     ),
 
                 new ButtonBuilder()
@@ -994,8 +1127,8 @@ function buildTradeInvite(
                 `🛡️ Level 50-99 users can receive at most **${economyLimits.LIMITED_TRADE_INCOMING_XP_CAP.toLocaleString()} XP** per trade.\n` +
                 `🔓 Level ${economyLimits.TRADE_FULL_UNLOCK_LEVEL}+ users have no XP receiving cap.\n` +
                 `💰 Every nonzero XP offer must be at least **${economyLimits.MINIMUM_TRADE_XP_OFFER.toLocaleString()} XP**.\n` +
-                `⚖️ Both users must offer at least ${economyLimits.MINIMUM_TRADE_XP_OFFER.toLocaleString()} XP or one boost—gift trades are blocked.\n` +
-                `Only **XP** and **stored XP/Luck Boosts** can be traded.\n` +
+                `⚖️ Both users must offer at least ${economyLimits.MINIMUM_TRADE_XP_OFFER.toLocaleString()} XP, one boost, or one Power Rune—gift trades are blocked.\n` +
+                `Only **XP**, **stored XP/Luck Boosts**, and **Power Runes** can be traded.\n` +
                 `Every participant pays an automatic fee when the trade completes.\n\n` +
                 `Invite expires <t:${expires}:R>.`
             )
@@ -1750,7 +1883,7 @@ async function handleAddBoost(
             interaction,
             {
                 content:
-                    "You do not have any stored boosts available to trade."
+                    "You do not have any stored boosts or Power Runes available to trade."
             }
         );
 
@@ -1765,7 +1898,7 @@ async function handleAddBoost(
             )
 
             .setPlaceholder(
-                "Choose a boost to offer"
+                "Choose a boost or Power Rune"
             )
 
             .addOptions(
@@ -1777,7 +1910,7 @@ async function handleAddBoost(
         interaction,
         {
             content:
-                "Choose the boost you want to add or change:",
+                "Choose the boost or Power Rune you want to add or change:",
             components: [
                 new ActionRowBuilder()
                     .addComponents(
@@ -1867,7 +2000,7 @@ async function handleBoostSelect(
             interaction,
             {
                 content:
-                    "That boost cannot be traded."
+                    "That inventory item cannot be traded."
             }
         );
 
@@ -2021,7 +2154,7 @@ async function handleBoostModal(
             interaction,
             {
                 content:
-                    "That boost cannot be traded."
+                    "That inventory item cannot be traded."
             }
         );
 
@@ -2150,7 +2283,7 @@ async function handleBoostModal(
             interaction,
             {
                 content:
-                    "The boost offer could not be updated."
+                    "The inventory-item offer could not be updated."
             }
         );
 
@@ -2575,28 +2708,102 @@ async function handleConfirm(
         await refreshTradePanel(
             interaction.client,
             trade.id
-        );
+        ).catch(error => {
+
+            console.error(
+                `Could not refresh trade #${trade.id} after a rejected confirmation:`,
+                error
+            );
+
+        });
+
+
+        let message;
+
+
+        if(
+            confirmResult.status ===
+            "offer-required"
+        ){
+
+            const missingUsers =
+                (
+                    confirmResult
+                        .missingUserIDs || []
+                )
+                    .map(
+                        userID =>
+                            `<@${userID}>`
+                    )
+                    .join(", ");
+
+            const minimumXP =
+                Number(
+                    confirmResult.minimumXP
+                ) ||
+                economyLimits
+                    .MINIMUM_TRADE_XP_OFFER;
+
+
+            message =
+                "⚖️ **This trade is not ready to confirm.** " +
+                `${missingUsers || "Each trader"} must offer at least ` +
+                `**${minimumXP.toLocaleString()} XP**, ` +
+                "one boost, or one Power Rune.";
+
+        }
+        else if(
+            confirmResult.status ===
+            "trade-xp-minimum"
+        ){
+
+            const minimumXP =
+                Number(
+                    confirmResult.minimumXP
+                ) ||
+                economyLimits
+                    .MINIMUM_TRADE_XP_OFFER;
+
+
+            message =
+                "💰 **This trade is not ready to confirm.** " +
+                `Every nonzero XP offer must be at least **${minimumXP.toLocaleString()} XP**. ` +
+                "Use **0 XP** when offering only a boost or Power Rune.";
+
+        }
+        else{
+
+            message =
+                `This trade cannot be confirmed because it is currently **${getStatusLabel(confirmResult.status)}**.`;
+
+        }
 
 
         return interaction.editReply({
 
             content:
-                `This trade cannot be confirmed because it is currently **${getStatusLabel(confirmResult.status)}**.`
+                message
 
         });
 
     }
 
 
-    await refreshTradePanel(
-        interaction.client,
-        trade.id
-    );
-
-
     if(
         !confirmResult.readyToProcess
     ){
+
+        await refreshTradePanel(
+            interaction.client,
+            trade.id
+        ).catch(error => {
+
+            console.error(
+                `Could not refresh trade #${trade.id} after confirmation:`,
+                error
+            );
+
+        });
 
         return interaction.editReply({
 
@@ -2618,7 +2825,16 @@ async function handleConfirm(
     await refreshTradePanel(
         interaction.client,
         trade.id
-    );
+    ).catch(error => {
+
+        // The database transaction has already finished. A Discord panel
+        // edit failure must never turn a completed trade into an error reply.
+        console.error(
+            `Could not refresh trade #${trade.id} after settlement:`,
+            error
+        );
+
+    });
 
 
     if(!completion.success){
@@ -2661,7 +2877,7 @@ async function handleConfirm(
         ){
 
             message +=
-                `\n⚖️ Gift trades are disabled. **Both users** must offer at least **${economyLimits.MINIMUM_TRADE_XP_OFFER.toLocaleString()} XP** or **one boost**.`;
+                `\n⚖️ Gift trades are disabled. **Both users** must offer at least **${economyLimits.MINIMUM_TRADE_XP_OFFER.toLocaleString()} XP**, **one boost**, or **one Power Rune**.`;
 
         }
         else if(
@@ -2671,7 +2887,7 @@ async function handleConfirm(
 
             message +=
                 `\n💰 Every nonzero XP offer must be at least **${completion.minimumXP.toLocaleString()} XP**. ` +
-                "Use **0 XP** to remove the XP offer, or offer a boost instead.";
+                "Use **0 XP** to remove the XP offer, or offer a boost or Power Rune instead.";
 
         }
         else if(
@@ -2720,21 +2936,85 @@ async function handleConfirm(
             interaction.client,
             completedTrade.guildid,
             completedTrade.user1id
-        ),
+        ).catch(error => {
+
+            console.error(
+                `Could not synchronize ${completedTrade.user1id}'s level after trade #${completedTrade.id}:`,
+                error
+            );
+
+        }),
 
         leveling.syncLevelAndAnnounce(
             interaction.client,
             completedTrade.guildid,
             completedTrade.user2id
-        )
+        ).catch(error => {
+
+            console.error(
+                `Could not synchronize ${completedTrade.user2id}'s level after trade #${completedTrade.id}:`,
+                error
+            );
+
+        })
 
     ]);
+
+
+    // Rune quantities move in the same database transaction as the rest of
+    // the offer. Refresh both ownership-marker roles immediately afterward.
+    const tradeGuild =
+        interaction.client.guilds.cache.get(
+            completedTrade.guildid
+        ) || interaction.guild;
+
+
+    if(tradeGuild){
+
+        const runeMembers =
+            await Promise.all([
+                tradeGuild.members.fetch(
+                    completedTrade.user1id
+                ).catch(() => null),
+                tradeGuild.members.fetch(
+                    completedTrade.user2id
+                ).catch(() => null)
+            ]);
+
+
+        await Promise.all(
+            runeMembers
+                .filter(Boolean)
+                .map(member =>
+                    powerRunes
+                        .syncMemberPowerRuneRoles(
+                            member
+                        )
+                        .catch(error => {
+
+                            console.error(
+                                `Could not synchronize Power Rune roles after trade #${completedTrade.id}:`,
+                                error
+                            );
+
+                        })
+                )
+        );
+
+    }
 
 
     await recordSuccessfulTradeQuests(
         interaction,
         completedTrade
-    );
+    ).catch(error => {
+
+        console.error(
+            `Could not record quests after completed trade #${completedTrade.id}:`,
+            error
+        );
+
+    });
 
 
     const channel =
@@ -2834,7 +3114,7 @@ async function handleConfirm(
     return interaction.editReply({
 
         content:
-            "✅ **Trade completed successfully.** XP, boosts, and fees were all processed in one database transaction."
+            "✅ **Trade completed successfully.** XP, boosts, Power Runes, and fees were all processed in one database transaction."
 
     });
 
