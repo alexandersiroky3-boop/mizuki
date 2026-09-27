@@ -407,7 +407,15 @@ Each rarity on the commands has its own "dialogues", they are in a random sequen
 ### • [QOL / Patches]
 *Completely reworked !roll, !hug, !kiss, !steal, !ezwin.*
 *Made selling less OP.*
-*On rolling I added that when you rolled a big prize you'll know it by it saying "Rolling..." like if its loading.*`
+*On rolling I added that when you rolled a big prize you'll know it by it saying "Rolling..." like if its loading.*
+*Fixed a bug where now Power Runes stay in inventory when found.*
+*Added that you can mute in !mute the Power Rune replies*
+*Fixed some upgrades in !upgrades*
+*Added some more features to the existing upgrades in !upgrades*
+*Added more upgrades in !upgrades...*
+*Made esthetically criticals look better.*
+*Removed the permanent buffs from the merchant (like permanent 2x chat xp or permanent 3 rolls per 1 roll).*
+*You now can obtain permanent 2x chat XP and permanent 3 rolls in the !upgrades*`
     },
     {
         version: "2.1",
