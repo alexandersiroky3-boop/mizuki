@@ -665,6 +665,53 @@ ${rewardEnding}`;
 }
 
 
+async function syncEZWinLevels(
+    client,
+    guildID,
+    userIDs
+){
+
+    const failures = [];
+
+
+    for(const affectedUserID of userIDs){
+
+        try{
+
+            await leveling.syncLevelAndAnnounce(
+                client,
+                guildID,
+                affectedUserID
+            );
+
+        }
+        catch(error){
+
+            // XP has already been committed at this point. A stale member,
+            // temporary Discord/API issue, or role-sync failure must not make
+            // !ezwin report that the whole command failed. The normal level
+            // system will repair that user's level/role on later activity.
+            failures.push({
+                userID:
+                    String(affectedUserID),
+                error
+            });
+
+            console.error(
+                `Could not sync !ezwin level for ${affectedUserID}:`,
+                error
+            );
+
+        }
+
+    }
+
+
+    return failures;
+
+}
+
+
 // ======================
 // COMMAND
 // ======================
@@ -718,19 +765,30 @@ async function execute(message){
     }
 
 
+    const user =
+        await database.getUser(
+            guildID,
+            userID
+        );
+
+
+    if(!user){
+
+        return message.reply(
+            "❌ I couldn't load your user data from the database."
+        );
+
+    }
+
+
+    // Load/create the user first. This prevents a failed profile lookup from
+    // leaving a fresh player stuck with a 24-hour cooldown.
     await database.setCommandCooldown(
         guildID,
         userID,
         "ezwin",
         Date.now() + COOLDOWN
     );
-
-
-    const user =
-        await database.getUser(
-            guildID,
-            userID
-        );
 
     const currentLevel =
         xp.getLevel(
@@ -867,20 +925,22 @@ async function execute(message){
 
     const changedUserIDs =
         new Set([
-            ...transactionResult.affectedUserIDs,
-            transactionResult.winnerUserID || userID
+            ...(
+                Array.isArray(
+                    transactionResult?.affectedUserIDs
+                )
+                    ? transactionResult.affectedUserIDs
+                    : []
+            ),
+            transactionResult?.winnerUserID || userID
         ]);
 
 
-    for(const affectedUserID of changedUserIDs){
-
-        await leveling.syncLevelAndAnnounce(
-            message.client,
-            guildID,
-            affectedUserID
-        );
-
-    }
+    await syncEZWinLevels(
+        message.client,
+        guildID,
+        changedUserIDs
+    );
 
 
     await boosts.tryAndAnnounceXPBoostDrop(
@@ -942,6 +1002,7 @@ module.exports = {
     getEZWinRanges,
     getLevel1To99EZWinRanges,
     getLevel100PlusEZWinRanges,
+    syncEZWinLevels,
     getCustomEmoji,
     getEZWinEmojis,
     splitLongMessage,
