@@ -129,6 +129,126 @@ const LEVEL100_PLUS_HUG_OUTCOMES =
     HUG_TABLES.level100Plus;
 
 
+// Luck Ω uses an exact Mythic chance for Level 100+ player hugs.
+// Every permanent Boost upgrade adds 3 percentage points without changing
+// how the remaining non-Mythic rarities are weighted.
+const LEVEL100_OMEGA_HUG_MYTHIC_BASE_PERCENT =
+    13;
+
+const LEVEL100_OMEGA_HUG_MYTHIC_PER_BOOST_UPGRADE =
+    3;
+
+const MAX_BOOST_UPGRADE_LEVEL =
+    3;
+
+
+function getLevel100OmegaHugMythicChance(
+    boostUpgradeLevel = 0
+){
+
+    const safeUpgradeLevel =
+        Math.max(
+            0,
+            Math.min(
+                MAX_BOOST_UPGRADE_LEVEL,
+                Math.floor(
+                    Number(boostUpgradeLevel) || 0
+                )
+            )
+        );
+
+
+    return (
+        LEVEL100_OMEGA_HUG_MYTHIC_BASE_PERCENT
+        +
+        safeUpgradeLevel *
+        LEVEL100_OMEGA_HUG_MYTHIC_PER_BOOST_UPGRADE
+    );
+
+}
+
+
+function rollHugOutcome(
+    outcomes,
+    profile,
+    authorLevel,
+    boostUpgradeLevel = 0
+){
+
+    const isLevel100PlusOmega =
+        Number(authorLevel) >= 100
+        &&
+        String(profile?.tier || "")
+            .toLowerCase() === "omega";
+
+
+    if(!isLevel100PlusOmega){
+
+        return luck.rollCommandOutcome(
+            outcomes,
+            profile
+        );
+
+    }
+
+
+    const mythicOutcome =
+        outcomes.find(
+            outcome =>
+                String(outcome?.key || "")
+                    .toLowerCase() === "mythic"
+        );
+
+
+    if(!mythicOutcome){
+
+        return luck.rollCommandOutcome(
+            outcomes,
+            profile
+        );
+
+    }
+
+
+    const mythicChancePercent =
+        getLevel100OmegaHugMythicChance(
+            boostUpgradeLevel
+        );
+
+
+    if(
+        Math.random() * 100
+        <
+        mythicChancePercent
+    ){
+
+        return mythicOutcome;
+
+    }
+
+
+    // Preserve all six rarity positions so the existing Luck Ω weighting
+    // remains identical after conditioning on a non-Mythic result.
+    const nonMythicOutcomes =
+        outcomes.map(
+            outcome =>
+                outcome === mythicOutcome
+                    ? {
+                        ...outcome,
+                        chancePercent: 0
+                    }
+                    : outcome
+        );
+
+
+    return luck.rollCommandOutcome(
+        nonMythicOutcomes,
+        profile
+    );
+
+}
+
+
 function getHugTableForLevel(level){
 
     return Number(level) >= 100
@@ -1071,10 +1191,29 @@ await syncAndTrackLevel(
             authorLevel
         );
 
+
+    const boostUpgradeLevel =
+        authorLevel >= 100
+        &&
+        String(commandLuck?.tier || "")
+            .toLowerCase() === "omega"
+            ? Number(
+                (
+                    await database.getUserUpgradeEffects(
+                        guildID,
+                        userID
+                    )
+                )?.levels?.boosts
+            ) || 0
+            : 0;
+
+
     const outcome =
-        luck.rollCommandOutcome(
+        rollHugOutcome(
             hugTable,
-            commandLuck
+            commandLuck,
+            authorLevel,
+            boostUpgradeLevel
         );
 
 
@@ -1350,6 +1489,8 @@ module.exports = {
     LEVEL100_PLUS_HUG_OUTCOMES,
     HUG_BOT_REWARD_TABLES,
     getHugTableForLevel,
+    getLevel100OmegaHugMythicChance,
+    rollHugOutcome,
     getCustomEmoji,
     getHugEmojis,
     splitLongMessage,
