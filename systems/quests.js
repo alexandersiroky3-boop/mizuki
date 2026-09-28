@@ -3868,6 +3868,21 @@ async function useRollCooldown(
 }
 
 
+async function finishRollCooldown(
+    guildID,
+    userID,
+    rollLockToken
+){
+
+    return database.finishQuestRollCooldown(
+        guildID,
+        userID,
+        rollLockToken
+    );
+
+}
+
+
 async function getChatXPMultiplier(
     guildID,
     userID
@@ -3951,6 +3966,8 @@ module.exports = {
     consumeGuaranteedRoll,
 
     useRollCooldown,
+
+    finishRollCooldown,
 
     getChatXPMultiplier,
 
