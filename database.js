@@ -151,11 +151,15 @@ const userCache = new Map();
 const CACHE_TIME = 30000;
 
 
-// Every !roll uses exactly 30 seconds, including complete Multi Roll batches.
-// Keep this server-side so Luck tiers, reward durations, or callers cannot
-// accidentally turn the gameplay cooldown into minutes or hours.
+// Every !roll uses exactly 30 seconds AFTER its complete result/batch finishes.
+// A negative stored roll timestamp means "currently rolling"; this keeps the
+// command locked without silently consuming the cooldown during animations.
 const ROLL_COOLDOWN_MS =
     30 * 1000;
+
+
+const ROLL_IN_PROGRESS_TIMEOUT_MS =
+    15 * 60 * 1000;
 
 
 const LEADERBOARD_HOUR_MS =
@@ -2495,7 +2499,7 @@ await db.query(`
 
         userID TEXT NOT NULL,
 
-        amount INTEGER NOT NULL,
+        amount BIGINT NOT NULL,
 
         critical BOOLEAN DEFAULT FALSE,
 
@@ -2530,6 +2534,74 @@ await db.query(`
         timestamp BIGINT NOT NULL
 
     )
+
+`);
+
+
+// Older databases created the main XP fields as 32-bit INTEGER values. Luck Ω,
+// story bonuses, and doubled high rolls can legitimately exceed 2,147,483,647,
+// so migrate every roll payout destination to BIGINT without losing data.
+await db.query(`
+
+    DO $$
+    BEGIN
+
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = CURRENT_SCHEMA()
+              AND table_name = 'users'
+              AND column_name = 'xp'
+              AND data_type <> 'bigint'
+        ) THEN
+            ALTER TABLE users
+            ALTER COLUMN xp TYPE BIGINT
+            USING xp::BIGINT;
+        END IF;
+
+
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = CURRENT_SCHEMA()
+              AND table_name = 'xp_logs'
+              AND column_name = 'amount'
+              AND data_type <> 'bigint'
+        ) THEN
+            ALTER TABLE xp_logs
+            ALTER COLUMN amount TYPE BIGINT
+            USING amount::BIGINT;
+        END IF;
+
+
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = CURRENT_SCHEMA()
+              AND table_name = 'leaderboard_xp_activity'
+              AND column_name = 'amount'
+              AND data_type <> 'bigint'
+        ) THEN
+            ALTER TABLE leaderboard_xp_activity
+            ALTER COLUMN amount TYPE BIGINT
+            USING amount::BIGINT;
+        END IF;
+
+
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = CURRENT_SCHEMA()
+              AND table_name = 'boost_activity'
+              AND column_name = 'xp'
+              AND data_type <> 'bigint'
+        ) THEN
+            ALTER TABLE boost_activity
+            ALTER COLUMN xp TYPE BIGINT
+            USING xp::BIGINT;
+        END IF;
+
+    END $$;
 
 `);
 
@@ -3520,10 +3592,9 @@ await db.query(`
 `);
 
 
-// Repair cooldowns written by older builds that accidentally used a timed
-// reward's remaining duration. A legitimate Multi Roll window can never be
-// more than 30 seconds in the future. The reward expiry fields themselves
-// are deliberately left alone.
+// Repair legacy Multi Roll windows and release any negative in-progress marker
+// left behind by a process restart. New builds use command_cooldowns as the
+// single lock/cooldown source for both normal and Multi Rolls.
 await db.query(`
 
     UPDATE quest_effects
@@ -3532,17 +3603,17 @@ await db.query(`
         rollWindowEndsAt = 0,
         rollWindowUses = 0
 
-    WHERE rollWindowEndsAt > $1
+    WHERE rollWindowEndsAt < 0
+       OR rollWindowEndsAt > $1
 
 `, [
     Date.now() + ROLL_COOLDOWN_MS
 ]);
 
 
-// Older builds saved Luck-based !roll cooldowns lasting from several minutes
-// to several hours. Clear only those invalid future roll timestamps so affected
-// users can roll immediately after this build starts. Other command cooldowns
-// are not touched.
+// Older builds saved Luck-based !roll cooldowns lasting minutes or hours.
+// Negative values are active-roll locks; after a process restart no associated
+// command is still running, so those locks are safe to release as well.
 await db.query(`
 
     UPDATE command_cooldowns
@@ -3550,7 +3621,10 @@ await db.query(`
     SET expiresAt = 0
 
     WHERE commandName = 'roll'
-    AND expiresAt > $1
+    AND (
+        expiresAt < 0
+        OR expiresAt > $1
+    )
 
 `, [
     Date.now() + ROLL_COOLDOWN_MS
@@ -14353,12 +14427,6 @@ async function useQuestRollCooldown(
             Date.now();
 
 
-        // The database is the final source of truth. Even if an older command
-        // passes a 15-minute value, !roll remains fixed at 30 seconds.
-        const safeCooldown =
-            ROLL_COOLDOWN_MS;
-
-
         await client.query(`
 
             INSERT INTO quest_effects
@@ -14507,115 +14575,26 @@ async function useQuestRollCooldown(
             );
 
 
-        if(rollCount > 1){
+        // One universal row now protects normal and Multi Rolls. A negative
+        // timestamp is an in-progress marker, not a running cooldown.
+        await client.query(`
 
-            const windowEndsAt =
-                Number(
-                    effect.rollwindowendsat || 0
-                );
+            INSERT INTO command_cooldowns
+            (
+                guildID,
+                userID,
+                commandName,
+                expiresAt
+            )
 
+            VALUES($1,$2,'roll',0)
 
-            const windowRemaining =
-                windowEndsAt - now;
+            ON CONFLICT DO NOTHING
 
-
-            // Only trust a saved window when it fits inside the fixed
-            // 30-second Multi Roll cooldown. Longer values came from an
-            // older bug and are repaired by allowing this batch now, then
-            // replacing the bad timestamp below.
-            if(
-                windowRemaining > 0
-                &&
-                windowRemaining <=
-                    ROLL_COOLDOWN_MS
-            ){
-
-                await client.query("COMMIT");
-
-
-                return {
-                    allowed: false,
-                    remaining:
-                        windowRemaining,
-                    multiRoll: true,
-                    tripleRoll: true,
-                    rollCount,
-                    cooldownEndsAt:
-                        windowEndsAt,
-                    activeUntil,
-                    oneShotBurst:
-                        Boolean(burst)
-                };
-
-            }
-
-
-            const nextWindowEndsAt =
-                now + ROLL_COOLDOWN_MS;
-
-
-            if(burst){
-
-                await client.query(`
-
-                    UPDATE quest_effects
-
-                    SET
-                        rollWindowEndsAt=$3,
-                        rollWindowUses=$4,
-                        ${burst.column}=${burst.column}-1
-
-                    WHERE guildID=$1
-                    AND userID=$2
-
-                `, [
-                    guildID,
-                    userID,
-                    nextWindowEndsAt,
-                    rollCount
-                ]);
-
-            }
-            else{
-
-                await client.query(`
-
-                    UPDATE quest_effects
-
-                    SET
-                        rollWindowEndsAt=$3,
-                        rollWindowUses=$4
-
-                    WHERE guildID=$1
-                    AND userID=$2
-
-                `, [
-                    guildID,
-                    userID,
-                    nextWindowEndsAt,
-                    rollCount
-                ]);
-
-            }
-
-
-            await client.query("COMMIT");
-
-
-            return {
-                allowed: true,
-                remaining: 0,
-                multiRoll: true,
-                tripleRoll: true,
-                rollCount,
-                cooldownEndsAt:
-                    nextWindowEndsAt,
-                activeUntil,
-                oneShotBurst:
-                    Boolean(burst)
-            };
-
-        }
+        `, [
+            guildID,
+            userID
+        ]);
 
 
         const cooldownResult =
@@ -14637,23 +14616,41 @@ async function useQuestRollCooldown(
             ]);
 
 
-        const existing =
-            cooldownResult.rows[0];
+        const storedTimestamp =
+            Number(
+                cooldownResult.rows[0]
+                    ?.expiresat
+            ) || 0;
 
 
-        const remaining =
-            existing
-                ? Number(existing.expiresat) - now
+        const inProgressStartedAt =
+            storedTimestamp < 0
+                ? Math.abs(storedTimestamp)
                 : 0;
 
 
-        // Honor only a legitimate 30-second window. A longer remaining value
-        // is stale data from the old Luck cooldown system; ignore it and let
-        // the upsert below replace it with a correct 30-second timestamp.
-        if(
-            remaining > 0
+        const hasLiveInProgressRoll =
+            inProgressStartedAt > 0
             &&
-            remaining <= ROLL_COOLDOWN_MS
+            now - inProgressStartedAt <=
+                ROLL_IN_PROGRESS_TIMEOUT_MS;
+
+
+        const cooldownRemaining =
+            storedTimestamp > 0
+                ? storedTimestamp - now
+                : 0;
+
+
+        if(
+            hasLiveInProgressRoll
+            ||
+            (
+                cooldownRemaining > 0
+                &&
+                cooldownRemaining <=
+                    ROLL_COOLDOWN_MS
+            )
         ){
 
             await client.query("COMMIT");
@@ -14661,45 +14658,91 @@ async function useQuestRollCooldown(
 
             return {
                 allowed: false,
-                remaining,
-                multiRoll: false,
-                tripleRoll: false,
-                rollCount: 1,
+                inProgress:
+                    hasLiveInProgressRoll,
+                remaining:
+                    hasLiveInProgressRoll
+                        ? 0
+                        : cooldownRemaining,
+                multiRoll:
+                    rollCount > 1,
+                tripleRoll:
+                    rollCount > 1,
+                rollCount,
                 cooldownEndsAt:
-                    Number(
-                        existing.expiresat
-                    )
+                    hasLiveInProgressRoll
+                        ? 0
+                        : storedTimestamp,
+                activeUntil,
+                oneShotBurst:
+                    Boolean(burst)
             };
 
         }
 
 
+        const rollLockToken =
+            now;
+
+
         await client.query(`
 
-            INSERT INTO command_cooldowns
-            (
-                guildID,
-                userID,
-                commandName,
-                expiresAt
-            )
+            UPDATE command_cooldowns
 
-            VALUES($1,$2,'roll',$3)
+            SET expiresAt=$3
 
-            ON CONFLICT(
-                guildID,
-                userID,
-                commandName
-            )
-
-            DO UPDATE SET
-                expiresAt=$3
+            WHERE guildID=$1
+            AND userID=$2
+            AND commandName='roll'
 
         `, [
             guildID,
             userID,
-            now + safeCooldown
+            -rollLockToken
         ]);
+
+
+        if(burst){
+
+            await client.query(`
+
+                UPDATE quest_effects
+
+                SET
+                    rollWindowEndsAt=0,
+                    rollWindowUses=$3,
+                    ${burst.column}=${burst.column}-1
+
+                WHERE guildID=$1
+                AND userID=$2
+
+            `, [
+                guildID,
+                userID,
+                rollCount
+            ]);
+
+        }
+        else{
+
+            await client.query(`
+
+                UPDATE quest_effects
+
+                SET
+                    rollWindowEndsAt=0,
+                    rollWindowUses=$3
+
+                WHERE guildID=$1
+                AND userID=$2
+
+            `, [
+                guildID,
+                userID,
+                rollCount
+            ]);
+
+        }
 
 
         await client.query("COMMIT");
@@ -14707,12 +14750,18 @@ async function useQuestRollCooldown(
 
         return {
             allowed: true,
+            inProgress: true,
             remaining: 0,
-            multiRoll: false,
-            tripleRoll: false,
-            rollCount: 1,
-            cooldownEndsAt:
-                now + safeCooldown
+            multiRoll:
+                rollCount > 1,
+            tripleRoll:
+                rollCount > 1,
+            rollCount,
+            cooldownEndsAt: 0,
+            activeUntil,
+            oneShotBurst:
+                Boolean(burst),
+            rollLockToken
         };
 
     }
@@ -14720,6 +14769,120 @@ async function useQuestRollCooldown(
 
         await client.query("ROLLBACK");
 
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+async function finishQuestRollCooldown(
+    guildID,
+    userID,
+    rollLockToken
+){
+
+    const safeToken =
+        Math.abs(
+            Math.floor(
+                Number(rollLockToken) || 0
+            )
+        );
+
+
+    if(safeToken <= 0){
+        return {
+            finished: false,
+            cooldownEndsAt: 0,
+            remaining: 0
+        };
+    }
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        const cooldownEndsAt =
+            Date.now() + ROLL_COOLDOWN_MS;
+
+
+        const result =
+            await client.query(`
+
+                UPDATE command_cooldowns
+
+                SET expiresAt=$4
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND commandName='roll'
+                AND expiresAt=$3
+
+                RETURNING expiresAt
+
+            `, [
+                guildID,
+                userID,
+                -safeToken,
+                cooldownEndsAt
+            ]);
+
+
+        const finished =
+            result.rowCount > 0;
+
+
+        if(finished){
+
+            await client.query(`
+
+                UPDATE quest_effects
+
+                SET
+                    rollWindowEndsAt=0,
+                    rollWindowUses=0
+
+                WHERE guildID=$1
+                AND userID=$2
+
+            `, [
+                guildID,
+                userID
+            ]);
+
+        }
+
+
+        await client.query("COMMIT");
+
+
+        return {
+            finished,
+            cooldownEndsAt:
+                finished
+                    ? cooldownEndsAt
+                    : 0,
+            remaining:
+                finished
+                    ? ROLL_COOLDOWN_MS
+                    : 0
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
         throw error;
 
     }
@@ -18254,6 +18417,8 @@ module.exports = {
     consumeGuaranteedQuestRoll,
 
     useQuestRollCooldown,
+
+    finishQuestRollCooldown,
 
     advanceRollGuarantee,
 
