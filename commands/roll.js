@@ -1204,7 +1204,8 @@ function waitForRollReveal(milliseconds){
 
 function buildRollRevealText(
     emoji,
-    dotCount = 3
+    dotCount = 3,
+    rollLabel = ""
 ){
 
     const safeDotCount =
@@ -1219,10 +1220,20 @@ function buildRollRevealText(
         );
 
 
+    const safeRollLabel =
+        String(rollLabel || "")
+            .trim();
+
+
     return (
         `${emoji} Rolling` +
         ".".repeat(
             safeDotCount
+        ) +
+        (
+            safeRollLabel
+                ? ` ${safeRollLabel}`
+                : ""
         )
     );
 
@@ -1232,7 +1243,8 @@ function buildRollRevealText(
 async function playRollReveal(
     message,
     rolledXP,
-    wait = waitForRollReveal
+    wait = waitForRollReveal,
+    options = {}
 ){
 
     const emojiSequence =
@@ -1252,6 +1264,11 @@ async function playRollReveal(
             ? wait
             : waitForRollReveal;
 
+
+    const rollLabel =
+        String(options?.rollLabel || "")
+            .trim();
+
     let revealMessage = null;
 
 
@@ -1262,7 +1279,8 @@ async function playRollReveal(
                 content:
                     buildRollRevealText(
                         emojiSequence[0],
-                        3
+                        3,
+                        rollLabel
                     ),
 
                 allowedMentions: {
@@ -1300,7 +1318,8 @@ async function playRollReveal(
                     content:
                         buildRollRevealText(
                             emoji,
-                            3
+                            3,
+                            rollLabel
                         ),
                     allowedMentions: {
                         parse: []
@@ -1325,7 +1344,8 @@ async function playRollReveal(
                     content:
                         buildRollRevealText(
                             emoji,
-                            dotCount
+                            dotCount,
+                            rollLabel
                         ),
                     allowedMentions: {
                         parse: []
@@ -2129,8 +2149,9 @@ if(!rollAccess.allowed){
 // QUEST MULTI ROLL
 // ======================
 //
-// One typed !roll command now performs the rewarded number of complete,
-// independent rolls automatically. Each roll still uses:
+// One typed !roll command performs the rewarded number of complete,
+// independent rolls concurrently. Every "Rolling..." reveal begins without
+// waiting for the previous one to finish. Each roll still uses:
 // - its own XP result
 // - its own Luck calculation
 // - its own XP MAX / Luck Boost drop checks
@@ -2157,30 +2178,76 @@ if(
         );
 
 
-    for(
-        let rollIndex = 0;
-        rollIndex < rollCount;
-        rollIndex++
+    // A troll effect is a one-roll effect. Resolve it once before launching
+    // the concurrent batch so all rolls cannot read and consume the same row.
+    const batchTrollRollEffect =
+        await trolls.getRollEffect(
+            message.guild.id,
+            userID
+        );
+
+
+    const rollPromises =
+        Array.from(
+            {
+                length: rollCount
+            },
+            (_unused, rollIndex) =>
+                execute(
+                    message,
+                    {
+                        skipCooldown: true,
+                        forceRollReveal: true,
+                        skipLevelSync: true,
+                        rollRevealWait:
+                            options.rollRevealWait,
+
+                        // Only Roll 1 receives the pending one-roll troll.
+                        trollRollEffect:
+                            rollIndex === 0
+                                ? batchTrollRollEffect
+                                : null,
+
+                        rollAccess: {
+                            ...rollAccess,
+
+                            rollNumber:
+                                rollIndex + 1,
+
+                            rollCount,
+
+                            showCooldown:
+                                rollIndex ===
+                                rollCount - 1
+                        }
+                    }
+                )
+        );
+
+
+    await Promise.all(
+        rollPromises
+    );
+
+
+    // Concurrent children defer level synchronization so one batch cannot
+    // race several identical level/role announcements against itself.
+    await syncRollLevel(
+        message,
+        userID
+    );
+
+
+    if(
+        batchTrollRollEffect?.effectType ===
+            trolls.EFFECTS.ROLL_REDIRECT
+        &&
+        batchTrollRollEffect.sourceUserID
     ){
 
-        await execute(
+        await syncRollLevel(
             message,
-            {
-                skipCooldown: true,
-
-                rollAccess: {
-                    ...rollAccess,
-
-                    rollNumber:
-                        rollIndex + 1,
-
-                    rollCount,
-
-                    showCooldown:
-                        rollIndex ===
-                        rollCount - 1
-                }
-            }
+            batchTrollRollEffect.sourceUserID
         );
 
     }
@@ -2199,10 +2266,15 @@ if(
 // ======================
 
 const trollRollEffect =
-    await trolls.getRollEffect(
-        message.guild.id,
-        userID
-    );
+    Object.prototype.hasOwnProperty.call(
+        options,
+        "trollRollEffect"
+    )
+        ? options.trollRollEffect
+        : await trolls.getRollEffect(
+            message.guild.id,
+            userID
+        );
 
 const luckResult =
     await luck.rollWithLuck(
@@ -2350,11 +2422,6 @@ const usedLuckBoost =
     luckResult.profile;
 
 
-    // ======================
-    // GIVE XP
-    // ======================
-
-
 const targetRollXP =
     redirectedByTroll
         ? 0
@@ -2366,6 +2433,88 @@ const redirectedRollXP =
         : 0;
 
 
+const bonusPercentRange =
+    getRollBonusPercentRange(
+        rolledXP
+    );
+
+let bonusXP =
+    0;
+
+
+if(bonusPercentRange){
+
+    bonusXP =
+        rollPercentageLessBonus(
+            rolledXP,
+            bonusPercentRange
+                .minimumPercentLess,
+            bonusPercentRange
+                .maximumPercentLess
+        );
+
+}
+
+
+// Every roll in a Multi Roll receives its own loading message—even a small
+// or negative result—so all X "Rolling..." animations can be visible at once.
+if(
+    rolledXP > 25000
+    || options.forceRollReveal
+){
+
+    const revealRollNumber =
+        Math.max(
+            1,
+            Number(
+                rollAccess?.rollNumber
+            ) || 1
+        );
+
+
+    const revealRollCount =
+        Math.max(
+            revealRollNumber,
+            Number(
+                rollAccess?.rollCount
+            ) || 1
+        );
+
+
+    const rollRevealLabel =
+        options.forceRollReveal
+            ? `**[${revealRollNumber}/${revealRollCount}]**`
+            : "";
+
+
+    // 25,001 selects the basic roll animation without changing the actual
+    // result. The real rolledXP is still used for every payout and message.
+    const revealXP =
+        options.forceRollReveal
+            ? Math.max(
+                25001,
+                Number(rolledXP) || 0
+            )
+            : rolledXP;
+
+    await playRollReveal(
+        message,
+        revealXP,
+        options.rollRevealWait,
+        {
+            rollLabel:
+                rollRevealLabel
+        }
+    );
+
+}
+
+
+// ======================
+// GIVE XP AFTER LOADING
+// ======================
+// No base XP, story bonus, boost drop, quest progress, or troll payout is
+// applied until this roll's own loading animation has completely finished.
 await database.addXP(
 
     message.guild.id,
@@ -2426,7 +2575,7 @@ await quests.recordEvent(
 );
 
 
-// Track roll XP for boosts
+// Track roll XP for boosts.
 await database.addBoostActivity(
 
     message.guild.id,
@@ -2437,12 +2586,47 @@ await database.addBoostActivity(
 
 );
 
-// ======================
-// RANDOM XP BOOST DROP
-// ======================
-// Each real roll—including each result inside Multi Roll—uses the exact
-// mutually-exclusive roll drop chances from systems/boosts.js.
 
+if(bonusXP > 0){
+
+    if(redirectedByTroll){
+        await database.giveXP(
+            message.guild.id,
+            trollRollEffect.sourceUserID,
+            bonusXP
+        );
+    }
+    else{
+        await database.addXP(
+            message.guild.id,
+            userID,
+            bonusXP
+        );
+    }
+
+
+    await database.addBoostActivity(
+        message.guild.id,
+        userID,
+        redirectedByTroll
+            ? 0
+            : bonusXP
+    );
+
+
+    await quests.recordEvent(
+        message,
+        "earn_xp",
+        redirectedByTroll
+            ? 0
+            : bonusXP
+    );
+
+}
+
+
+// Each real roll—including every result inside Multi Roll—keeps its own
+// independent XP Boost and Luck Boost drop checks after its reveal.
 const xpBoostDropMessage =
     await boosts.tryXPBoostDropInline(
         message,
@@ -2450,16 +2634,6 @@ const xpBoostDropMessage =
         "!roll"
     );
 
-// ======================
-// LUCK BOOST REWARD
-// ======================
-//
-// This happens before any result message,
-// so every roll can potentially award:
-//
-// - XP
-// - one possible XP Boost tier
-// - Luck Boost
 
 const wonLuckBoost =
     await luck.tryLuckBoostDrop(
@@ -2527,63 +2701,6 @@ const rollGuaranteeFooter =
     );
 
 
-const bonusPercentRange =
-    getRollBonusPercentRange(
-        rolledXP
-    );
-
-let bonusXP =
-    0;
-
-
-if(bonusPercentRange){
-
-    bonusXP =
-        rollPercentageLessBonus(
-            rolledXP,
-            bonusPercentRange
-                .minimumPercentLess,
-            bonusPercentRange
-                .maximumPercentLess
-        );
-
-
-    if(redirectedByTroll){
-        await database.giveXP(
-            message.guild.id,
-            trollRollEffect.sourceUserID,
-            bonusXP
-        );
-    }
-    else{
-        await database.addXP(
-            message.guild.id,
-            userID,
-            bonusXP
-        );
-    }
-
-
-    await database.addBoostActivity(
-        message.guild.id,
-        userID,
-        redirectedByTroll
-            ? 0
-            : bonusXP
-    );
-
-
-    await quests.recordEvent(
-        message,
-        "earn_xp",
-        redirectedByTroll
-            ? 0
-            : bonusXP
-    );
-
-}
-
-
 if(trollRollEffect){
     if(redirectedByTroll){
         trollRollEffect.payload.redirectedXP =
@@ -2603,30 +2720,23 @@ if(trollRollEffect){
 }
 
 
-await syncRollLevel(
-    message,
-    userID
-);
+if(!options.skipLevelSync){
 
-
-if(
-    redirectedByTroll
-    && (redirectedRollXP + bonusXP) > 0
-){
     await syncRollLevel(
         message,
-        trollRollEffect.sourceUserID
+        userID
     );
-}
 
 
-if(rolledXP > 25000){
-
-    await playRollReveal(
-        message,
-        rolledXP,
-        options.rollRevealWait
-    );
+    if(
+        redirectedByTroll
+        && (redirectedRollXP + bonusXP) > 0
+    ){
+        await syncRollLevel(
+            message,
+            trollRollEffect.sourceUserID
+        );
+    }
 
 }
 
