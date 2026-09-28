@@ -1147,7 +1147,8 @@ function getRollRevealEmojiSequence(
         Number(rolledXP) || 0;
 
 
-    if(safeXP <= 25000){
+    // The loading animation begins at exactly 25,000 XP.
+    if(safeXP < 25000){
         return [];
     }
 
@@ -1177,6 +1178,13 @@ function getRollRevealEmojiSequence(
     if(safeXP > 5000000){
         sequence.push(
             emojis.mythicRoll
+        );
+    }
+
+
+    if(safeXP >= 100000000){
+        sequence.push(
+            emojis.rainbowRoll
         );
     }
 
@@ -1269,6 +1277,37 @@ async function playRollReveal(
         String(options?.rollLabel || "")
             .trim();
 
+
+    const onStarted =
+        typeof options?.onStarted === "function"
+            ? options.onStarted
+            : null;
+
+    let startNotified =
+        false;
+
+
+    function notifyStarted(){
+
+        if(startNotified){
+            return;
+        }
+
+
+        startNotified = true;
+
+
+        if(onStarted){
+            try{
+                onStarted();
+            }
+            catch(_error){
+                // Ordering coordination must never break the roll itself.
+            }
+        }
+
+    }
+
     let revealMessage = null;
 
 
@@ -1288,6 +1327,12 @@ async function playRollReveal(
                     parse: []
                 }
             });
+
+
+        // The next numbered Multi Roll may create its loader now. We notify
+        // only after Discord has accepted this message, preserving 1, 2, 3...
+        // while every already-created animation continues concurrently.
+        notifyStarted();
 
 
         if(
@@ -1369,6 +1414,9 @@ async function playRollReveal(
 
     }
     finally{
+
+        // Also release the next numbered roll if sending this loader failed.
+        notifyStarted();
 
         if(
             revealMessage
@@ -2187,42 +2235,77 @@ if(
         );
 
 
-    const rollPromises =
-        Array.from(
-            {
-                length: rollCount
-            },
-            (_unused, rollIndex) =>
-                execute(
-                    message,
-                    {
-                        skipCooldown: true,
-                        forceRollReveal: true,
-                        skipLevelSync: true,
-                        rollRevealWait:
-                            options.rollRevealWait,
+    const rollPromises = [];
 
-                        // Only Roll 1 receives the pending one-roll troll.
-                        trollRollEffect:
-                            rollIndex === 0
-                                ? batchTrollRollEffect
-                                : null,
+    let previousRollRevealStarted =
+        Promise.resolve();
 
-                        rollAccess: {
-                            ...rollAccess,
 
-                            rollNumber:
-                                rollIndex + 1,
+    for(
+        let rollIndex = 0;
+        rollIndex < rollCount;
+        rollIndex++
+    ){
 
-                            rollCount,
+        let markRollRevealStarted;
 
-                            showCooldown:
-                                rollIndex ===
-                                rollCount - 1
-                        }
+        const rollRevealStarted =
+            new Promise(resolve => {
+                markRollRevealStarted =
+                    resolve;
+            });
+
+
+        const rollPromise =
+            execute(
+                message,
+                {
+                    skipCooldown: true,
+                    labelRollReveal: true,
+                    skipLevelSync: true,
+                    rollRevealWait:
+                        options.rollRevealWait,
+
+                    // Calculation remains concurrent, but each loader waits
+                    // only until the previous numbered loader was created.
+                    previousRollRevealStarted,
+                    markRollRevealStarted,
+
+                    // Only Roll 1 receives the pending one-roll troll.
+                    trollRollEffect:
+                        rollIndex === 0
+                            ? batchTrollRollEffect
+                            : null,
+
+                    rollAccess: {
+                        ...rollAccess,
+
+                        rollNumber:
+                            rollIndex + 1,
+
+                        rollCount,
+
+                        showCooldown:
+                            rollIndex ===
+                            rollCount - 1
                     }
-                )
+                }
+            )
+            .finally(
+                // Never leave later rolls waiting if this child errors before
+                // it reaches its loading-animation branch.
+                markRollRevealStarted
+            );
+
+
+        rollPromises.push(
+            rollPromise
         );
+
+        previousRollRevealStarted =
+            rollRevealStarted;
+
+    }
 
 
     await Promise.all(
@@ -2456,12 +2539,17 @@ if(bonusPercentRange){
 }
 
 
-// Every roll in a Multi Roll receives its own loading message—even a small
-// or negative result—so all X "Rolling..." animations can be visible at once.
-if(
-    rolledXP > 25000
-    || options.forceRollReveal
-){
+// Loading begins only for a real 25,000+ XP result. Multi Roll calculations
+// remain concurrent, while loader creation is coordinated by roll number.
+const shouldPlayRollReveal =
+    rolledXP >= 25000;
+
+
+if(shouldPlayRollReveal){
+
+    if(options.previousRollRevealStarted){
+        await options.previousRollRevealStarted;
+    }
 
     const revealRollNumber =
         Math.max(
@@ -2482,30 +2570,35 @@ if(
 
 
     const rollRevealLabel =
-        options.forceRollReveal
+        options.labelRollReveal
             ? `**[${revealRollNumber}/${revealRollCount}]**`
             : "";
 
 
-    // 25,001 selects the basic roll animation without changing the actual
-    // result. The real rolledXP is still used for every payout and message.
-    const revealXP =
-        options.forceRollReveal
-            ? Math.max(
-                25001,
-                Number(rolledXP) || 0
-            )
-            : rolledXP;
-
     await playRollReveal(
         message,
-        revealXP,
+        rolledXP,
         options.rollRevealWait,
         {
             rollLabel:
-                rollRevealLabel
+                rollRevealLabel,
+
+            onStarted:
+                options.markRollRevealStarted
         }
     );
+
+}
+else if(options.markRollRevealStarted){
+
+    // This numbered result has no loader. It still keeps its place in the
+    // sequence before releasing the next numbered roll.
+    if(options.previousRollRevealStarted){
+        await options.previousRollRevealStarted;
+    }
+
+
+    options.markRollRevealStarted();
 
 }
 
