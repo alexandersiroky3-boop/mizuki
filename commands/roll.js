@@ -2082,6 +2082,21 @@ function sendRollCooldownReply(
 }
 
 
+function sendRollInProgressReply(message){
+
+    return message.reply({
+        content:
+            "🎲 **Your roll is still loading... Wait for every roll to finish before using `!roll` again.**",
+
+        allowedMentions: {
+            repliedUser: false,
+            parse: []
+        }
+    });
+
+}
+
+
 async function syncRollLevel(
     message,
     userID
@@ -2107,7 +2122,160 @@ async function syncRollLevel(
 }
 
 
+async function finishOwnedRollCooldown(
+    message,
+    options,
+    rollAccess
+){
+
+    if(!options.ownsRollCooldown){
+        return rollAccess;
+    }
+
+
+    const state =
+        options.rollCooldownState || {};
+
+
+    if(state.finalized){
+        return rollAccess;
+    }
+
+
+    const result =
+        await quests.finishRollCooldown(
+            message.guild.id,
+            message.author.id,
+            rollAccess.rollLockToken
+        );
+
+
+    if(!result?.finished){
+        throw new Error(
+            "The active !roll lock could not be finalized."
+        );
+    }
+
+
+    state.finalized =
+        true;
+
+    rollAccess.inProgress =
+        false;
+
+    rollAccess.cooldownEndsAt =
+        Number(result.cooldownEndsAt) || 0;
+
+    rollAccess.remaining =
+        Number(result.remaining) ||
+        ROLL_COOLDOWN_MS;
+
+
+    return rollAccess;
+
+}
+
+
 async function execute(message, options = {}){
+
+    if(!message.guild){
+        return;
+    }
+
+
+    // Recursive Multi Roll children already own a validated access object.
+    if(options.rollAccess){
+        return executeWithRollAccess(
+            message,
+            options
+        );
+    }
+
+
+    const rollAccess =
+        await quests.useRollCooldown(
+            message.guild.id,
+            message.author.id,
+            ROLL_COOLDOWN_MS
+        );
+
+
+    if(!rollAccess.allowed){
+
+        if(rollAccess.inProgress){
+            return sendRollInProgressReply(
+                message
+            );
+        }
+
+
+        const seconds =
+            getDisplayedCooldownSeconds(
+                rollAccess.remaining
+            );
+
+
+        return sendRollCooldownReply(
+            message,
+            rollAccess,
+            buildRollCountdownLine(
+                seconds
+            )
+        );
+
+    }
+
+
+    const rollCooldownState = {
+        finalized: false
+    };
+
+
+    const ownedOptions = {
+        ...options,
+        rollAccess,
+        ownsRollCooldown: true,
+        rollCooldownState
+    };
+
+
+    try{
+
+        return await executeWithRollAccess(
+            message,
+            ownedOptions
+        );
+
+    }
+    catch(error){
+
+        // Even a failed roll must release its loading lock. The normal
+        // 30-second cooldown begins here only after the execution has stopped.
+        if(!rollCooldownState.finalized){
+            try{
+                await finishOwnedRollCooldown(
+                    message,
+                    ownedOptions,
+                    rollAccess
+                );
+            }
+            catch(finalizeError){
+                console.error(
+                    "Failed to finalize !roll cooldown after an error:",
+                    finalizeError
+                );
+            }
+        }
+
+
+        throw error;
+
+    }
+
+}
+
+
+async function executeWithRollAccess(message, options = {}){
 
 
     if(!message.guild)
@@ -2147,50 +2315,8 @@ async function execute(message, options = {}){
         );
 
 
-    // Luck changes the roll odds, never the wait between rolls.
-    // Every normal or Multi Roll batch uses exactly 30 seconds.
-    const currentRollCooldown =
-        ROLL_COOLDOWN_MS;
-
-
-
-    // ======================
-    // Cooldown
-    // ======================
-
 const rollAccess =
-    options.rollAccess
-    ||
-    await quests.useRollCooldown(
-        message.guild.id,
-        message.author.id,
-        currentRollCooldown
-    );
-
-
-if(!rollAccess.allowed){
-
-
-    const seconds =
-        getDisplayedCooldownSeconds(
-            rollAccess.remaining
-        );
-
-
-    const messageText =
-        buildRollCountdownLine(
-            seconds
-        );
-
-
-    return sendRollCooldownReply(
-        message,
-        rollAccess,
-        messageText
-    );
-
-
-}
+    options.rollAccess;
 
 
 // ======================
@@ -2206,7 +2332,8 @@ if(!rollAccess.allowed){
 // - its own quest progress
 // - its own threshold-based story bonus
 //
-// The cooldown was already consumed once above.
+// The batch owns one in-progress lock. Its 30-second cooldown is not started
+// until every concurrent child has completely finished.
 if(
     (
         rollAccess.multiRoll
@@ -2263,6 +2390,7 @@ if(
                     skipCooldown: true,
                     labelRollReveal: true,
                     skipLevelSync: true,
+                    deferRollResult: true,
                     rollRevealWait:
                         options.rollRevealWait,
 
@@ -2308,9 +2436,30 @@ if(
     }
 
 
-    await Promise.all(
-        rollPromises
-    );
+    // Wait for every child even if one fails, so the loading lock can never
+    // end while another roll animation from this same batch is still active.
+    const settledRolls =
+        await Promise.allSettled(
+            rollPromises
+        );
+
+
+    const failedRoll =
+        settledRolls.find(
+            result =>
+                result.status === "rejected"
+        );
+
+
+    if(failedRoll){
+        throw failedRoll.reason;
+    }
+
+
+    const rollResults =
+        settledRolls.map(
+            result => result.value
+        );
 
 
     // Concurrent children defer level synchronization so one batch cannot
@@ -2336,7 +2485,44 @@ if(
     }
 
 
-    return;
+    // Every loader and payout is complete now. Start the real 30-second
+    // cooldown, then publish the deferred results in roll-number order.
+    await finishOwnedRollCooldown(
+        message,
+        options,
+        rollAccess
+    );
+
+
+    let lastSentResult =
+        null;
+
+
+    for(const result of rollResults){
+
+        if(!result?.deferredRollResult){
+            continue;
+        }
+
+
+        result.rollAccess.cooldownEndsAt =
+            rollAccess.cooldownEndsAt;
+
+        result.rollAccess.remaining =
+            rollAccess.remaining;
+
+
+        lastSentResult =
+            await sendRollResultMessage(
+                message,
+                result.rollAccess,
+                result.content
+            );
+
+    }
+
+
+    return lastSentResult;
 
 }
 
@@ -2847,6 +3033,23 @@ if(rolledXP > 0){
         });
 
 
+    if(options.deferRollResult){
+        return {
+            deferredRollResult: true,
+            rollAccess,
+            content:
+                positiveDialogue
+        };
+    }
+
+
+    await finishOwnedRollCooldown(
+        message,
+        options,
+        rollAccess
+    );
+
+
     return sendRollResultMessage(
         message,
         rollAccess,
@@ -2862,10 +3065,31 @@ const rollEmojis =
     );
 
 
+const negativeDialogue =
+    `${rollEmojis.roll} ${message.author} rolled **${rolledXP.toLocaleString()} XP!** Better luck next time... 💀${rollCooldownExtra}${rollContextExtras}${rollGuaranteeFooter}`;
+
+
+if(options.deferRollResult){
+    return {
+        deferredRollResult: true,
+        rollAccess,
+        content:
+            negativeDialogue
+    };
+}
+
+
+await finishOwnedRollCooldown(
+    message,
+    options,
+    rollAccess
+);
+
+
 return sendRollResultMessage(
     message,
     rollAccess,
-    `${rollEmojis.roll} ${message.author} rolled **${rolledXP.toLocaleString()} XP!** Better luck next time... 💀${rollCooldownExtra}${rollContextExtras}${rollGuaranteeFooter}`
+    negativeDialogue
 );
 
 
