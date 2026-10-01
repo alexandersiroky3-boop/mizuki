@@ -422,6 +422,7 @@ async function dispatchPrefixCommand(
 
     const patternRoutes = [
         ["!resetmonthlyrank", /^!resetmonthlyrank(?:\s|$)/i, rankCommand, "resetMonthlyRank"],
+        ["!resetezwin", /^!resetezwin(?:\s|$)/i, ezwinCommand, "resetEZWin"],
         ["!setupgrade", /^!setupgrade(?:\s|$)/i, setUpgradeCommand],
         ["!merchant", /^!merchant(?:\s|$)/i, merchantCommand],
         ["!permaban", /^!permaban(?:\s|$)/i, permabanCommand],
@@ -1988,7 +1989,7 @@ if(result.critical){
 
         message.reply(
 
-            `${criticalEmojis.text} **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `${criticalEmojis.text} **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
 
         ).catch(() => {});
 
@@ -2010,7 +2011,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
 
     ).catch(() => {});
 
