@@ -681,8 +681,16 @@ const LEVEL_CHANNEL_ID =
 async function syncLevelAndAnnounce(
     client,
     guildID,
-    userID
+    userID,
+    options = {}
 ){
+
+
+    const announceLevelUps =
+        options?.announceLevelUps !== false;
+
+    const allowLevelIncrease =
+        options?.allowLevelIncrease !== false;
 
 
     const user =
@@ -707,10 +715,22 @@ async function syncLevelAndAnnounce(
         Number(user.level) || 1;
 
 
-    const newLevel =
+    const calculatedLevel =
         xp.getLevel(
             Number(user.xp) || 0
         );
+
+
+    // Loss-only operations such as !ezwin must be allowed to lower a level,
+    // but they must never repair a stale profile upward and make that loss
+    // look like a level-up. The next genuine XP gain can perform that repair.
+    const newLevel =
+        allowLevelIncrease
+            ? calculatedLevel
+            : Math.min(
+                oldLevel,
+                calculatedLevel
+            );
 
 
     // Update the stored level even if it went down.
@@ -736,7 +756,11 @@ async function syncLevelAndAnnounce(
 
 
     // Only announce actual level-ups.
-    if(newLevel > oldLevel){
+    if(
+        announceLevelUps
+        &&
+        newLevel > oldLevel
+    ){
 
 
         const levelChannel =
