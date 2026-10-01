@@ -9,6 +9,10 @@ const economyLimits =
     require("../utils/economyLimits");
 
 
+const OWNER_ID =
+    "1239975819112353969";
+
+
 // ======================
 // SETTINGS
 // ======================
@@ -668,20 +672,41 @@ ${rewardEnding}`;
 async function syncEZWinLevels(
     client,
     guildID,
-    userIDs
+    userIDs,
+    winnerUserID = null
 ){
 
     const failures = [];
+
+    const normalizedWinnerUserID =
+        winnerUserID == null
+            ? null
+            : String(winnerUserID);
 
 
     for(const affectedUserID of userIDs){
 
         try{
 
+            const isWinner =
+                normalizedWinnerUserID == null
+                ||
+                String(affectedUserID) ===
+                    normalizedWinnerUserID;
+
             await leveling.syncLevelAndAnnounce(
                 client,
                 guildID,
-                affectedUserID
+                affectedUserID,
+                isWinner
+                    ? undefined
+                    : {
+                        // Every non-winner lost XP. Never let stale stored
+                        // level data turn that loss into a level increase or
+                        // a public level-up announcement.
+                        announceLevelUps: false,
+                        allowLevelIncrease: false
+                    }
             );
 
         }
@@ -708,6 +733,109 @@ async function syncEZWinLevels(
 
 
     return failures;
+
+}
+
+
+function resolveEZWinResetTarget(
+    message
+){
+
+    const parts =
+        String(message.content || "")
+            .trim()
+            .split(/\s+/);
+
+
+    if(parts.length !== 2){
+        return null;
+    }
+
+
+    const targetArgument =
+        parts[1];
+
+
+    if(
+        targetArgument.toLowerCase() ===
+            "me"
+    ){
+        return String(message.author.id);
+    }
+
+
+    const mentionMatch =
+        targetArgument.match(
+            /^<@!?(\d+)>$/
+        );
+
+
+    return mentionMatch
+        ? mentionMatch[1]
+        : null;
+
+}
+
+
+async function resetEZWin(message){
+
+    if(!message.guild){
+        return;
+    }
+
+
+    if(
+        String(message.author.id) !==
+            OWNER_ID
+    ){
+
+        return message.reply({
+            content:
+                "🚫 Only the bot owner can reset the **!ezwin** cooldown.",
+            allowedMentions: {
+                parse: [],
+                repliedUser: false
+            }
+        });
+
+    }
+
+
+    const targetUserID =
+        resolveEZWinResetTarget(
+            message
+        );
+
+
+    if(!targetUserID){
+
+        return message.reply({
+            content:
+                "Use `!resetezwin me` or `!resetezwin @user`.",
+            allowedMentions: {
+                parse: [],
+                repliedUser: false
+            }
+        });
+
+    }
+
+
+    await database.clearCommandCooldown(
+        message.guild.id,
+        targetUserID,
+        "ezwin"
+    );
+
+
+    return message.reply({
+        content:
+            `✅ Reset the **!ezwin** cooldown for <@${targetUserID}>. Their XP and rewards were not changed.`,
+        allowedMentions: {
+            parse: [],
+            repliedUser: false
+        }
+    });
 
 }
 
@@ -939,7 +1067,9 @@ async function execute(message){
     await syncEZWinLevels(
         message.client,
         guildID,
-        changedUserIDs
+        changedUserIDs,
+        transactionResult?.winnerUserID
+            || userID
     );
 
 
@@ -985,7 +1115,9 @@ async function execute(message){
 module.exports = {
 
     execute,
+    resetEZWin,
     COOLDOWN,
+    OWNER_ID,
     LEVEL1_TO99_EZWIN_RANGES,
     LEVEL1_TO99_EZWIN_OUTCOMES,
     LEVEL100_PLUS_EZWIN_RANGES,
@@ -1003,6 +1135,7 @@ module.exports = {
     getLevel1To99EZWinRanges,
     getLevel100PlusEZWinRanges,
     syncEZWinLevels,
+    resolveEZWinResetTarget,
     getCustomEmoji,
     getEZWinEmojis,
     splitLongMessage,
