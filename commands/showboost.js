@@ -14,6 +14,7 @@ const database = require("../database");
 const boosts = require("../systems/boosts");
 const leveling = require("../systems/leveling");
 const powerRunes = require("../systems/powerRunes");
+const chests = require("../systems/chests");
 const luck = require("../utils/luck");
 
 
@@ -181,9 +182,24 @@ function buildPowerRuneInventoryLines(inventory){
 }
 
 
+function buildChestInventoryLines(inventory, guild){
+
+    return [
+        "bronze",
+        "gilded",
+        "boss"
+    ].map(tier =>
+        `${chests.getChestEmoji(guild, tier)} **${chests.CHEST_NAMES[tier]}** — ` +
+        `**x${getInventoryAmount(inventory, "chest", tier).toLocaleString()}**`
+    );
+
+}
+
+
 function buildButtons(
     inventory,
-    disabled = false
+    disabled = false,
+    guild = null
 ){
 
     const xpRow =
@@ -304,10 +320,56 @@ function buildButtons(
     }
 
 
+    const chestRow =
+        new ActionRowBuilder();
+
+
+    for(const tier of ["bronze", "gilded", "boss"]){
+
+        const amount =
+            getInventoryAmount(
+                inventory,
+                "chest",
+                tier
+            );
+
+        const button =
+            new ButtonBuilder()
+                .setCustomId(`open_chest_${tier}`)
+                .setLabel(
+                    `Open ${chests.CHEST_NAMES[tier]} (x${amount.toLocaleString()})`
+                )
+                .setStyle(
+                    tier === "boss"
+                        ? ButtonStyle.Danger
+                        : tier === "gilded"
+                            ? ButtonStyle.Success
+                            : ButtonStyle.Secondary
+                )
+                .setDisabled(
+                    disabled || amount <= 0
+                );
+
+        const emoji =
+            guild?.emojis?.cache?.find?.(
+                entry =>
+                    entry.name === `${tier}_chest`
+            );
+
+        if(emoji){
+            button.setEmoji(emoji.id);
+        }
+
+        chestRow.addComponents(button);
+
+    }
+
+
     return [
         xpRow,
         luckRow,
-        powerRuneRow
+        powerRuneRow,
+        chestRow
     ];
 
 }
@@ -363,7 +425,10 @@ async function buildBoostPanel(
         `${buildLuckInventoryLines(inventory).join("\n")}\n\n` +
         "**🔷 Power Runes**\n" +
         "*Chat-only drops • Click a Rune below and enter how many to use*\n" +
-        `${buildPowerRuneInventoryLines(inventory).join("\n")}` +
+        `${buildPowerRuneInventoryLines(inventory).join("\n")}\n\n` +
+        "**🎁 Chests**\n" +
+        "*Bronze and Gilded Chests can drop from !roll. Boss Chests come from raids and completed challenges.*\n" +
+        `${buildChestInventoryLines(inventory, member.guild).join("\n")}` +
         (notice ? `\n\n${notice}` : "");
 
 
@@ -386,7 +451,7 @@ async function buildBoostPanel(
                 text:
                     disabled
                         ? "Panel expired • Run !boost to open it again"
-                        : "Choose a boost or Power Rune below • Only you can use these buttons"
+                        : "Activate a boost or Rune, or open a chest below • Only you can use these buttons"
             });
 
 
@@ -397,7 +462,8 @@ async function buildBoostPanel(
         components:
             buildButtons(
                 inventory,
-                disabled
+                disabled,
+                member.guild
             ),
         allowedMentions: {
             parse: []
@@ -745,6 +811,65 @@ async function execute(message){
         }
 
 
+        const chestMatch =
+            /^open_chest_(bronze|gilded|boss)$/
+                .exec(interaction.customId);
+
+
+        if(chestMatch){
+
+            const tier = chestMatch[1];
+
+            await interaction.deferUpdate();
+
+            const result =
+                await chests.openChest(
+                    message.guild.id,
+                    message.author.id,
+                    tier
+                );
+
+            if(!result.success){
+                await interaction.followUp({
+                    content:
+                        `❌ You do not have a ${chests.CHEST_NAMES[tier]} to open.`,
+                    flags: MessageFlags.Ephemeral
+                }).catch(() => {});
+
+                await interaction.editReply(
+                    await buildBoostPanel(
+                        message.member,
+                        false,
+                        lastNotice
+                    )
+                ).catch(() => {});
+                return;
+            }
+
+            await leveling.syncLevelAndAnnounce(
+                message.client,
+                message.guild.id,
+                message.author.id
+            ).catch(() => {});
+
+            lastNotice =
+                `${chests.getChestEmoji(message.guild, tier)} **${chests.CHEST_NAMES[tier]} opened!**\n` +
+                `You received ${result.reward.text}. ` +
+                `Remaining: **x${Number(result.remaining).toLocaleString()}**.`;
+
+            await interaction.editReply(
+                await buildBoostPanel(
+                    message.member,
+                    false,
+                    lastNotice
+                )
+            );
+
+            return;
+
+        }
+
+
         const match =
             /^activate_(xp|luck)_(tier1|tier2|tier3|max|infinity|omega)$/
                 .exec(
@@ -831,7 +956,7 @@ async function execute(message){
 
             const errorReply = {
                 content:
-                    "The boost panel hit a temporary error. Your inventory was protected; run `!boost` again to refresh it.",
+                    "The boost panel hit a temporary error. Run `!boost` again to refresh and verify your inventory before trying again.",
                 flags:
                     MessageFlags.Ephemeral
             };
