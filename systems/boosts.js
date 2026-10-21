@@ -1459,6 +1459,74 @@ async function restoreBoosts(client){
 }
 
 
+async function tryOmegaDropFromBoostUpgrade(
+    message,
+    commandName,
+    random = Math.random
+){
+
+    if(!message?.guild || !message?.author){
+        return null;
+    }
+
+    const normalizedCommand =
+        String(commandName || "")
+            .trim()
+            .toLowerCase();
+
+    if(
+        normalizedCommand === "!roll"
+        || normalizedCommand === "roll"
+        || normalizedCommand === "!coinflip"
+        || normalizedCommand === "coinflip"
+    ){
+        return null;
+    }
+
+    const effects =
+        await database.getUserUpgradeEffects(
+            message.guild.id,
+            message.author.id
+        );
+
+    const chancePercent =
+        Math.max(
+            0,
+            Number(
+                effects.boostOmegaCommandDropChance
+            ) || 0
+        );
+
+    if(
+        chancePercent <= 0
+        || (Number(random()) || 0) * 100 >= chancePercent
+    ){
+        return null;
+    }
+
+    const amount =
+        await database.addBoostInventory(
+            message.guild.id,
+            message.author.id,
+            "luck",
+            "omega",
+            1
+        );
+
+    const text =
+        "👁️‍🗨️ **Boosts Upgrade 4 dropped 1x <@&1535700310402670592>!** " +
+        `Inventory: **x${Number(amount).toLocaleString()}**.`;
+
+    await message.channel.send({
+        content: text,
+        allowedMentions: {parse: []}
+    }).catch(() => null);
+
+    return {tier: "omega", amount, text};
+
+}
+
+
 
 module.exports = {
 
@@ -1500,6 +1568,8 @@ module.exports = {
 
     removeBoostRoles,
 
-    restoreBoosts
+    restoreBoosts,
+
+    tryOmegaDropFromBoostUpgrade
 
 };
