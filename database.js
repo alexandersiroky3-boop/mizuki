@@ -191,7 +191,7 @@ const SHOP_CATALOG = {
         key: "xp:tier1",
         boostType: "xp",
         tier: "tier1",
-        price: 29999,
+        price: 74999,
         maxStock: 5
     },
 
@@ -199,7 +199,7 @@ const SHOP_CATALOG = {
         key: "xp:tier2",
         boostType: "xp",
         tier: "tier2",
-        price: 79999,
+        price: 249999,
         maxStock: 3
     },
 
@@ -207,7 +207,7 @@ const SHOP_CATALOG = {
         key: "xp:max",
         boostType: "xp",
         tier: "max",
-        price: 999999,
+        price: 3999999,
         maxStock: 2
     },
 
@@ -215,7 +215,7 @@ const SHOP_CATALOG = {
         key: "luck:tier1",
         boostType: "luck",
         tier: "tier1",
-        price: 19999,
+        price: 49999,
         maxStock: 15
     },
 
@@ -223,7 +223,7 @@ const SHOP_CATALOG = {
         key: "luck:tier2",
         boostType: "luck",
         tier: "tier2",
-        price: 99999,
+        price: 249999,
         maxStock: 15
     },
 
@@ -231,7 +231,7 @@ const SHOP_CATALOG = {
         key: "luck:tier3",
         boostType: "luck",
         tier: "tier3",
-        price: 999999,
+        price: 4999999,
         maxStock: 5
     },
 
@@ -239,7 +239,7 @@ const SHOP_CATALOG = {
         key: "luck:max",
         boostType: "luck",
         tier: "max",
-        price: 2499999,
+        price: 19999999,
         maxStock: 2
     }
 
@@ -251,45 +251,52 @@ const SHOP_CATALOG = {
 const SHOP_PRICE_OPTIONS = {
 
     "xp:tier1": [
-        29999,
-        49999,
-        74499
+        74999,
+        149999,
+        249999,
+        399999
     ],
 
     "xp:tier2": [
-        79999,
-        119999,
-        144999
+        249999,
+        499999,
+        749999,
+        1249999
     ],
 
     "xp:max": [
-        999999,
-        1499999,
-        2499999
+        3999999,
+        6999999,
+        9999999,
+        14999999
     ],
 
     "luck:tier1": [
-        19999,
-        34999,
-        69999
+        49999,
+        99999,
+        199999,
+        349999
     ],
 
     "luck:tier2": [
-        99999,
-        124999,
-        249999
+        249999,
+        499999,
+        999999,
+        1499999
     ],
 
     "luck:tier3": [
-        999999,
-        1999999,
-        4999999
+        4999999,
+        7499999,
+        11999999,
+        14999999
     ],
 
     "luck:max": [
-        2499999,
-        7499999,
-        12499999
+        19999999,
+        24999999,
+        37499999,
+        49999999
     ]
 
 };
@@ -563,6 +570,7 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
     {
         id: "buy_omega_with_xp",
         name: "Experience-for-Omega Exchange",
+        appearanceChance: 0.05,
         stockOptions: [3],
         variants: [
             {
@@ -821,6 +829,7 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
     {
         id: "buy_xp_infinity_with_xp",
         name: "Experience-for-Infinity Exchange",
+        appearanceChance: 0.05,
         stockOptions: [1, 2],
         variants: [
             {
@@ -1218,15 +1227,37 @@ function createTravelingMerchantDeals(
     random = Math.random
 ){
 
-    const shuffled =
-        [
-            ...TRAVELING_MERCHANT_DEAL_TEMPLATES
-        ];
+    const rolledSpecials = [];
+    const regularTemplates = [];
+
+
+    for(const template of TRAVELING_MERCHANT_DEAL_TEMPLATES){
+
+        if(template.appearanceChance == null){
+            regularTemplates.push(template);
+            continue;
+        }
+
+
+        if(
+            safeMerchantRandom(random) <
+            Math.max(
+                0,
+                Math.min(
+                    1,
+                    Number(template.appearanceChance) || 0
+                )
+            )
+        ){
+            rolledSpecials.push(template);
+        }
+
+    }
 
 
     for(
         let index =
-            shuffled.length - 1;
+            regularTemplates.length - 1;
         index > 0;
         index--
     ){
@@ -1237,6 +1268,45 @@ function createTravelingMerchantDeals(
                 (index + 1)
             );
 
+
+        [
+            regularTemplates[index],
+            regularTemplates[swapIndex]
+        ] = [
+            regularTemplates[swapIndex],
+            regularTemplates[index]
+        ];
+
+    }
+
+
+    // Special direct-XP exchanges reserve a slot when their independent roll
+    // succeeds. Their final appearance chance is therefore exactly 5%, rather
+    // than 5% followed by another six-of-many selection roll.
+    const shuffled = [
+        ...rolledSpecials,
+        ...regularTemplates.slice(
+            0,
+            Math.max(
+                0,
+                TRAVELING_MERCHANT_DEALS_PER_VISIT
+                - rolledSpecials.length
+            )
+        )
+    ];
+
+
+    for(
+        let index = shuffled.length - 1;
+        index > 0;
+        index--
+    ){
+
+        const swapIndex =
+            Math.floor(
+                safeMerchantRandom(random) *
+                (index + 1)
+            );
 
         [
             shuffled[index],
@@ -2489,6 +2559,322 @@ await db.query(`
 `);
 
 
+// =====================================================
+// GLOBAL RAID BOSSES
+// =====================================================
+// One active boss is stored per guild. Runtime combat is serialized by the
+// boss system, while PostgreSQL keeps the raid alive across bot restarts.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS raid_boss_state (
+
+        guildID TEXT PRIMARY KEY,
+
+        bossKey TEXT NOT NULL,
+
+        currentHP BIGINT NOT NULL,
+
+        maxHP BIGINT NOT NULL,
+
+        overall BIGINT NOT NULL,
+
+        spawnedAt BIGINT NOT NULL,
+
+        expiresAt BIGINT NOT NULL,
+
+        stateData JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+        updatedAt BIGINT NOT NULL
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    raid_boss_expiry_idx
+
+    ON raid_boss_state(
+        expiresAt
+    )
+
+`);
+
+
+// Recent distinct chat-XP earners are used to enforce the minimum two-user
+// server-activity requirement before a boss spawn can be rolled.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS raid_boss_activity (
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        lastEarnedAt BIGINT NOT NULL,
+
+        PRIMARY KEY(
+            guildID,
+            userID
+        )
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    raid_boss_activity_recent_idx
+
+    ON raid_boss_activity(
+        guildID,
+        lastEarnedAt
+    )
+
+`);
+
+
+// Contributions are retained after a boss disappears so the reward system
+// can be added later without losing who actually fought in these first raids.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS raid_boss_contributions (
+
+        guildID TEXT NOT NULL,
+
+        spawnedAt BIGINT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        damage BIGINT NOT NULL DEFAULT 0,
+
+        hits INTEGER NOT NULL DEFAULT 0,
+
+        lastHitAt BIGINT NOT NULL,
+
+        PRIMARY KEY(
+            guildID,
+            spawnedAt,
+            userID
+        )
+
+    )
+
+`);
+
+
+// Raid rewards are claimed once per contributor. Keeping this in PostgreSQL
+// makes a defeat safe even if Discord retries a message/interaction handler.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS raid_boss_reward_claims (
+
+        guildID TEXT NOT NULL,
+
+        spawnedAt BIGINT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        claimedAt BIGINT NOT NULL,
+
+        PRIMARY KEY(
+            guildID,
+            spawnedAt,
+            userID
+        )
+
+    )
+
+`);
+
+
+// Personal boss challenges keep their route progress after restarts. Only one
+// private five-minute fight can be active for a user at a time.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS boss_challenge_progress (
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        challengeKey TEXT NOT NULL,
+
+        stageIndex INTEGER NOT NULL DEFAULT 0,
+
+        completions INTEGER NOT NULL DEFAULT 0,
+
+        active BOOLEAN NOT NULL DEFAULT FALSE,
+
+        updatedAt BIGINT NOT NULL DEFAULT 0,
+
+        PRIMARY KEY(
+            guildID,
+            userID,
+            challengeKey
+        )
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS boss_challenge_battles (
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        challengeKey TEXT NOT NULL,
+
+        stageIndex INTEGER NOT NULL,
+
+        bossScope TEXT NOT NULL UNIQUE,
+
+        channelID TEXT NOT NULL UNIQUE,
+
+        messageID TEXT,
+
+        spawnedAt BIGINT NOT NULL,
+
+        expiresAt BIGINT NOT NULL,
+
+        PRIMARY KEY(
+            guildID,
+            userID
+        )
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    boss_challenge_battles_expiry_idx
+
+    ON boss_challenge_battles(
+        expiresAt
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS boss_entitlements (
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        fightUnlocked BOOLEAN NOT NULL DEFAULT FALSE,
+
+        freeUpgradeTokens INTEGER NOT NULL DEFAULT 0,
+
+        blessUnlocked BOOLEAN NOT NULL DEFAULT FALSE,
+
+        spawnBossUses INTEGER NOT NULL DEFAULT 0,
+
+        coinflipUnlocked BOOLEAN NOT NULL DEFAULT FALSE,
+
+        updatedAt BIGINT NOT NULL DEFAULT 0,
+
+        PRIMARY KEY(
+            guildID,
+            userID
+        )
+
+    )
+
+`);
+
+
+await db.query(`
+
+    ALTER TABLE boss_entitlements
+
+    ADD COLUMN IF NOT EXISTS blessUnlocked BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS spawnBossUses INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS coinflipUnlocked BOOLEAN NOT NULL DEFAULT FALSE
+
+`);
+
+
+// Boss Shards are a separate permanent currency. Chest inventory itself is
+// stored in boost_inventory with boostType='chest', keeping every inventory
+// mutation under the same row-locking rules as Boosts and Power Runes.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS boss_currency (
+
+        guildID TEXT NOT NULL,
+
+        userID TEXT NOT NULL,
+
+        shards BIGINT NOT NULL DEFAULT 0
+            CHECK(shards >= 0),
+
+        updatedAt BIGINT NOT NULL DEFAULT 0,
+
+        PRIMARY KEY(guildID,userID)
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS guild_blessings (
+
+        guildID TEXT PRIMARY KEY,
+
+        activatedBy TEXT NOT NULL,
+
+        luckMultiplier NUMERIC NOT NULL DEFAULT 1,
+
+        chatXPMultiplier NUMERIC NOT NULL DEFAULT 1,
+
+        startedAt BIGINT NOT NULL,
+
+        expiresAt BIGINT NOT NULL,
+
+        updatedAt BIGINT NOT NULL
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS boss_shop_state (
+
+        guildID TEXT PRIMARY KEY,
+
+        openedAt BIGINT NOT NULL,
+
+        expiresAt BIGINT NOT NULL,
+
+        refreshAt BIGINT NOT NULL,
+
+        stock JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+        updatedAt BIGINT NOT NULL
+
+    )
+
+`);
+
+
 await db.query(`
 
     CREATE TABLE IF NOT EXISTS xp_logs (
@@ -3371,13 +3757,25 @@ await db.query(`
 
         guaranteed25m INTEGER NOT NULL DEFAULT 0,
 
+        guaranteed100m INTEGER NOT NULL DEFAULT 0,
+
         nextRollBurst10 INTEGER NOT NULL DEFAULT 0,
 
         nextRollBurst20 INTEGER NOT NULL DEFAULT 0,
 
+        nextRollBurst25 INTEGER NOT NULL DEFAULT 0,
+
+        nextRollBurst35 INTEGER NOT NULL DEFAULT 0,
+
         nextRollBurst50 INTEGER NOT NULL DEFAULT 0,
 
+        nextRollBurst100 INTEGER NOT NULL DEFAULT 0,
+
         nextRollBurst200 INTEGER NOT NULL DEFAULT 0,
+
+        nextRollRepeatUses INTEGER NOT NULL DEFAULT 0,
+
+        nextRollRepeatCount INTEGER NOT NULL DEFAULT 1,
 
         tripleRollUntil BIGINT NOT NULL DEFAULT 0,
 
@@ -3397,6 +3795,8 @@ await db.query(`
 
         chatXP1m75Until BIGINT NOT NULL DEFAULT 0,
 
+        chatXP1m8Until BIGINT NOT NULL DEFAULT 0,
+
         chatXP1m3Until BIGINT NOT NULL DEFAULT 0,
 
         chatXP1m6Until BIGINT NOT NULL DEFAULT 0,
@@ -3406,6 +3806,8 @@ await db.query(`
         chatXP2Until BIGINT NOT NULL DEFAULT 0,
 
         chatXP3Until BIGINT NOT NULL DEFAULT 0,
+
+        chatXP4Until BIGINT NOT NULL DEFAULT 0,
 
         chatXP5Until BIGINT NOT NULL DEFAULT 0,
 
@@ -3424,6 +3826,8 @@ await db.query(`
 
         shopDiscount50Until BIGINT NOT NULL DEFAULT 0,
 
+        shopDiscount25Until BIGINT NOT NULL DEFAULT 0,
+
         shopDiscount30Until BIGINT NOT NULL DEFAULT 0,
 
         shopDiscount60Until BIGINT NOT NULL DEFAULT 0,
@@ -3432,13 +3836,41 @@ await db.query(`
 
         shopDiscount90Until BIGINT NOT NULL DEFAULT 0,
 
+        shopFreePurchases INTEGER NOT NULL DEFAULT 0,
+
         guaranteedCriticalsRemaining INTEGER NOT NULL DEFAULT 0,
 
+        countedChatMessagesRemaining INTEGER NOT NULL DEFAULT 0,
+
+        countedChatXPMultiplier INTEGER NOT NULL DEFAULT 1,
+
         socialTripleUntil BIGINT NOT NULL DEFAULT 0,
+
+        socialRepeatUntil BIGINT NOT NULL DEFAULT 0,
+
+        socialRepeatCount INTEGER NOT NULL DEFAULT 1,
+
+        socialRepeatIncludeTroll BOOLEAN NOT NULL DEFAULT TRUE,
 
         hugTripleUntil BIGINT NOT NULL DEFAULT 0,
 
         nextHugTripleUses INTEGER NOT NULL DEFAULT 0,
+
+        nextHugRepeatUses INTEGER NOT NULL DEFAULT 0,
+
+        nextHugRepeatCount INTEGER NOT NULL DEFAULT 1,
+
+        nextKissRepeatUses INTEGER NOT NULL DEFAULT 0,
+
+        nextKissRepeatCount INTEGER NOT NULL DEFAULT 1,
+
+        nextStealRepeatUses INTEGER NOT NULL DEFAULT 0,
+
+        nextStealRepeatCount INTEGER NOT NULL DEFAULT 1,
+
+        nextTrollRepeatUses INTEGER NOT NULL DEFAULT 0,
+
+        nextTrollRepeatCount INTEGER NOT NULL DEFAULT 1,
 
         rollLuck50Until BIGINT NOT NULL DEFAULT 0,
 
@@ -3481,10 +3913,16 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS guaranteed12m5 INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteed15m INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteed25m INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS guaranteed100m INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS nextRollBurst10 INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS nextRollBurst20 INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextRollBurst25 INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextRollBurst35 INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS nextRollBurst50 INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextRollBurst100 INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS nextRollBurst200 INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextRollRepeatUses INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextRollRepeatCount INTEGER NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS multiRollUntil BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS multiRollCount INTEGER NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS rollWindowEndsAt BIGINT NOT NULL DEFAULT 0,
@@ -3493,11 +3931,13 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS chatXP1m2Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP1m4Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP1m75Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP1m8Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP1m3Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP1m6Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP1m9Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP2Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP3Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS chatXP4Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP5Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP7Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP8Until BIGINT NOT NULL DEFAULT 0,
@@ -3506,13 +3946,28 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS chatXP15Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS chatXP20Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS shopDiscount50Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS shopDiscount25Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS shopDiscount30Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS shopDiscount60Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS shopDiscount75Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS shopDiscount90Until BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS shopFreePurchases INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS guaranteedCriticalsRemaining INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS countedChatMessagesRemaining INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS countedChatXPMultiplier INTEGER NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS socialTripleUntil BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS socialRepeatUntil BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS socialRepeatCount INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS socialRepeatIncludeTroll BOOLEAN NOT NULL DEFAULT TRUE,
     ADD COLUMN IF NOT EXISTS nextHugTripleUses INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextHugRepeatUses INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextHugRepeatCount INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS nextKissRepeatUses INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextKissRepeatCount INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS nextStealRepeatUses INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextStealRepeatCount INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS nextTrollRepeatUses INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS nextTrollRepeatCount INTEGER NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS hugTripleUntil BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS rollLuck50Until BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS merchantPermanentChatXPMultiplier INTEGER NOT NULL DEFAULT 1,
@@ -3538,35 +3993,6 @@ await db.query(`
         chatXP20Until = 0
 
     WHERE chatXP20Until > 0
-
-`);
-
-
-// Old quest rules awarded 3x/5x/7x/10x chat XP. Preserve the exact remaining
-// time of those active rewards while capping them at the 2x quest maximum.
-await db.query(`
-
-    UPDATE quest_effects
-
-    SET
-        chatXP2Until =
-            GREATEST(
-                chatXP2Until,
-                chatXP3Until,
-                chatXP5Until,
-                chatXP7Until,
-                chatXP10Until
-            ),
-        chatXP3Until = 0,
-        chatXP5Until = 0,
-        chatXP7Until = 0,
-        chatXP10Until = 0
-
-    WHERE
-        chatXP3Until > 0
-        OR chatXP5Until > 0
-        OR chatXP7Until > 0
-        OR chatXP10Until > 0
 
 `);
 
@@ -4366,6 +4792,47 @@ async function purchaseUserUpgrade(
 
         await client.query(`
 
+            INSERT INTO boss_entitlements(
+                guildID,userID,fightUnlocked,
+                freeUpgradeTokens,updatedAt
+            )
+            VALUES($1,$2,FALSE,0,$3)
+            ON CONFLICT DO NOTHING
+
+        `, [
+            String(guildID),
+            String(userID),
+            Date.now()
+        ]);
+
+
+        const entitlementResult =
+            await client.query(`
+
+                SELECT freeUpgradeTokens AS "freeUpgradeTokens"
+
+                FROM boss_entitlements
+
+                WHERE guildID=$1
+                AND userID=$2
+
+                FOR UPDATE
+
+            `, [
+                String(guildID),
+                String(userID)
+            ]);
+
+
+        const useFreeUpgrade =
+            Number(
+                entitlementResult.rows[0]?.freeUpgradeTokens
+                ?? entitlementResult.rows[0]?.freeupgradetokens
+            ) > 0;
+
+
+        await client.query(`
+
             INSERT INTO user_upgrades(
                 guildID,
                 userID,
@@ -4449,7 +4916,10 @@ async function purchaseUserUpgrade(
             );
 
 
-        if(balance < nextUpgrade.cost.xp){
+        if(
+            !useFreeUpgrade
+            && balance < nextUpgrade.cost.xp
+        ){
 
             await client.query("COMMIT");
 
@@ -4470,7 +4940,11 @@ async function purchaseUserUpgrade(
 
 
         const boostCosts =
-            [...nextUpgrade.cost.boosts]
+            (
+                useFreeUpgrade
+                    ? []
+                    : [...nextUpgrade.cost.boosts]
+            )
                 .sort(
                     (first, second) =>
                         `${first.boostType}:${first.tier}`
@@ -4536,7 +5010,10 @@ async function purchaseUserUpgrade(
         }
 
 
-        if(nextUpgrade.cost.xp > 0){
+        if(
+            !useFreeUpgrade
+            && nextUpgrade.cost.xp > 0
+        ){
 
             await client.query(`
 
@@ -4551,6 +5028,26 @@ async function purchaseUserUpgrade(
                 String(guildID),
                 String(userID),
                 nextUpgrade.cost.xp
+            ]);
+
+        }
+
+
+        if(useFreeUpgrade){
+
+            await client.query(`
+
+                UPDATE boss_entitlements
+                SET
+                    freeUpgradeTokens=
+                        GREATEST(0,freeUpgradeTokens-1),
+                    updatedAt=$3
+                WHERE guildID=$1 AND userID=$2
+
+            `, [
+                String(guildID),
+                String(userID),
+                Date.now()
             ]);
 
         }
@@ -4623,7 +5120,9 @@ async function purchaseUserUpgrade(
 
 
         const remainingBalance =
-            balance - nextUpgrade.cost.xp;
+            useFreeUpgrade
+                ? balance
+                : balance - nextUpgrade.cost.xp;
 
 
         await client.query("COMMIT");
@@ -4643,7 +5142,12 @@ async function purchaseUserUpgrade(
 
         return {
             success: true,
-            status: "purchased",
+            status:
+                useFreeUpgrade
+                    ? "free-upgrade"
+                    : "purchased",
+            usedFreeUpgrade:
+                useFreeUpgrade,
             category,
             level:
                 Number(
@@ -6376,6 +6880,34 @@ await client.query(`
 
 await client.query(`
 
+    DELETE FROM boss_challenge_battles
+    WHERE guildID=$1 AND userID=$2
+
+`, [guildID, userID]);
+
+await client.query(`
+
+    DELETE FROM boss_challenge_progress
+    WHERE guildID=$1 AND userID=$2
+
+`, [guildID, userID]);
+
+await client.query(`
+
+    DELETE FROM boss_entitlements
+    WHERE guildID=$1 AND userID=$2
+
+`, [guildID, userID]);
+
+await client.query(`
+
+    DELETE FROM boss_currency
+    WHERE guildID=$1 AND userID=$2
+
+`, [guildID, userID]);
+
+await client.query(`
+
     DELETE FROM troll_effects
 
     WHERE guildID=$1
@@ -7498,6 +8030,283 @@ async function performMythicHugReward(
 
 
 // =====================================================
+// ATOMIC FIGHT PAYOUT
+// =====================================================
+
+// Applies both sides of a !fight result in one transaction. Positive deltas
+// are recorded for weekly/monthly leaderboards, while losses are clamped at
+// zero and never erase previously earned leaderboard activity.
+async function performFightOutcome(
+    guildID,
+    fighterUserID,
+    targetUserID,
+    fighterDelta,
+    targetDelta
+){
+
+    const normalizedGuildID =
+        String(guildID);
+
+    const normalizedFighterUserID =
+        String(fighterUserID);
+
+    const normalizedTargetUserID =
+        targetUserID == null
+            ? null
+            : String(targetUserID);
+
+
+    if(
+        normalizedTargetUserID
+        &&
+        normalizedTargetUserID ===
+            normalizedFighterUserID
+    ){
+
+        throw new Error(
+            "A fight requires two different users."
+        );
+
+    }
+
+
+    function normalizeDelta(value){
+
+        const numericValue =
+            Number(value);
+
+
+        if(!Number.isFinite(numericValue)){
+            return 0;
+        }
+
+
+        return Math.max(
+            -Number.MAX_SAFE_INTEGER,
+            Math.min(
+                Number.MAX_SAFE_INTEGER,
+                Math.trunc(numericValue)
+            )
+        );
+
+    }
+
+
+    const participantIDs = [
+        normalizedFighterUserID
+    ];
+
+    const requestedDeltas = [
+        normalizeDelta(fighterDelta)
+    ];
+
+
+    if(normalizedTargetUserID){
+
+        participantIDs.push(
+            normalizedTargetUserID
+        );
+
+        requestedDeltas.push(
+            normalizeDelta(targetDelta)
+        );
+
+    }
+
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+
+        await client.query(`
+
+            INSERT INTO users(
+                guildID,
+                userID
+            )
+
+            SELECT
+                $1,
+                participantID
+
+            FROM UNNEST(
+                $2::TEXT[]
+            ) AS participant_values(
+                participantID
+            )
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            normalizedGuildID,
+            participantIDs
+        ]);
+
+
+        // BIGINT casts are intentional: an evolved Cosmic fight can exceed
+        // PostgreSQL's 32-bit INTEGER limit.
+        const payoutResult =
+            await client.query(`
+
+                WITH requested AS (
+
+                    SELECT
+                        participantID AS "userID",
+                        requestedDelta AS delta
+
+                    FROM UNNEST(
+                        $2::TEXT[],
+                        $3::BIGINT[]
+                    ) AS requested_values(
+                        participantID,
+                        requestedDelta
+                    )
+
+                ),
+
+                locked_users AS (
+
+                    SELECT
+                        users.guildID AS "guildID",
+                        users.userID AS "userID",
+                        users.xp AS "oldXP",
+                        requested.delta
+
+                    FROM users
+
+                    INNER JOIN requested
+                        ON requested."userID"=
+                            users.userID
+
+                    WHERE users.guildID=$1
+
+                    ORDER BY users.userID
+
+                    FOR UPDATE OF users
+
+                ),
+
+                updated_users AS (
+
+                    UPDATE users
+
+                    SET xp = GREATEST(
+                        0::BIGINT,
+                        locked_users."oldXP" +
+                            locked_users.delta
+                    )
+
+                    FROM locked_users
+
+                    WHERE users.guildID=$1
+                    AND users.userID=
+                        locked_users."userID"
+
+                    RETURNING
+                        users.guildID AS "guildID",
+                        users.userID AS "userID",
+                        locked_users."oldXP" AS "oldXP",
+                        users.xp AS "newXP"
+
+                ),
+
+                logged_gains AS (
+
+                    INSERT INTO leaderboard_xp_activity(
+                        guildID,
+                        userID,
+                        amount,
+                        timestamp
+                    )
+
+                    SELECT
+                        "guildID",
+                        "userID",
+                        "newXP" - "oldXP",
+                        $4
+
+                    FROM updated_users
+
+                    WHERE "newXP" > "oldXP"
+
+                    RETURNING userID
+
+                )
+
+                SELECT
+                    "userID",
+                    "oldXP",
+                    "newXP",
+                    "newXP" - "oldXP"
+                        AS "actualDelta"
+
+                FROM updated_users
+
+            `, [
+                normalizedGuildID,
+                participantIDs,
+                requestedDeltas.map(String),
+                Date.now()
+            ]);
+
+
+        await client.query("COMMIT");
+
+
+        for(const participantID of participantIDs){
+
+            userCache.delete(
+                `${normalizedGuildID}:${participantID}`
+            );
+
+        }
+
+
+        const actualDeltas =
+            new Map(
+                payoutResult.rows.map(row => [
+                    String(row.userID),
+                    Number(row.actualDelta) || 0
+                ])
+            );
+
+
+        return {
+            fighterDelta:
+                actualDeltas.get(
+                    normalizedFighterUserID
+                ) || 0,
+
+            targetDelta:
+                normalizedTargetUserID
+                    ? actualDeltas.get(
+                        normalizedTargetUserID
+                    ) || 0
+                    : 0
+        };
+
+    }
+    catch(error){
+
+        await client.query("ROLLBACK");
+        throw error;
+
+    }
+    finally{
+
+        client.release();
+
+    }
+
+}
+
+
+// =====================================================
 // SERVER-WIDE EZWIN
 // =====================================================
 
@@ -7969,6 +8778,2754 @@ async function getRecentXPLogs(
 
 }
 
+
+async function getChatXPLoggedSince(
+    guildID,
+    userID,
+    sinceTimestamp
+){
+
+    const result =
+        await db.query(`
+
+            SELECT COALESCE(
+                SUM(amount),
+                0
+            ) AS "totalXP"
+
+            FROM xp_logs
+
+            WHERE guildID=$1
+            AND userID=$2
+            AND timestamp >= $3
+            AND source IN (
+                'message',
+                'troll'
+            )
+
+        `, [
+            String(guildID),
+            String(userID),
+            Math.max(
+                0,
+                Math.floor(
+                    Number(sinceTimestamp) || 0
+                )
+            )
+        ]);
+
+
+    return Math.max(
+        0,
+        Number(
+            result.rows[0]?.totalXP
+            ??
+            result.rows[0]?.totalxp
+        ) || 0
+    );
+
+}
+
+
+// =====================================================
+// GLOBAL RAID BOSSES
+// =====================================================
+
+function normalizeRaidBossRow(row){
+
+    if(!row){
+        return null;
+    }
+
+
+    let stateData =
+        row.stateData
+        ??
+        row.statedata
+        ??
+        {};
+
+
+    if(typeof stateData === "string"){
+
+        try{
+            stateData = JSON.parse(stateData);
+        }
+        catch(error){
+            stateData = {};
+        }
+
+    }
+
+
+    return {
+        guildID:
+            String(
+                row.guildID
+                ??
+                row.guildid
+            ),
+        bossKey:
+            String(
+                row.bossKey
+                ??
+                row.bosskey
+            ),
+        currentHP:
+            Number(
+                row.currentHP
+                ??
+                row.currenthp
+            ) || 0,
+        maxHP:
+            Number(
+                row.maxHP
+                ??
+                row.maxhp
+            ) || 0,
+        overall:
+            Number(row.overall) || 0,
+        spawnedAt:
+            Number(
+                row.spawnedAt
+                ??
+                row.spawnedat
+            ) || 0,
+        expiresAt:
+            Number(
+                row.expiresAt
+                ??
+                row.expiresat
+            ) || 0,
+        stateData:
+            stateData &&
+            typeof stateData === "object"
+                ? stateData
+                : {},
+        updatedAt:
+            Number(
+                row.updatedAt
+                ??
+                row.updatedat
+            ) || 0
+    };
+
+}
+
+
+async function recordRaidBossActivity(
+    guildID,
+    userID,
+    earnedAt,
+    activityWindow
+){
+
+    const normalizedGuildID =
+        String(guildID);
+
+    const normalizedUserID =
+        String(userID);
+
+    const safeEarnedAt =
+        Math.max(
+            0,
+            Math.floor(
+                Number(earnedAt) || Date.now()
+            )
+        );
+
+    const cutoff =
+        safeEarnedAt -
+        Math.max(
+            1000,
+            Math.floor(
+                Number(activityWindow) || 0
+            )
+        );
+
+
+    await db.query(`
+
+        INSERT INTO raid_boss_activity(
+            guildID,
+            userID,
+            lastEarnedAt
+        )
+
+        VALUES($1,$2,$3)
+
+        ON CONFLICT(
+            guildID,
+            userID
+        )
+
+        DO UPDATE SET
+            lastEarnedAt=EXCLUDED.lastEarnedAt
+
+    `, [
+        normalizedGuildID,
+        normalizedUserID,
+        safeEarnedAt
+    ]);
+
+
+    await db.query(`
+
+        DELETE FROM raid_boss_activity
+
+        WHERE guildID=$1
+        AND lastEarnedAt < $2
+
+    `, [
+        normalizedGuildID,
+        cutoff
+    ]);
+
+
+    const result =
+        await db.query(`
+
+            SELECT COUNT(*)::INTEGER AS "activeUsers"
+
+            FROM raid_boss_activity
+
+            WHERE guildID=$1
+            AND lastEarnedAt >= $2
+
+        `, [
+            normalizedGuildID,
+            cutoff
+        ]);
+
+
+    return Math.max(
+        0,
+        Number(
+            result.rows[0]?.activeUsers
+            ??
+            result.rows[0]?.activeusers
+        ) || 0
+    );
+
+}
+
+
+async function getRaidBossState(guildID){
+
+    const result =
+        await db.query(`
+
+            SELECT
+                guildID AS "guildID",
+                bossKey AS "bossKey",
+                currentHP AS "currentHP",
+                maxHP AS "maxHP",
+                overall,
+                spawnedAt AS "spawnedAt",
+                expiresAt AS "expiresAt",
+                stateData AS "stateData",
+                updatedAt AS "updatedAt"
+
+            FROM raid_boss_state
+
+            WHERE guildID=$1
+
+        `, [
+            String(guildID)
+        ]);
+
+
+    return normalizeRaidBossRow(
+        result.rows[0]
+    );
+
+}
+
+
+async function createRaidBossState(
+    boss
+){
+
+    const now =
+        Date.now();
+
+
+    // An expired row must never block the next activity-triggered spawn.
+    await db.query(`
+
+        DELETE FROM raid_boss_state
+
+        WHERE guildID=$1
+        AND expiresAt <= $2
+
+    `, [
+        String(boss.guildID),
+        now
+    ]);
+
+
+    const result =
+        await db.query(`
+
+            INSERT INTO raid_boss_state(
+                guildID,
+                bossKey,
+                currentHP,
+                maxHP,
+                overall,
+                spawnedAt,
+                expiresAt,
+                stateData,
+                updatedAt
+            )
+
+            VALUES(
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7,
+                $8::jsonb,
+                $9
+            )
+
+            ON CONFLICT(guildID)
+            DO NOTHING
+
+            RETURNING
+                guildID AS "guildID",
+                bossKey AS "bossKey",
+                currentHP AS "currentHP",
+                maxHP AS "maxHP",
+                overall,
+                spawnedAt AS "spawnedAt",
+                expiresAt AS "expiresAt",
+                stateData AS "stateData",
+                updatedAt AS "updatedAt"
+
+        `, [
+            String(boss.guildID),
+            String(boss.bossKey),
+            Math.max(0, Math.round(Number(boss.currentHP) || 0)),
+            Math.max(1, Math.round(Number(boss.maxHP) || 1)),
+            Math.max(1, Math.round(Number(boss.overall) || 1)),
+            Math.max(0, Math.floor(Number(boss.spawnedAt) || now)),
+            Math.max(now + 1000, Math.floor(Number(boss.expiresAt) || now)),
+            JSON.stringify(boss.stateData || {}),
+            now
+        ]);
+
+
+    return normalizeRaidBossRow(
+        result.rows[0]
+    );
+
+}
+
+
+async function updateRaidBossState(
+    boss
+){
+
+    const result =
+        await db.query(`
+
+            UPDATE raid_boss_state
+
+            SET
+                currentHP=$3,
+                maxHP=$4,
+                overall=$5,
+                expiresAt=$6,
+                stateData=$7::jsonb,
+                updatedAt=$8
+
+            WHERE guildID=$1
+            AND spawnedAt=$2
+
+            RETURNING
+                guildID AS "guildID",
+                bossKey AS "bossKey",
+                currentHP AS "currentHP",
+                maxHP AS "maxHP",
+                overall,
+                spawnedAt AS "spawnedAt",
+                expiresAt AS "expiresAt",
+                stateData AS "stateData",
+                updatedAt AS "updatedAt"
+
+        `, [
+            String(boss.guildID),
+            Math.max(0, Math.floor(Number(boss.spawnedAt) || 0)),
+            Math.max(0, Math.round(Number(boss.currentHP) || 0)),
+            Math.max(1, Math.round(Number(boss.maxHP) || 1)),
+            Math.max(1, Math.round(Number(boss.overall) || 1)),
+            Math.max(0, Math.floor(Number(boss.expiresAt) || 0)),
+            JSON.stringify(boss.stateData || {}),
+            Date.now()
+        ]);
+
+
+    return normalizeRaidBossRow(
+        result.rows[0]
+    );
+
+}
+
+
+async function deleteRaidBossState(
+    guildID,
+    spawnedAt = null
+){
+
+    const parameters = [
+        String(guildID)
+    ];
+
+    let spawnedAtClause =
+        "";
+
+
+    if(spawnedAt != null){
+
+        parameters.push(
+            Math.max(
+                0,
+                Math.floor(
+                    Number(spawnedAt) || 0
+                )
+            )
+        );
+
+        spawnedAtClause =
+            "AND spawnedAt=$2";
+
+    }
+
+
+    const result =
+        await db.query(`
+
+            DELETE FROM raid_boss_state
+
+            WHERE guildID=$1
+            ${spawnedAtClause}
+
+            RETURNING
+                guildID AS "guildID",
+                bossKey AS "bossKey",
+                currentHP AS "currentHP",
+                maxHP AS "maxHP",
+                overall,
+                spawnedAt AS "spawnedAt",
+                expiresAt AS "expiresAt",
+                stateData AS "stateData",
+                updatedAt AS "updatedAt"
+
+        `, parameters);
+
+
+    return normalizeRaidBossRow(
+        result.rows[0]
+    );
+
+}
+
+
+async function cleanupExpiredRaidBossStates(
+    now = Date.now()
+){
+
+    const result =
+        await db.query(`
+
+            DELETE FROM raid_boss_state
+
+            WHERE expiresAt <= $1
+
+            RETURNING
+                guildID AS "guildID",
+                bossKey AS "bossKey",
+                currentHP AS "currentHP",
+                maxHP AS "maxHP",
+                overall,
+                spawnedAt AS "spawnedAt",
+                expiresAt AS "expiresAt",
+                stateData AS "stateData",
+                updatedAt AS "updatedAt"
+
+        `, [
+            Math.max(
+                0,
+                Math.floor(
+                    Number(now) || Date.now()
+                )
+            )
+        ]);
+
+
+    return result.rows.map(
+        normalizeRaidBossRow
+    );
+
+}
+
+
+async function recordRaidBossContribution(
+    guildID,
+    spawnedAt,
+    userID,
+    damage,
+    hitAt = Date.now()
+){
+
+    const safeDamage =
+        Math.max(
+            0,
+            Math.round(
+                Number(damage) || 0
+            )
+        );
+
+
+    await db.query(`
+
+        INSERT INTO raid_boss_contributions(
+            guildID,
+            spawnedAt,
+            userID,
+            damage,
+            hits,
+            lastHitAt
+        )
+
+        VALUES($1,$2,$3,$4,1,$5)
+
+        ON CONFLICT(
+            guildID,
+            spawnedAt,
+            userID
+        )
+
+        DO UPDATE SET
+            damage=
+                raid_boss_contributions.damage +
+                EXCLUDED.damage,
+            hits=
+                raid_boss_contributions.hits + 1,
+            lastHitAt=EXCLUDED.lastHitAt
+
+    `, [
+        String(guildID),
+        Math.max(0, Math.floor(Number(spawnedAt) || 0)),
+        String(userID),
+        safeDamage,
+        Math.max(0, Math.floor(Number(hitAt) || Date.now()))
+    ]);
+
+}
+
+
+async function getRaidBossContributions(
+    guildID,
+    spawnedAt
+){
+
+    const result =
+        await db.query(`
+
+            SELECT
+                userID AS "userID",
+                damage,
+                hits,
+                lastHitAt AS "lastHitAt"
+
+            FROM raid_boss_contributions
+
+            WHERE guildID=$1
+            AND spawnedAt=$2
+            AND damage > 0
+
+            ORDER BY
+                damage DESC,
+                lastHitAt ASC,
+                userID ASC
+
+        `, [
+            String(guildID),
+            Math.max(
+                0,
+                Math.floor(Number(spawnedAt) || 0)
+            )
+        ]);
+
+
+    return result.rows.map(row => ({
+        userID:
+            String(row.userID ?? row.userid),
+        damage:
+            Math.max(0, Number(row.damage) || 0),
+        hits:
+            Math.max(0, Number(row.hits) || 0),
+        lastHitAt:
+            Math.max(
+                0,
+                Number(row.lastHitAt ?? row.lasthitat) || 0
+            )
+    }));
+
+}
+
+
+function normalizeBossChallengeBattle(row){
+
+    if(!row){
+        return null;
+    }
+
+
+    return {
+        guildID:
+            String(row.guildID ?? row.guildid),
+        userID:
+            String(row.userID ?? row.userid),
+        challengeKey:
+            String(row.challengeKey ?? row.challengekey),
+        stageIndex:
+            Math.max(
+                0,
+                Number(row.stageIndex ?? row.stageindex) || 0
+            ),
+        bossScope:
+            String(row.bossScope ?? row.bossscope),
+        channelID:
+            String(row.channelID ?? row.channelid),
+        messageID:
+            row.messageID == null && row.messageid == null
+                ? null
+                : String(row.messageID ?? row.messageid),
+        spawnedAt:
+            Math.max(
+                0,
+                Number(row.spawnedAt ?? row.spawnedat) || 0
+            ),
+        expiresAt:
+            Math.max(
+                0,
+                Number(row.expiresAt ?? row.expiresat) || 0
+            )
+    };
+
+}
+
+
+async function applyBossRewardBundle(
+    client,
+    guildID,
+    userID,
+    bundle,
+    now = Date.now()
+){
+
+    const normalizedGuildID =
+        String(guildID);
+
+    const normalizedUserID =
+        String(userID);
+
+    const safeXP =
+        Math.max(
+            0,
+            Math.floor(Number(bundle?.xp) || 0)
+        );
+
+
+    await client.query(`
+
+        INSERT INTO users(guildID,userID)
+        VALUES($1,$2)
+        ON CONFLICT DO NOTHING
+
+    `, [
+        normalizedGuildID,
+        normalizedUserID
+    ]);
+
+
+    if(safeXP > 0){
+
+        await client.query(`
+
+            UPDATE users
+            SET xp=GREATEST(0,xp+$3)
+            WHERE guildID=$1 AND userID=$2
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            safeXP
+        ]);
+
+
+        await client.query(`
+
+            INSERT INTO leaderboard_xp_activity(
+                guildID,userID,amount,timestamp
+            )
+            VALUES($1,$2,$3,$4)
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            safeXP,
+            now
+        ]);
+
+    }
+
+
+    for(const boost of bundle?.boosts || []){
+
+        const amount =
+            Math.max(
+                1,
+                Math.floor(Number(boost.amount) || 1)
+            );
+
+
+        await client.query(`
+
+            INSERT INTO boost_inventory(
+                guildID,userID,boostType,tier,amount
+            )
+            VALUES($1,$2,$3,$4,$5)
+
+            ON CONFLICT(guildID,userID,boostType,tier)
+            DO UPDATE SET
+                amount=boost_inventory.amount+EXCLUDED.amount
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            String(boost.boostType).toLowerCase(),
+            String(boost.tier).toLowerCase(),
+            amount
+        ]);
+
+    }
+
+
+    for(const chest of bundle?.chests || []){
+
+        const amount =
+            Math.max(
+                1,
+                Math.floor(Number(chest.amount) || 1)
+            );
+
+
+        await client.query(`
+
+            INSERT INTO boost_inventory(
+                guildID,userID,boostType,tier,amount
+            )
+            VALUES($1,$2,'chest',$3,$4)
+
+            ON CONFLICT(guildID,userID,boostType,tier)
+            DO UPDATE SET
+                amount=boost_inventory.amount+EXCLUDED.amount
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            String(chest.tier).toLowerCase(),
+            amount
+        ]);
+
+    }
+
+
+    const shards =
+        Math.max(
+            0,
+            Math.floor(Number(bundle?.shards) || 0)
+        );
+
+
+    if(shards > 0){
+
+        await client.query(`
+
+            INSERT INTO boss_currency(
+                guildID,userID,shards,updatedAt
+            )
+            VALUES($1,$2,$3,$4)
+
+            ON CONFLICT(guildID,userID)
+            DO UPDATE SET
+                shards=boss_currency.shards+EXCLUDED.shards,
+                updatedAt=EXCLUDED.updatedAt
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            shards,
+            now
+        ]);
+
+    }
+
+
+    const timedAllCommands =
+        bundle?.timedAllCommands;
+
+    const timedRoll =
+        bundle?.timedRoll;
+
+    const nextHugRepeat =
+        bundle?.nextHugRepeat;
+
+
+    if(
+        timedAllCommands
+        || timedRoll
+        || nextHugRepeat
+    ){
+
+        await client.query(`
+
+            INSERT INTO quest_effects(guildID,userID)
+            VALUES($1,$2)
+            ON CONFLICT DO NOTHING
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID
+        ]);
+
+    }
+
+
+    if(timedAllCommands){
+
+        const totalCount =
+            1 + Math.max(
+                1,
+                Math.floor(
+                    Number(timedAllCommands.extraCount) || 1
+                )
+            );
+
+        const durationMs =
+            Math.max(
+                1000,
+                Math.floor(
+                    Number(timedAllCommands.durationMs) || 0
+                )
+            );
+
+        const stackDuration =
+            timedAllCommands.stackDuration !== false;
+
+        const includeTroll =
+            !(
+                Array.isArray(
+                    timedAllCommands.excludeCommands
+                )
+                && timedAllCommands.excludeCommands
+                    .map(value => String(value).toLowerCase())
+                    .includes("troll")
+            );
+
+
+        await client.query(`
+
+            UPDATE quest_effects
+            SET
+                socialRepeatCount=CASE
+                    WHEN socialRepeatUntil>$3
+                        THEN GREATEST(socialRepeatCount,$4)
+                    ELSE $4
+                END,
+                socialRepeatUntil=CASE
+                    WHEN $6
+                        THEN GREATEST(socialRepeatUntil,$3)+$5
+                    ELSE GREATEST(socialRepeatUntil,$3+$5)
+                END,
+                socialRepeatIncludeTroll=CASE
+                    WHEN socialRepeatUntil>$3
+                        THEN socialRepeatIncludeTroll OR $7
+                    ELSE $7
+                END,
+                multiRollCount=CASE
+                    WHEN multiRollUntil>$3
+                        THEN GREATEST(multiRollCount,$4)
+                    ELSE $4
+                END,
+                multiRollUntil=CASE
+                    WHEN $6
+                        THEN GREATEST(multiRollUntil,$3)+$5
+                    ELSE GREATEST(multiRollUntil,$3+$5)
+                END,
+                rollWindowEndsAt=0,
+                rollWindowUses=0
+            WHERE guildID=$1 AND userID=$2
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            now,
+            totalCount,
+            durationMs,
+            stackDuration,
+            includeTroll
+        ]);
+
+    }
+
+
+    if(timedRoll){
+
+        const totalCount =
+            1 + Math.max(
+                1,
+                Math.floor(
+                    Number(timedRoll.extraCount) || 1
+                )
+            );
+
+        const durationMs =
+            Math.max(
+                1000,
+                Math.floor(
+                    Number(timedRoll.durationMs) || 0
+                )
+            );
+
+
+        await client.query(`
+
+            UPDATE quest_effects
+            SET
+                multiRollCount=CASE
+                    WHEN multiRollUntil>$3
+                        THEN GREATEST(multiRollCount,$4)
+                    ELSE $4
+                END,
+                multiRollUntil=GREATEST(multiRollUntil,$3)+$5,
+                rollWindowEndsAt=0,
+                rollWindowUses=0
+            WHERE guildID=$1 AND userID=$2
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            now,
+            totalCount,
+            durationMs
+        ]);
+
+    }
+
+
+    if(nextHugRepeat){
+
+        const totalCount =
+            1 + Math.max(
+                1,
+                Math.floor(
+                    Number(nextHugRepeat.extraCount) || 1
+                )
+            );
+
+        const uses =
+            Math.max(
+                1,
+                Math.floor(Number(nextHugRepeat.uses) || 1)
+            );
+
+
+        await client.query(`
+
+            UPDATE quest_effects
+            SET
+                nextHugRepeatUses=nextHugRepeatUses+$3,
+                nextHugRepeatCount=GREATEST(
+                    nextHugRepeatCount,
+                    $4
+                )
+            WHERE guildID=$1 AND userID=$2
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            uses,
+            totalCount
+        ]);
+
+    }
+
+
+    const unlockFight =
+        Boolean(bundle?.unlockFight);
+
+    const freeUpgradeTokens =
+        Math.max(
+            0,
+            Math.floor(
+                Number(bundle?.freeUpgradeTokens) || 0
+            )
+        );
+
+    const unlockBless =
+        Boolean(bundle?.unlockBless);
+
+    const unlockCoinflip =
+        Boolean(bundle?.unlockCoinflip);
+
+    const spawnBossUses =
+        Math.max(
+            0,
+            Math.floor(Number(bundle?.spawnBossUses) || 0)
+        );
+
+
+    if(
+        unlockFight
+        || unlockBless
+        || unlockCoinflip
+        || freeUpgradeTokens > 0
+        || spawnBossUses > 0
+    ){
+
+        await client.query(`
+
+            INSERT INTO boss_entitlements(
+                guildID,
+                userID,
+                fightUnlocked,
+                freeUpgradeTokens,
+                blessUnlocked,
+                spawnBossUses,
+                coinflipUnlocked,
+                updatedAt
+            )
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+
+            ON CONFLICT(guildID,userID)
+            DO UPDATE SET
+                fightUnlocked=
+                    boss_entitlements.fightUnlocked
+                    OR EXCLUDED.fightUnlocked,
+                freeUpgradeTokens=
+                    boss_entitlements.freeUpgradeTokens
+                    + EXCLUDED.freeUpgradeTokens,
+                blessUnlocked=
+                    boss_entitlements.blessUnlocked
+                    OR EXCLUDED.blessUnlocked,
+                spawnBossUses=
+                    boss_entitlements.spawnBossUses
+                    + EXCLUDED.spawnBossUses,
+                coinflipUnlocked=
+                    boss_entitlements.coinflipUnlocked
+                    OR EXCLUDED.coinflipUnlocked,
+                updatedAt=EXCLUDED.updatedAt
+
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            unlockFight,
+            freeUpgradeTokens,
+            unlockBless,
+            spawnBossUses,
+            unlockCoinflip,
+            now
+        ]);
+
+    }
+
+
+    userCache.delete(
+        `${normalizedGuildID}:${normalizedUserID}`
+    );
+
+}
+
+
+async function grantBossRewardBundle(
+    guildID,
+    userID,
+    bundle
+){
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+        await applyBossRewardBundle(
+            client,
+            guildID,
+            userID,
+            bundle,
+            Date.now()
+        );
+
+        await client.query("COMMIT");
+
+        return true;
+
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+}
+
+
+async function grantRaidBossRewardOnce(
+    guildID,
+    spawnedAt,
+    userID,
+    bundle
+){
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+        const claim =
+            await client.query(`
+
+                INSERT INTO raid_boss_reward_claims(
+                    guildID,spawnedAt,userID,claimedAt
+                )
+                VALUES($1,$2,$3,$4)
+
+                ON CONFLICT DO NOTHING
+
+                RETURNING userID AS "userID"
+
+            `, [
+                String(guildID),
+                Math.max(
+                    0,
+                    Math.floor(Number(spawnedAt) || 0)
+                ),
+                String(userID),
+                Date.now()
+            ]);
+
+
+        if(claim.rowCount === 0){
+            await client.query("COMMIT");
+            return false;
+        }
+
+
+        await applyBossRewardBundle(
+            client,
+            guildID,
+            userID,
+            bundle,
+            Date.now()
+        );
+
+        await client.query("COMMIT");
+
+        return true;
+
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+}
+
+
+async function getBossChallengeSnapshot(
+    guildID,
+    userID
+){
+
+    const normalizedGuildID =
+        String(guildID);
+
+    const normalizedUserID =
+        String(userID);
+
+
+    await db.query(`
+        INSERT INTO users(guildID,userID)
+        VALUES($1,$2)
+        ON CONFLICT DO NOTHING
+    `, [
+        normalizedGuildID,
+        normalizedUserID
+    ]);
+
+
+    const [
+        userResult,
+        progressResult,
+        battleResult,
+        entitlementResult
+    ] = await Promise.all([
+        db.query(`
+            SELECT level
+            FROM users
+            WHERE guildID=$1 AND userID=$2
+        `, [normalizedGuildID, normalizedUserID]),
+        db.query(`
+            SELECT
+                challengeKey AS "challengeKey",
+                stageIndex AS "stageIndex",
+                completions,
+                active,
+                updatedAt AS "updatedAt"
+            FROM boss_challenge_progress
+            WHERE guildID=$1 AND userID=$2
+        `, [normalizedGuildID, normalizedUserID]),
+        db.query(`
+            SELECT
+                guildID AS "guildID",
+                userID AS "userID",
+                challengeKey AS "challengeKey",
+                stageIndex AS "stageIndex",
+                bossScope AS "bossScope",
+                channelID AS "channelID",
+                messageID AS "messageID",
+                spawnedAt AS "spawnedAt",
+                expiresAt AS "expiresAt"
+            FROM boss_challenge_battles
+            WHERE guildID=$1 AND userID=$2
+        `, [normalizedGuildID, normalizedUserID]),
+        db.query(`
+            SELECT
+                fightUnlocked AS "fightUnlocked",
+                freeUpgradeTokens AS "freeUpgradeTokens"
+            FROM boss_entitlements
+            WHERE guildID=$1 AND userID=$2
+        `, [normalizedGuildID, normalizedUserID])
+    ]);
+
+
+    const progress = {};
+
+
+    for(const row of progressResult.rows){
+        progress[String(row.challengeKey ?? row.challengekey)] = {
+            stageIndex:
+                Math.max(
+                    0,
+                    Number(row.stageIndex ?? row.stageindex) || 0
+                ),
+            completions:
+                Math.max(0, Number(row.completions) || 0),
+            active:
+                Boolean(row.active),
+            updatedAt:
+                Math.max(
+                    0,
+                    Number(row.updatedAt ?? row.updatedat) || 0
+                )
+        };
+    }
+
+
+    const entitlement =
+        entitlementResult.rows[0] || {};
+
+
+    return {
+        level:
+            Math.max(
+                0,
+                Number(userResult.rows[0]?.level) || 0
+            ),
+        progress,
+        battle:
+            normalizeBossChallengeBattle(
+                battleResult.rows[0]
+            ),
+        fightUnlocked:
+            Boolean(
+                entitlement.fightUnlocked
+                ?? entitlement.fightunlocked
+            ),
+        freeUpgradeTokens:
+            Math.max(
+                0,
+                Number(
+                    entitlement.freeUpgradeTokens
+                    ?? entitlement.freeupgradetokens
+                ) || 0
+            )
+    };
+
+}
+
+
+async function startBossChallenge({
+    guildID,
+    userID,
+    challengeKey,
+    requiredLevel,
+    prerequisite = null
+}){
+
+    const normalizedGuildID =
+        String(guildID);
+
+    const normalizedUserID =
+        String(userID);
+
+    const normalizedChallengeKey =
+        String(challengeKey);
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+        await client.query(`
+            INSERT INTO users(guildID,userID)
+            VALUES($1,$2)
+            ON CONFLICT DO NOTHING
+        `, [normalizedGuildID, normalizedUserID]);
+
+
+        const userResult =
+            await client.query(`
+                SELECT level
+                FROM users
+                WHERE guildID=$1 AND userID=$2
+                FOR UPDATE
+            `, [normalizedGuildID, normalizedUserID]);
+
+        const level =
+            Math.max(
+                0,
+                Number(userResult.rows[0]?.level) || 0
+            );
+
+
+        if(level < Number(requiredLevel)){
+            await client.query("COMMIT");
+            return {
+                success: false,
+                status: "level-locked",
+                level,
+                requiredLevel: Number(requiredLevel)
+            };
+        }
+
+
+        if(prerequisite){
+
+            const prerequisiteResult =
+                await client.query(`
+                    SELECT completions
+                    FROM boss_challenge_progress
+                    WHERE guildID=$1
+                    AND userID=$2
+                    AND challengeKey=$3
+                `, [
+                    normalizedGuildID,
+                    normalizedUserID,
+                    String(prerequisite)
+                ]);
+
+
+            if(
+                (
+                    Number(
+                        prerequisiteResult.rows[0]?.completions
+                    ) || 0
+                ) < 1
+            ){
+                await client.query("COMMIT");
+                return {
+                    success: false,
+                    status: "prerequisite-locked",
+                    prerequisite:
+                        String(prerequisite)
+                };
+            }
+
+        }
+
+
+        const activeBattle =
+            await client.query(`
+                SELECT challengeKey AS "challengeKey"
+                FROM boss_challenge_battles
+                WHERE guildID=$1 AND userID=$2
+                FOR UPDATE
+            `, [normalizedGuildID, normalizedUserID]);
+
+
+        if(activeBattle.rowCount > 0){
+
+            const activeKey =
+                String(
+                    activeBattle.rows[0]?.challengeKey
+                    ?? activeBattle.rows[0]?.challengekey
+                );
+
+            await client.query("COMMIT");
+            return {
+                success:
+                    activeKey === normalizedChallengeKey,
+                status:
+                    activeKey === normalizedChallengeKey
+                        ? "already-active"
+                        : "battle-active",
+                challengeKey: activeKey
+            };
+        }
+
+
+        const activeProgress =
+            await client.query(`
+                SELECT challengeKey AS "challengeKey"
+                FROM boss_challenge_progress
+                WHERE guildID=$1
+                AND userID=$2
+                AND active=TRUE
+                FOR UPDATE
+            `, [normalizedGuildID, normalizedUserID]);
+
+
+        if(activeProgress.rowCount > 0){
+
+            const activeKey =
+                String(
+                    activeProgress.rows[0]?.challengeKey
+                    ?? activeProgress.rows[0]?.challengekey
+                );
+
+
+            await client.query("COMMIT");
+
+            return {
+                success:
+                    activeKey === normalizedChallengeKey,
+                status:
+                    activeKey === normalizedChallengeKey
+                        ? "already-active"
+                        : "other-challenge-active",
+                challengeKey: activeKey
+            };
+
+        }
+
+
+        await client.query(`
+            INSERT INTO boss_challenge_progress(
+                guildID,userID,challengeKey,stageIndex,
+                completions,active,updatedAt
+            )
+            VALUES($1,$2,$3,0,0,TRUE,$4)
+
+            ON CONFLICT(guildID,userID,challengeKey)
+            DO UPDATE SET
+                stageIndex=0,
+                active=TRUE,
+                updatedAt=EXCLUDED.updatedAt
+        `, [
+            normalizedGuildID,
+            normalizedUserID,
+            normalizedChallengeKey,
+            Date.now()
+        ]);
+
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            status: "started",
+            challengeKey:
+                normalizedChallengeKey,
+            stageIndex: 0
+        };
+
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+}
+
+
+async function createBossChallengeBattle({
+    guildID,
+    userID,
+    challengeKey,
+    stageIndex,
+    bossScope,
+    channelID,
+    spawnedAt,
+    expiresAt
+}){
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+        const progressResult =
+            await client.query(`
+                SELECT stageIndex AS "stageIndex",active
+                FROM boss_challenge_progress
+                WHERE guildID=$1
+                AND userID=$2
+                AND challengeKey=$3
+                FOR UPDATE
+            `, [
+                String(guildID),
+                String(userID),
+                String(challengeKey)
+            ]);
+
+        const progress =
+            progressResult.rows[0];
+
+
+        if(
+            !progress
+            || !progress.active
+            || Number(progress.stageIndex ?? progress.stageindex)
+                !== Number(stageIndex)
+        ){
+            await client.query("COMMIT");
+            return {
+                success: false,
+                status: "stale-stage"
+            };
+        }
+
+
+        const result =
+            await client.query(`
+                INSERT INTO boss_challenge_battles(
+                    guildID,userID,challengeKey,stageIndex,
+                    bossScope,channelID,messageID,spawnedAt,expiresAt
+                )
+                VALUES($1,$2,$3,$4,$5,$6,NULL,$7,$8)
+                ON CONFLICT(guildID,userID) DO NOTHING
+                RETURNING
+                    guildID AS "guildID",
+                    userID AS "userID",
+                    challengeKey AS "challengeKey",
+                    stageIndex AS "stageIndex",
+                    bossScope AS "bossScope",
+                    channelID AS "channelID",
+                    messageID AS "messageID",
+                    spawnedAt AS "spawnedAt",
+                    expiresAt AS "expiresAt"
+            `, [
+                String(guildID),
+                String(userID),
+                String(challengeKey),
+                Math.max(0, Number(stageIndex) || 0),
+                String(bossScope),
+                String(channelID),
+                Math.max(0, Number(spawnedAt) || 0),
+                Math.max(0, Number(expiresAt) || 0)
+            ]);
+
+
+        await client.query("COMMIT");
+
+        const battle =
+            normalizeBossChallengeBattle(
+                result.rows[0]
+            );
+
+
+        return battle
+            ? {
+                success: true,
+                status: "created",
+                battle
+            }
+            : {
+                success: false,
+                status: "battle-active"
+            };
+
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+}
+
+
+async function setBossChallengeBattleMessage(
+    guildID,
+    userID,
+    messageID
+){
+
+    await db.query(`
+        UPDATE boss_challenge_battles
+        SET messageID=$3
+        WHERE guildID=$1 AND userID=$2
+    `, [
+        String(guildID),
+        String(userID),
+        String(messageID)
+    ]);
+
+}
+
+
+async function getActiveBossChallengeBattle(
+    guildID,
+    userID,
+    channelID = null,
+    now = Date.now()
+){
+
+    const parameters = [
+        String(guildID),
+        String(userID),
+        Math.max(0, Number(now) || Date.now())
+    ];
+
+    let channelClause = "";
+
+
+    if(channelID != null){
+        parameters.push(String(channelID));
+        channelClause = "AND channelID=$4";
+    }
+
+
+    const result =
+        await db.query(`
+            SELECT
+                guildID AS "guildID",
+                userID AS "userID",
+                challengeKey AS "challengeKey",
+                stageIndex AS "stageIndex",
+                bossScope AS "bossScope",
+                channelID AS "channelID",
+                messageID AS "messageID",
+                spawnedAt AS "spawnedAt",
+                expiresAt AS "expiresAt"
+            FROM boss_challenge_battles
+            WHERE guildID=$1
+            AND userID=$2
+            AND $3::BIGINT>=0
+            ${channelClause}
+        `, parameters);
+
+
+    return normalizeBossChallengeBattle(
+        result.rows[0]
+    );
+
+}
+
+
+async function deleteBossChallengeBattle(
+    guildID,
+    userID
+){
+
+    const result =
+        await db.query(`
+            DELETE FROM boss_challenge_battles
+            WHERE guildID=$1 AND userID=$2
+            RETURNING
+                guildID AS "guildID",
+                userID AS "userID",
+                challengeKey AS "challengeKey",
+                stageIndex AS "stageIndex",
+                bossScope AS "bossScope",
+                channelID AS "channelID",
+                messageID AS "messageID",
+                spawnedAt AS "spawnedAt",
+                expiresAt AS "expiresAt"
+        `, [
+            String(guildID),
+            String(userID)
+        ]);
+
+
+    return normalizeBossChallengeBattle(
+        result.rows[0]
+    );
+
+}
+
+
+async function expireBossChallengeBattles(
+    now = Date.now()
+){
+
+    const result =
+        await db.query(`
+            DELETE FROM boss_challenge_battles
+            WHERE expiresAt <= $1
+            RETURNING
+                guildID AS "guildID",
+                userID AS "userID",
+                challengeKey AS "challengeKey",
+                stageIndex AS "stageIndex",
+                bossScope AS "bossScope",
+                channelID AS "channelID",
+                messageID AS "messageID",
+                spawnedAt AS "spawnedAt",
+                expiresAt AS "expiresAt"
+        `, [
+            Math.max(0, Number(now) || Date.now())
+        ]);
+
+
+    return result.rows.map(
+        normalizeBossChallengeBattle
+    );
+
+}
+
+
+async function completeBossChallengeEnemy({
+    guildID,
+    userID,
+    challengeKey,
+    stageIndex,
+    stageCount,
+    firstReward,
+    repeatReward
+}){
+
+    const client =
+        await db.connect();
+
+
+    try{
+
+        await client.query("BEGIN");
+
+        const battleResult =
+            await client.query(`
+                SELECT stageIndex AS "stageIndex"
+                FROM boss_challenge_battles
+                WHERE guildID=$1 AND userID=$2
+                AND challengeKey=$3
+                FOR UPDATE
+            `, [
+                String(guildID),
+                String(userID),
+                String(challengeKey)
+            ]);
+
+
+        if(
+            !battleResult.rows[0]
+            || Number(
+                battleResult.rows[0].stageIndex
+                ?? battleResult.rows[0].stageindex
+            ) !== Number(stageIndex)
+        ){
+            await client.query("COMMIT");
+            return {
+                success: false,
+                status: "stale-battle"
+            };
+        }
+
+
+        const progressResult =
+            await client.query(`
+                SELECT
+                    stageIndex AS "stageIndex",
+                    completions,
+                    active
+                FROM boss_challenge_progress
+                WHERE guildID=$1 AND userID=$2
+                AND challengeKey=$3
+                FOR UPDATE
+            `, [
+                String(guildID),
+                String(userID),
+                String(challengeKey)
+            ]);
+
+        const progress =
+            progressResult.rows[0];
+
+
+        if(
+            !progress
+            || !progress.active
+            || Number(progress.stageIndex ?? progress.stageindex)
+                !== Number(stageIndex)
+        ){
+            await client.query("ROLLBACK");
+            return {
+                success: false,
+                status: "stale-progress"
+            };
+        }
+
+
+        await client.query(`
+            DELETE FROM boss_challenge_battles
+            WHERE guildID=$1 AND userID=$2
+        `, [String(guildID), String(userID)]);
+
+
+        const completed =
+            Number(stageIndex) + 1 >=
+            Math.max(1, Number(stageCount) || 1);
+
+
+        if(!completed){
+
+            const nextStageIndex =
+                Number(stageIndex) + 1;
+
+            await client.query(`
+                UPDATE boss_challenge_progress
+                SET stageIndex=$4,updatedAt=$5
+                WHERE guildID=$1 AND userID=$2
+                AND challengeKey=$3
+            `, [
+                String(guildID),
+                String(userID),
+                String(challengeKey),
+                nextStageIndex,
+                Date.now()
+            ]);
+
+            await client.query("COMMIT");
+
+            return {
+                success: true,
+                status: "stage-complete",
+                completed: false,
+                nextStageIndex
+            };
+
+        }
+
+
+        const previousCompletions =
+            Math.max(0, Number(progress.completions) || 0);
+
+        const firstClear =
+            previousCompletions === 0;
+
+        const rewardBundle =
+            firstClear
+                ? firstReward
+                : repeatReward;
+
+
+        await client.query(`
+            UPDATE boss_challenge_progress
+            SET
+                stageIndex=0,
+                completions=completions+1,
+                active=FALSE,
+                updatedAt=$4
+            WHERE guildID=$1 AND userID=$2
+            AND challengeKey=$3
+        `, [
+            String(guildID),
+            String(userID),
+            String(challengeKey),
+            Date.now()
+        ]);
+
+
+        await applyBossRewardBundle(
+            client,
+            guildID,
+            userID,
+            rewardBundle,
+            Date.now()
+        );
+
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            status: "challenge-complete",
+            completed: true,
+            firstClear,
+            completions:
+                previousCompletions + 1,
+            rewardBundle
+        };
+
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+}
+
+
+async function isFightUnlocked(
+    guildID,
+    userID
+){
+
+    const result =
+        await db.query(`
+            SELECT fightUnlocked AS "fightUnlocked"
+            FROM boss_entitlements
+            WHERE guildID=$1 AND userID=$2
+        `, [
+            String(guildID),
+            String(userID)
+        ]);
+
+
+    return Boolean(
+        result.rows[0]?.fightUnlocked
+        ?? result.rows[0]?.fightunlocked
+    );
+
+}
+
+
+function normalizeBossEntitlements(row = {}){
+
+    return {
+        fightUnlocked:
+            Boolean(
+                row.fightUnlocked
+                ?? row.fightunlocked
+            ),
+        freeUpgradeTokens:
+            Math.max(
+                0,
+                Number(
+                    row.freeUpgradeTokens
+                    ?? row.freeupgradetokens
+                ) || 0
+            ),
+        blessUnlocked:
+            Boolean(
+                row.blessUnlocked
+                ?? row.blessunlocked
+            ),
+        spawnBossUses:
+            Math.max(
+                0,
+                Number(
+                    row.spawnBossUses
+                    ?? row.spawnbossuses
+                ) || 0
+            ),
+        coinflipUnlocked:
+            Boolean(
+                row.coinflipUnlocked
+                ?? row.coinflipunlocked
+            )
+    };
+
+}
+
+
+async function getBossEntitlements(
+    guildID,
+    userID
+){
+
+    const result =
+        await db.query(`
+
+            SELECT
+                fightUnlocked AS "fightUnlocked",
+                freeUpgradeTokens AS "freeUpgradeTokens",
+                blessUnlocked AS "blessUnlocked",
+                spawnBossUses AS "spawnBossUses",
+                coinflipUnlocked AS "coinflipUnlocked"
+
+            FROM boss_entitlements
+
+            WHERE guildID=$1
+            AND userID=$2
+
+        `, [
+            String(guildID),
+            String(userID)
+        ]);
+
+
+    return normalizeBossEntitlements(
+        result.rows[0]
+    );
+
+}
+
+
+async function isBlessUnlocked(guildID, userID){
+    return (
+        await getBossEntitlements(guildID, userID)
+    ).blessUnlocked;
+}
+
+
+async function isCoinflipUnlocked(guildID, userID){
+    return (
+        await getBossEntitlements(guildID, userID)
+    ).coinflipUnlocked;
+}
+
+
+async function consumeSpawnBossUse(
+    guildID,
+    userID
+){
+
+    const result =
+        await db.query(`
+
+            UPDATE boss_entitlements
+            SET
+                spawnBossUses=spawnBossUses-1,
+                updatedAt=$3
+            WHERE guildID=$1
+            AND userID=$2
+            AND spawnBossUses>0
+            RETURNING spawnBossUses AS "spawnBossUses"
+
+        `, [
+            String(guildID),
+            String(userID),
+            Date.now()
+        ]);
+
+
+    return {
+        consumed: result.rowCount > 0,
+        remaining:
+            Math.max(
+                0,
+                Number(
+                    result.rows[0]?.spawnBossUses
+                    ?? result.rows[0]?.spawnbossuses
+                ) || 0
+            )
+    };
+
+}
+
+
+async function addSpawnBossUses(
+    guildID,
+    userID,
+    amount = 1
+){
+
+    const safeAmount =
+        Math.max(
+            1,
+            Math.floor(Number(amount) || 1)
+        );
+
+
+    const result =
+        await db.query(`
+
+            INSERT INTO boss_entitlements(
+                guildID,userID,spawnBossUses,updatedAt
+            )
+            VALUES($1,$2,$3,$4)
+
+            ON CONFLICT(guildID,userID)
+            DO UPDATE SET
+                spawnBossUses=
+                    boss_entitlements.spawnBossUses
+                    + EXCLUDED.spawnBossUses,
+                updatedAt=EXCLUDED.updatedAt
+
+            RETURNING spawnBossUses AS "spawnBossUses"
+
+        `, [
+            String(guildID),
+            String(userID),
+            safeAmount,
+            Date.now()
+        ]);
+
+
+    return Math.max(
+        0,
+        Number(
+            result.rows[0]?.spawnBossUses
+            ?? result.rows[0]?.spawnbossuses
+        ) || 0
+    );
+
+}
+
+
+function normalizeGuildBlessing(row){
+
+    if(!row){
+        return null;
+    }
+
+
+    return {
+        guildID:
+            String(row.guildID ?? row.guildid),
+        activatedBy:
+            String(row.activatedBy ?? row.activatedby),
+        luckMultiplier:
+            Math.max(
+                1,
+                Number(
+                    row.luckMultiplier
+                    ?? row.luckmultiplier
+                ) || 1
+            ),
+        chatXPMultiplier:
+            Math.max(
+                1,
+                Number(
+                    row.chatXPMultiplier
+                    ?? row.chatxpmultiplier
+                ) || 1
+            ),
+        startedAt:
+            Number(row.startedAt ?? row.startedat) || 0,
+        expiresAt:
+            Number(row.expiresAt ?? row.expiresat) || 0
+    };
+
+}
+
+
+async function getActiveGuildBlessing(
+    guildID,
+    now = Date.now()
+){
+
+    const result =
+        await db.query(`
+
+            SELECT
+                guildID AS "guildID",
+                activatedBy AS "activatedBy",
+                luckMultiplier AS "luckMultiplier",
+                chatXPMultiplier AS "chatXPMultiplier",
+                startedAt AS "startedAt",
+                expiresAt AS "expiresAt"
+            FROM guild_blessings
+            WHERE guildID=$1
+            AND expiresAt>$2
+
+        `, [
+            String(guildID),
+            Math.max(0, Number(now) || Date.now())
+        ]);
+
+
+    return normalizeGuildBlessing(
+        result.rows[0]
+    );
+
+}
+
+
+async function activateGuildBlessing({
+    guildID,
+    userID,
+    luckMultiplier,
+    chatXPMultiplier,
+    now = Date.now()
+}){
+
+    const client =
+        await db.connect();
+
+
+    try{
+        await client.query("BEGIN");
+
+        await client.query(`
+
+            INSERT INTO guild_blessings(
+                guildID,activatedBy,luckMultiplier,
+                chatXPMultiplier,startedAt,expiresAt,updatedAt
+            )
+            VALUES($1,$2,1,1,$3,$3,$3)
+            ON CONFLICT DO NOTHING
+
+        `, [
+            String(guildID),
+            String(userID),
+            now
+        ]);
+
+        const locked =
+            await client.query(`
+
+                SELECT *
+                FROM guild_blessings
+                WHERE guildID=$1
+                FOR UPDATE
+
+            `, [String(guildID)]);
+
+        const current =
+            normalizeGuildBlessing(
+                locked.rows[0]
+            );
+
+        const active =
+            Number(current?.expiresAt) > now;
+
+        const next = active
+            ? {
+                luckMultiplier:
+                    current.luckMultiplier,
+                chatXPMultiplier:
+                    current.chatXPMultiplier,
+                startedAt:
+                    current.startedAt,
+                expiresAt:
+                    current.expiresAt
+                    + 8 * 60 * 60 * 1000
+            }
+            : {
+                luckMultiplier:
+                    Math.max(1, Number(luckMultiplier) || 1),
+                chatXPMultiplier:
+                    Math.max(1, Number(chatXPMultiplier) || 1),
+                startedAt: now,
+                expiresAt:
+                    now + 24 * 60 * 60 * 1000
+            };
+
+        const updated =
+            await client.query(`
+
+                UPDATE guild_blessings
+                SET
+                    activatedBy=$2,
+                    luckMultiplier=$3,
+                    chatXPMultiplier=$4,
+                    startedAt=$5,
+                    expiresAt=$6,
+                    updatedAt=$7
+                WHERE guildID=$1
+                RETURNING
+                    guildID AS "guildID",
+                    activatedBy AS "activatedBy",
+                    luckMultiplier AS "luckMultiplier",
+                    chatXPMultiplier AS "chatXPMultiplier",
+                    startedAt AS "startedAt",
+                    expiresAt AS "expiresAt"
+
+            `, [
+                String(guildID),
+                String(userID),
+                next.luckMultiplier,
+                next.chatXPMultiplier,
+                next.startedAt,
+                next.expiresAt,
+                now
+            ]);
+
+        await client.query("COMMIT");
+
+        return {
+            status: active ? "extended" : "activated",
+            blessing:
+                normalizeGuildBlessing(
+                    updated.rows[0]
+                )
+        };
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+}
+
+
+async function getBossShards(
+    guildID,
+    userID
+){
+
+    const result =
+        await db.query(`
+            SELECT shards
+            FROM boss_currency
+            WHERE guildID=$1 AND userID=$2
+        `, [String(guildID), String(userID)]);
+
+    return Math.max(
+        0,
+        Number(result.rows[0]?.shards) || 0
+    );
+
+}
+
+
+async function openChestReward(
+    guildID,
+    userID,
+    chestTier,
+    rewardBundle
+){
+
+    const client =
+        await db.connect();
+
+
+    try{
+        await client.query("BEGIN");
+
+        const inventory =
+            await client.query(`
+                SELECT amount
+                FROM boost_inventory
+                WHERE guildID=$1 AND userID=$2
+                AND boostType='chest' AND tier=$3
+                FOR UPDATE
+            `, [
+                String(guildID),
+                String(userID),
+                String(chestTier).toLowerCase()
+            ]);
+
+        const available =
+            Math.max(
+                0,
+                Number(inventory.rows[0]?.amount) || 0
+            );
+
+        if(available <= 0){
+            await client.query("COMMIT");
+            return {
+                success: false,
+                status: "no-chest",
+                remaining: 0
+            };
+        }
+
+        await client.query(`
+            UPDATE boost_inventory
+            SET amount=amount-1
+            WHERE guildID=$1 AND userID=$2
+            AND boostType='chest' AND tier=$3
+        `, [
+            String(guildID),
+            String(userID),
+            String(chestTier).toLowerCase()
+        ]);
+
+        await client.query(`
+            DELETE FROM boost_inventory
+            WHERE guildID=$1 AND userID=$2
+            AND boostType='chest' AND tier=$3
+            AND amount<=0
+        `, [
+            String(guildID),
+            String(userID),
+            String(chestTier).toLowerCase()
+        ]);
+
+        await applyBossRewardBundle(
+            client,
+            guildID,
+            userID,
+            rewardBundle,
+            Date.now()
+        );
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            status: "opened",
+            remaining: available - 1,
+            rewardBundle
+        };
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+}
+
+
+function normalizeBossShopState(row){
+
+    if(!row){
+        return null;
+    }
+
+    return {
+        guildID: String(row.guildID ?? row.guildid),
+        openedAt: Number(row.openedAt ?? row.openedat) || 0,
+        expiresAt: Number(row.expiresAt ?? row.expiresat) || 0,
+        refreshAt: Number(row.refreshAt ?? row.refreshat) || 0,
+        stock:
+            Array.isArray(row.stock)
+                ? row.stock
+                : []
+    };
+
+}
+
+
+async function getBossShopState(guildID){
+
+    const result =
+        await db.query(`
+            SELECT
+                guildID AS "guildID",
+                openedAt AS "openedAt",
+                expiresAt AS "expiresAt",
+                refreshAt AS "refreshAt",
+                stock
+            FROM boss_shop_state
+            WHERE guildID=$1
+        `, [String(guildID)]);
+
+    return normalizeBossShopState(
+        result.rows[0]
+    );
+
+}
+
+
+async function saveBossShopState({
+    guildID,
+    openedAt,
+    expiresAt,
+    refreshAt,
+    stock
+}){
+
+    const result =
+        await db.query(`
+            INSERT INTO boss_shop_state(
+                guildID,openedAt,expiresAt,
+                refreshAt,stock,updatedAt
+            )
+            VALUES($1,$2,$3,$4,$5::jsonb,$6)
+            ON CONFLICT(guildID)
+            DO UPDATE SET
+                openedAt=EXCLUDED.openedAt,
+                expiresAt=EXCLUDED.expiresAt,
+                refreshAt=EXCLUDED.refreshAt,
+                stock=EXCLUDED.stock,
+                updatedAt=EXCLUDED.updatedAt
+            RETURNING
+                guildID AS "guildID",
+                openedAt AS "openedAt",
+                expiresAt AS "expiresAt",
+                refreshAt AS "refreshAt",
+                stock
+        `, [
+            String(guildID),
+            Number(openedAt) || Date.now(),
+            Number(expiresAt) || Date.now(),
+            Number(refreshAt) || Date.now(),
+            JSON.stringify(stock || []),
+            Date.now()
+        ]);
+
+    return normalizeBossShopState(
+        result.rows[0]
+    );
+
+}
+
+
+async function purchaseBossShopItem(
+    guildID,
+    userID,
+    slotID,
+    now = Date.now()
+){
+
+    const client =
+        await db.connect();
+
+    try{
+        await client.query("BEGIN");
+
+        const shopResult =
+            await client.query(`
+                SELECT *
+                FROM boss_shop_state
+                WHERE guildID=$1
+                FOR UPDATE
+            `, [String(guildID)]);
+
+        const shop =
+            normalizeBossShopState(
+                shopResult.rows[0]
+            );
+
+        if(!shop || shop.expiresAt <= now){
+            await client.query("COMMIT");
+            return {success: false, status: "shop-closed"};
+        }
+
+        const item =
+            shop.stock.find(
+                entry =>
+                    String(entry.slotID) ===
+                    String(slotID)
+            );
+
+        if(!item || Number(item.stock) <= 0){
+            await client.query("COMMIT");
+            return {success: false, status: "sold-out"};
+        }
+
+        await client.query(`
+            INSERT INTO boss_currency(
+                guildID,userID,shards,updatedAt
+            )
+            VALUES($1,$2,0,$3)
+            ON CONFLICT DO NOTHING
+        `, [String(guildID), String(userID), now]);
+
+        const currencyResult =
+            await client.query(`
+                SELECT shards
+                FROM boss_currency
+                WHERE guildID=$1 AND userID=$2
+                FOR UPDATE
+            `, [String(guildID), String(userID)]);
+
+        const balance =
+            Math.max(
+                0,
+                Number(currencyResult.rows[0]?.shards) || 0
+            );
+
+        const price =
+            Math.max(0, Math.floor(Number(item.price) || 0));
+
+        if(balance < price){
+            await client.query("COMMIT");
+            return {
+                success: false,
+                status: "not-enough-shards",
+                balance,
+                price,
+                missing: price - balance
+            };
+        }
+
+        await client.query(`
+            UPDATE boss_currency
+            SET shards=shards-$3,updatedAt=$4
+            WHERE guildID=$1 AND userID=$2
+        `, [
+            String(guildID),
+            String(userID),
+            price,
+            now
+        ]);
+
+        item.stock = Number(item.stock) - 1;
+
+        await client.query(`
+            UPDATE boss_shop_state
+            SET stock=$2::jsonb,updatedAt=$3
+            WHERE guildID=$1
+        `, [
+            String(guildID),
+            JSON.stringify(shop.stock),
+            now
+        ]);
+
+        await applyBossRewardBundle(
+            client,
+            guildID,
+            userID,
+            item.rewardBundle || {},
+            now
+        );
+
+        await client.query("COMMIT");
+
+        return {
+            success: true,
+            status: "purchased",
+            item,
+            balance: balance - price,
+            shop: {...shop, stock: shop.stock}
+        };
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+}
+
+
+async function settleCoinflip({
+    guildID,
+    userID,
+    bet,
+    multiplier,
+    won,
+    now = Date.now()
+}){
+
+    const safeBet =
+        Math.max(1000, Math.floor(Number(bet) || 0));
+
+    const safeMultiplier =
+        Math.max(1.1, Math.min(10, Number(multiplier) || 1.1));
+
+    const winAmount =
+        Math.max(1, Math.floor(safeBet * safeMultiplier));
+
+    const lossAmount =
+        Math.max(1, Math.ceil(safeBet / safeMultiplier));
+
+    const client =
+        await db.connect();
+
+    try{
+        await client.query("BEGIN");
+
+        await client.query(`
+            INSERT INTO users(guildID,userID)
+            VALUES($1,$2)
+            ON CONFLICT DO NOTHING
+        `, [String(guildID), String(userID)]);
+
+        const userResult =
+            await client.query(`
+                SELECT xp
+                FROM users
+                WHERE guildID=$1 AND userID=$2
+                FOR UPDATE
+            `, [String(guildID), String(userID)]);
+
+        const balance =
+            Math.max(0, Number(userResult.rows[0]?.xp) || 0);
+
+        if(balance < safeBet){
+            await client.query("COMMIT");
+            return {
+                success: false,
+                status: "not-enough-xp",
+                balance,
+                bet: safeBet
+            };
+        }
+
+        const delta =
+            won ? winAmount : -lossAmount;
+
+        const updated =
+            await client.query(`
+                UPDATE users
+                SET xp=GREATEST(0,xp+$3)
+                WHERE guildID=$1 AND userID=$2
+                RETURNING xp
+            `, [String(guildID), String(userID), delta]);
+
+        if(delta > 0){
+            await client.query(`
+                INSERT INTO leaderboard_xp_activity(
+                    guildID,userID,amount,timestamp
+                )
+                VALUES($1,$2,$3,$4)
+            `, [String(guildID), String(userID), delta, now]);
+        }
+
+        await client.query("COMMIT");
+
+        userCache.delete(`${guildID}:${userID}`);
+
+        return {
+            success: true,
+            status: won ? "won" : "lost",
+            delta,
+            winAmount,
+            lossAmount,
+            balance:
+                Math.max(
+                    0,
+                    Number(updated.rows[0]?.xp) || 0
+                )
+        };
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+}
+
 // =====================================================
 // COMMAND COOLDOWNS
 // =====================================================
@@ -8095,6 +11652,61 @@ async function setCommandCooldown(
         expiresAt
     ]);
 
+
+}
+
+
+
+// Atomically starts a cooldown only when no active cooldown exists. This is
+// used by commands with large payouts so two nearly simultaneous messages
+// cannot both pass a read-then-write cooldown check.
+async function claimCommandCooldown(
+    guildID,
+    userID,
+    commandName,
+    expiresAt,
+    currentTime = Date.now()
+){
+
+    const normalizedCommand =
+        String(commandName).toLowerCase();
+
+
+    const result =
+        await db.query(`
+
+            INSERT INTO command_cooldowns(
+                guildID,
+                userID,
+                commandName,
+                expiresAt
+            )
+
+            VALUES($1,$2,$3,$4)
+
+            ON CONFLICT(
+                guildID,
+                userID,
+                commandName
+            )
+
+            DO UPDATE SET
+                expiresAt=EXCLUDED.expiresAt
+
+            WHERE command_cooldowns.expiresAt <= $5
+
+            RETURNING expiresAt
+
+        `, [
+            guildID,
+            userID,
+            normalizedCommand,
+            expiresAt,
+            currentTime
+        ]);
+
+
+    return result.rowCount > 0;
 
 }
 
@@ -10505,11 +14117,13 @@ async function purchaseGlobalShopItem(
             await client.query(`
 
                 SELECT
+                    shopDiscount25Until,
                     shopDiscount30Until,
                     shopDiscount50Until,
                     shopDiscount60Until,
                     shopDiscount75Until,
-                    shopDiscount90Until
+                    shopDiscount90Until,
+                    shopFreePurchases
 
                 FROM quest_effects
 
@@ -10529,9 +14143,17 @@ async function purchaseGlobalShopItem(
 
 
         const questDiscountPercent =
-            resolveShopDiscount(
-                discountRow
-            );
+            Number(
+                discountRow.shopfreepurchases || 0
+            ) > 0
+                ? 100
+                : resolveShopDiscount(
+                    discountRow
+                );
+
+
+        const freePurchaseUsed =
+            questDiscountPercent === 100;
 
 
         const upgradeEffects =
@@ -10553,16 +14175,18 @@ async function purchaseGlobalShopItem(
 
 
         const discountPercent =
-            Math.min(
-                95,
-                questDiscountPercent +
-                upgradeDiscountPercent
-            );
+            freePurchaseUsed
+                ? 100
+                : Math.min(
+                    95,
+                    questDiscountPercent +
+                    upgradeDiscountPercent
+                );
 
 
         const currentPrice =
             Math.max(
-                1,
+                0,
                 Math.ceil(
                     basePrice *
                     (100 - discountPercent) /
@@ -10738,6 +14362,25 @@ async function purchaseGlobalShopItem(
             ]);
 
 
+        if(freePurchaseUsed){
+            await client.query(`
+
+                UPDATE quest_effects
+
+                SET shopFreePurchases =
+                    shopFreePurchases - 1
+
+                WHERE guildID=$1
+                AND userID=$2
+                AND shopFreePurchases > 0
+
+            `, [
+                guildID,
+                userID
+            ]);
+        }
+
+
         // lockAndRefreshShop() holds the single shop_state row
         // FOR UPDATE, so all purchases are serialized. This makes
         // the "sell out the entire store" check race-safe.
@@ -10777,6 +14420,7 @@ async function purchaseGlobalShopItem(
             basePrice,
             discountPercent,
             questDiscountPercent,
+            freePurchaseUsed,
             upgradeDiscountPercent,
             accidentalDouble,
             rewardAmount,
@@ -11109,14 +14753,16 @@ function resolveChatXPMultiplier(
 
 
     const timedMultipliers = [
+        [10, "chatxp10until"],
+        [7, "chatxp7until"],
+        [5, "chatxp5until"],
+        [4, "chatxp4until"],
+        [3, "chatxp3until"],
         [2, "chatxp2until"],
-        [2, "chatxp10until"],
-        [2, "chatxp7until"],
-        [2, "chatxp5until"],
-        [2, "chatxp3until"],
         [1.9, "chatxp1m9until"],
         [1.9, "chatxp15until"],
         [1.9, "chatxp20until"],
+        [1.8, "chatxp1m8until"],
         [1.75, "chatxp1m75until"],
         [1.6, "chatxp1m6until"],
         [1.6, "chatxp12until"],
@@ -11155,7 +14801,8 @@ function resolveShopDiscount(
         [75, "shopdiscount75until"],
         [60, "shopdiscount60until"],
         [50, "shopdiscount50until"],
-        [30, "shopdiscount30until"]
+        [30, "shopdiscount30until"],
+        [25, "shopdiscount25until"]
     ];
 
 
@@ -13464,7 +17111,8 @@ async function claimQuestCycleRewards(
                     10000000: "guaranteed10m",
                     12500000: "guaranteed12m5",
                     15000000: "guaranteed15m",
-                    25000000: "guaranteed25m"
+                    25000000: "guaranteed25m",
+                    100000000: "guaranteed100m"
                 };
 
 
@@ -13502,7 +17150,10 @@ async function claimQuestCycleRewards(
                 const burstColumns = {
                     10: "nextRollBurst10",
                     20: "nextRollBurst20",
+                    25: "nextRollBurst25",
+                    35: "nextRollBurst35",
                     50: "nextRollBurst50",
+                    100: "nextRollBurst100",
                     200: "nextRollBurst200"
                 };
 
@@ -13534,6 +17185,28 @@ async function claimQuestCycleRewards(
                     ]);
 
                 }
+
+            }
+            else if(reward.type === "guaranteed_jackpot"){
+
+                await client.query(`
+
+                    UPDATE quest_effects
+
+                    SET guaranteed100m =
+                        guaranteed100m + $3
+
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                `, [
+                    guildID,
+                    userID,
+                    Math.max(
+                        1,
+                        Number(reward.amount) || 1
+                    )
+                ]);
 
             }
             else if(reward.type === "multi_roll"){
@@ -13587,31 +17260,23 @@ async function claimQuestCycleRewards(
 
             }
             else if(reward.type === "chat_xp_multiplier"){
-
-                // New quest rewards use only 1.5x/1.75x/2x. This also safely
-                // caps a saved, unclaimed reward generated by an older build.
-                const requestedMultiplier =
-                    Number(reward.multiplier) || 1.5;
-
-
-                const cappedMultiplier =
-                    requestedMultiplier <= 1.5
-                        ? 1.5
-                        : requestedMultiplier <= 1.75
-                            ? 1.75
-                            : 2;
-
-
                 const multiplierColumns = {
+                    1.3: "chatXP1m3Until",
                     1.5: "chatXP1m5Until",
+                    1.8: "chatXP1m8Until",
                     1.75: "chatXP1m75Until",
-                    2: "chatXP2Until"
+                    2: "chatXP2Until",
+                    3: "chatXP3Until",
+                    4: "chatXP4Until",
+                    5: "chatXP5Until",
+                    7: "chatXP7Until",
+                    10: "chatXP10Until"
                 };
 
 
                 const column =
                     multiplierColumns[
-                        cappedMultiplier
+                        Number(reward.multiplier)
                     ];
 
 
@@ -13647,6 +17312,7 @@ async function claimQuestCycleRewards(
             else if(reward.type === "shop_discount"){
 
                 const discountColumns = {
+                    25: "shopDiscount25Until",
                     30: "shopDiscount30Until",
                     50: "shopDiscount50Until",
                     60: "shopDiscount60Until",
@@ -13708,6 +17374,181 @@ async function claimQuestCycleRewards(
                     Math.max(
                         1,
                         Number(reward.amount) || 1
+                    )
+                ]);
+
+            }
+            else if(reward.type === "shop_free_purchases"){
+
+                await client.query(`
+
+                    UPDATE quest_effects
+
+                    SET shopFreePurchases =
+                        shopFreePurchases + $3
+
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                `, [
+                    guildID,
+                    userID,
+                    Math.max(
+                        1,
+                        Math.floor(Number(reward.amount) || 1)
+                    )
+                ]);
+
+            }
+            else if(reward.type === "next_social_repeat"){
+
+                const commandName =
+                    String(reward.commandName || "").toLowerCase();
+
+
+                const columns = {
+                    hug: {
+                        uses: "nextHugRepeatUses",
+                        count: "nextHugRepeatCount"
+                    },
+                    kiss: {
+                        uses: "nextKissRepeatUses",
+                        count: "nextKissRepeatCount"
+                    }
+                };
+
+
+                const selected =
+                    columns[commandName];
+
+
+                if(selected){
+                    await client.query(`
+
+                        UPDATE quest_effects
+
+                        SET
+                            ${selected.uses} =
+                                ${selected.uses} + $3,
+                            ${selected.count} =
+                                CASE
+                                    WHEN ${selected.uses} <= 0
+                                        THEN $4
+                                    ELSE GREATEST(
+                                        ${selected.count},
+                                        $4
+                                    )
+                                END
+
+                        WHERE guildID=$1
+                        AND userID=$2
+
+                    `, [
+                        guildID,
+                        userID,
+                        Math.max(
+                            1,
+                            Math.floor(Number(reward.amount) || 1)
+                        ),
+                        Math.max(
+                            2,
+                            Math.floor(Number(reward.repeatCount) || 2)
+                        )
+                    ]);
+                }
+
+            }
+            else if(reward.type === "command_multi"){
+                const repeatCount =
+                    Math.max(
+                        2,
+                        1 + Math.floor(
+                            Number(reward.extraUses) || 3
+                        )
+                    );
+
+
+                await client.query(`
+
+                    UPDATE quest_effects
+
+                    SET
+                        nextHugRepeatUses =
+                            nextHugRepeatUses + 1,
+                        nextHugRepeatCount =
+                            CASE
+                                WHEN nextHugRepeatUses <= 0 THEN $3
+                                ELSE GREATEST(nextHugRepeatCount, $3)
+                            END,
+                        nextKissRepeatUses =
+                            nextKissRepeatUses + 1,
+                        nextKissRepeatCount =
+                            CASE
+                                WHEN nextKissRepeatUses <= 0 THEN $3
+                                ELSE GREATEST(nextKissRepeatCount, $3)
+                            END,
+                        nextStealRepeatUses =
+                            nextStealRepeatUses + 1,
+                        nextStealRepeatCount =
+                            CASE
+                                WHEN nextStealRepeatUses <= 0 THEN $3
+                                ELSE GREATEST(nextStealRepeatCount, $3)
+                            END,
+                        nextTrollRepeatUses =
+                            nextTrollRepeatUses + 1,
+                        nextTrollRepeatCount =
+                            CASE
+                                WHEN nextTrollRepeatUses <= 0 THEN $3
+                                ELSE GREATEST(nextTrollRepeatCount, $3)
+                            END,
+                        nextRollRepeatUses =
+                            nextRollRepeatUses + 1,
+                        nextRollRepeatCount =
+                            CASE
+                                WHEN nextRollRepeatUses <= 0 THEN $3
+                                ELSE GREATEST(nextRollRepeatCount, $3)
+                            END,
+                        rollWindowEndsAt = 0,
+                        rollWindowUses = 0
+
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                `, [
+                    guildID,
+                    userID,
+                    repeatCount
+                ]);
+
+            }
+            else if(reward.type === "counted_chat_multiplier"){
+
+                await client.query(`
+
+                    UPDATE quest_effects
+
+                    SET
+                        countedChatMessagesRemaining =
+                            countedChatMessagesRemaining + $3,
+                        countedChatXPMultiplier =
+                            GREATEST(
+                                countedChatXPMultiplier,
+                                $4
+                            )
+
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                `, [
+                    guildID,
+                    userID,
+                    Math.max(
+                        1,
+                        Math.floor(Number(reward.amount) || 1)
+                    ),
+                    Math.max(
+                        1,
+                        Number(reward.multiplier) || 1
                     )
                 ]);
 
@@ -13881,6 +17722,129 @@ async function getQuestChatXPMultiplier(
 }
 
 
+async function consumeQuestChatXPMultiplier(
+    guildID,
+    userID
+){
+
+    const client =
+        await db.connect();
+
+
+    try{
+        await client.query("BEGIN");
+
+
+        await client.query(`
+
+            INSERT INTO quest_effects(
+                guildID,
+                userID
+            )
+
+            VALUES($1,$2)
+
+            ON CONFLICT DO NOTHING
+
+        `, [
+            guildID,
+            userID
+        ]);
+
+
+        const result =
+            await client.query(`
+
+                SELECT *
+
+                FROM quest_effects
+
+                WHERE guildID=$1
+                AND userID=$2
+
+                FOR UPDATE
+
+            `, [
+                guildID,
+                userID
+            ]);
+
+
+        const effects =
+            result.rows[0] || {};
+
+
+        const timedMultiplier =
+            resolveChatXPMultiplier(
+                effects
+            );
+
+
+        const countedRemaining =
+            Math.max(
+                0,
+                Number(
+                    effects.countedchatmessagesremaining || 0
+                )
+            );
+
+
+        const countedMultiplier =
+            countedRemaining > 0
+                ? Math.max(
+                    1,
+                    Number(
+                        effects.countedchatxpmultiplier || 1
+                    )
+                )
+                : 1;
+
+
+        if(countedRemaining > 0){
+            await client.query(`
+
+                UPDATE quest_effects
+
+                SET
+                    countedChatMessagesRemaining =
+                        countedChatMessagesRemaining - 1,
+                    countedChatXPMultiplier =
+                        CASE
+                            WHEN countedChatMessagesRemaining <= 1
+                                THEN 1
+                            ELSE countedChatXPMultiplier
+                        END
+
+                WHERE guildID=$1
+                AND userID=$2
+
+            `, [
+                guildID,
+                userID
+            ]);
+        }
+
+
+        await client.query("COMMIT");
+
+
+        return Math.max(
+            timedMultiplier,
+            countedMultiplier
+        );
+
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+}
+
+
 async function getQuestRollLuckMultiplier(
     guildID,
     userID
@@ -13914,9 +17878,13 @@ async function getQuestShopDiscount(
         );
 
 
-    return resolveShopDiscount(
-        effects
-    );
+    return Number(
+        effects?.shopfreepurchases || 0
+    ) > 0
+        ? 100
+        : resolveShopDiscount(
+            effects
+        );
 
 }
 
@@ -14068,37 +18036,114 @@ async function getQuestSocialCommandRepeatCount(
         );
 
 
-    const timedRewardActive =
-        Number(
-            effects?.socialtripleuntil || 0
-        ) > Date.now();
+    const now =
+        Date.now();
+
+
+    const normalizedCommand =
+        String(commandName || "").toLowerCase();
+
+
+    let repeatCount =
+        1;
+
+
+    if(
+        Number(effects?.socialrepeatuntil || 0) > now
+        && !(
+            normalizedCommand === "troll"
+            && effects?.socialrepeatincludetroll === false
+        )
+    ){
+        repeatCount = Math.max(
+            repeatCount,
+            Number(effects?.socialrepeatcount || 1)
+        );
+    }
+
+
+    if(Number(effects?.socialtripleuntil || 0) > now){
+        repeatCount = Math.max(repeatCount, 3);
+    }
 
 
     const timedHugRewardActive =
-        String(commandName || "").toLowerCase() === "hug"
+        normalizedCommand === "hug"
         &&
         Number(
             effects?.hugtripleuntil || 0
-        ) > Date.now();
+        ) > now;
 
 
     const oneTimeHugAvailable =
-        String(commandName || "").toLowerCase() === "hug"
+        normalizedCommand === "hug"
         &&
         Number(
             effects?.nexthugtripleuses || 0
         ) > 0;
 
 
-    return (
-        timedRewardActive
-        ||
-        timedHugRewardActive
-        ||
-        oneTimeHugAvailable
-    )
-        ? 3
-        : 1;
+    if(timedHugRewardActive || oneTimeHugAvailable){
+        repeatCount = Math.max(repeatCount, 3);
+    }
+
+
+    if(
+        normalizedCommand === "hug"
+        &&
+        Number(effects?.nexthugrepeatuses || 0) > 0
+    ){
+        repeatCount = Math.max(
+            repeatCount,
+            Number(effects?.nexthugrepeatcount || 1)
+        );
+    }
+
+
+    if(
+        normalizedCommand === "kiss"
+        &&
+        Number(effects?.nextkissrepeatuses || 0) > 0
+    ){
+        repeatCount = Math.max(
+            repeatCount,
+            Number(effects?.nextkissrepeatcount || 1)
+        );
+    }
+
+
+    const oneTimeRepeatFields = {
+        steal: [
+            "nextstealrepeatuses",
+            "nextstealrepeatcount"
+        ],
+        troll: [
+            "nexttrollrepeatuses",
+            "nexttrollrepeatcount"
+        ]
+    };
+
+
+    const oneTimeFields =
+        oneTimeRepeatFields[normalizedCommand];
+
+
+    if(
+        oneTimeFields
+        &&
+        Number(effects?.[oneTimeFields[0]] || 0) > 0
+    ){
+        repeatCount = Math.max(
+            repeatCount,
+            Number(effects?.[oneTimeFields[1]] || 1)
+        );
+    }
+
+
+    return Math.max(
+        1,
+        Math.floor(repeatCount)
+    );
 
 }
 
@@ -14108,6 +18153,205 @@ async function consumeQuestSocialCommandRepeat(
     userID,
     commandName
 ){
+
+    {
+        const normalized =
+            String(commandName || "").toLowerCase();
+
+
+        const client =
+            await db.connect();
+
+
+        try{
+            await client.query("BEGIN");
+
+
+            await client.query(`
+
+                INSERT INTO quest_effects(
+                    guildID,
+                    userID
+                )
+
+                VALUES($1,$2)
+
+                ON CONFLICT DO NOTHING
+
+            `, [
+                guildID,
+                userID
+            ]);
+
+
+            const rowResult =
+                await client.query(`
+
+                    SELECT *
+
+                    FROM quest_effects
+
+                    WHERE guildID=$1
+                    AND userID=$2
+
+                    FOR UPDATE
+
+                `, [
+                    guildID,
+                    userID
+                ]);
+
+
+            const effects =
+                rowResult.rows[0] || {};
+
+
+            const nowValue =
+                Date.now();
+
+
+            let repeatCount =
+                1;
+
+
+            let hasTimedRepeat =
+                false;
+
+
+            if(
+                Number(effects.socialrepeatuntil || 0) > nowValue
+                && !(
+                    normalized === "troll"
+                    && effects.socialrepeatincludetroll === false
+                )
+            ){
+                repeatCount = Math.max(
+                    repeatCount,
+                    Number(effects.socialrepeatcount || 1)
+                );
+                hasTimedRepeat = true;
+            }
+
+
+            if(Number(effects.socialtripleuntil || 0) > nowValue){
+                repeatCount = Math.max(repeatCount, 3);
+                hasTimedRepeat = true;
+            }
+
+
+            if(
+                normalized === "hug"
+                &&
+                Number(effects.hugtripleuntil || 0) > nowValue
+            ){
+                repeatCount = Math.max(repeatCount, 3);
+                hasTimedRepeat = true;
+            }
+
+
+            let oneTimeUsesColumn =
+                null;
+
+
+            if(!hasTimedRepeat && normalized === "hug"){
+                if(Number(effects.nexthugrepeatuses || 0) > 0){
+                    repeatCount = Math.max(
+                        repeatCount,
+                        Number(effects.nexthugrepeatcount || 1)
+                    );
+                    oneTimeUsesColumn = "nextHugRepeatUses";
+                }
+                else if(Number(effects.nexthugtripleuses || 0) > 0){
+                    repeatCount = Math.max(repeatCount, 3);
+                    oneTimeUsesColumn = "nextHugTripleUses";
+                }
+            }
+
+
+            if(
+                !hasTimedRepeat
+                &&
+                normalized === "kiss"
+                &&
+                Number(effects.nextkissrepeatuses || 0) > 0
+            ){
+                repeatCount = Math.max(
+                    repeatCount,
+                    Number(effects.nextkissrepeatcount || 1)
+                );
+                oneTimeUsesColumn = "nextKissRepeatUses";
+            }
+
+
+            const repeatFieldMap = {
+                steal: {
+                    usesField: "nextstealrepeatuses",
+                    countField: "nextstealrepeatcount",
+                    usesColumn: "nextStealRepeatUses"
+                },
+                troll: {
+                    usesField: "nexttrollrepeatuses",
+                    countField: "nexttrollrepeatcount",
+                    usesColumn: "nextTrollRepeatUses"
+                }
+            };
+
+
+            const repeatFields =
+                repeatFieldMap[normalized];
+
+
+            if(
+                !hasTimedRepeat
+                &&
+                repeatFields
+                &&
+                Number(effects[repeatFields.usesField] || 0) > 0
+            ){
+                repeatCount = Math.max(
+                    repeatCount,
+                    Number(effects[repeatFields.countField] || 1)
+                );
+                oneTimeUsesColumn = repeatFields.usesColumn;
+            }
+
+
+            if(oneTimeUsesColumn){
+                await client.query(`
+
+                    UPDATE quest_effects
+
+                    SET ${oneTimeUsesColumn} =
+                        ${oneTimeUsesColumn} - 1
+
+                    WHERE guildID=$1
+                    AND userID=$2
+                    AND ${oneTimeUsesColumn} > 0
+
+                `, [
+                    guildID,
+                    userID
+                ]);
+            }
+
+
+            await client.query("COMMIT");
+
+
+            return Math.max(
+                1,
+                Math.floor(repeatCount)
+            );
+
+        }
+        catch(error){
+            await client.query("ROLLBACK");
+            throw error;
+        }
+        finally{
+            client.release();
+        }
+    }
 
     const normalizedCommand =
         String(commandName || "").toLowerCase();
@@ -14240,6 +18484,11 @@ async function consumeGuaranteedQuestRoll(
 
 
         const minimumRewards = [
+            {
+                field: "guaranteed100m",
+                rowField: "guaranteed100m",
+                minXP: 100000000
+            },
             {
                 field: "guaranteed25m",
                 rowField: "guaranteed25m",
@@ -14469,14 +18718,37 @@ async function useQuestRollCooldown(
 
         const burstOptions = [
             {
+                rowField: "nextrollrepeatuses",
+                column: "nextRollRepeatUses",
+                rollCount: Math.max(
+                    2,
+                    Number(effect.nextrollrepeatcount) || 2
+                )
+            },
+            {
                 rowField: "nextrollburst200",
                 column: "nextRollBurst200",
                 rollCount: 200
             },
             {
+                rowField: "nextrollburst100",
+                column: "nextRollBurst100",
+                rollCount: 100
+            },
+            {
                 rowField: "nextrollburst50",
                 column: "nextRollBurst50",
                 rollCount: 50
+            },
+            {
+                rowField: "nextrollburst35",
+                column: "nextRollBurst35",
+                rollCount: 35
+            },
+            {
+                rowField: "nextrollburst25",
+                column: "nextRollBurst25",
+                rollCount: 25
             },
             {
                 rowField: "nextrollburst20",
@@ -14492,12 +18764,17 @@ async function useQuestRollCooldown(
 
 
         const burst =
-            burstOptions.find(
-                entry =>
-                    Number(
-                        effect[entry.rowField] || 0
-                    ) > 0
-            ) || null;
+            burstOptions
+                .filter(
+                    entry =>
+                        Number(
+                            effect[entry.rowField] || 0
+                        ) > 0
+                )
+                .sort(
+                    (left, right) =>
+                        right.rollCount - left.rollCount
+                )[0] || null;
 
 
         let timedRollCount = 1;
@@ -18263,6 +22540,8 @@ module.exports = {
 
     performMythicHugReward,
 
+    performFightOutcome,
+
     performEZWin,
 
     setXP,
@@ -18309,9 +22588,77 @@ module.exports = {
 
     getRecentXPLogs,
 
+    getChatXPLoggedSince,
+
+    recordRaidBossActivity,
+
+    getRaidBossState,
+
+    createRaidBossState,
+
+    updateRaidBossState,
+
+    deleteRaidBossState,
+
+    cleanupExpiredRaidBossStates,
+
+    recordRaidBossContribution,
+
+    getRaidBossContributions,
+
+    grantBossRewardBundle,
+
+    grantRaidBossRewardOnce,
+
+    getBossChallengeSnapshot,
+
+    startBossChallenge,
+
+    createBossChallengeBattle,
+
+    setBossChallengeBattleMessage,
+
+    getActiveBossChallengeBattle,
+
+    deleteBossChallengeBattle,
+
+    expireBossChallengeBattles,
+
+    completeBossChallengeEnemy,
+
+    isFightUnlocked,
+
+    getBossEntitlements,
+
+    isBlessUnlocked,
+
+    isCoinflipUnlocked,
+
+    consumeSpawnBossUse,
+
+    addSpawnBossUses,
+
+    getActiveGuildBlessing,
+
+    activateGuildBlessing,
+
+    getBossShards,
+
+    openChestReward,
+
+    getBossShopState,
+
+    saveBossShopState,
+
+    purchaseBossShopItem,
+
+    settleCoinflip,
+
     getCommandCooldownRemaining,
 
     setCommandCooldown,
+
+    claimCommandCooldown,
 
     clearCommandCooldown,
 
@@ -18401,6 +22748,8 @@ module.exports = {
     getQuestEffects,
 
     getQuestChatXPMultiplier,
+
+    consumeQuestChatXPMultiplier,
 
     getQuestRollLuckMultiplier,
 
