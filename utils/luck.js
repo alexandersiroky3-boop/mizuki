@@ -1095,15 +1095,78 @@ async function attachLeaderboardRollLuck(
         await profile;
 
 
-    const leaderboardRollLuckMultiplier =
-        await database.getQuestRollLuckMultiplier(
+    const [
+        leaderboardRollLuckMultiplier,
+        blessing
+    ] = await Promise.all([
+        database.getQuestRollLuckMultiplier(
             member.guild.id,
             member.id
+        ),
+        database.getActiveGuildBlessing(
+            member.guild.id
+        )
+    ]);
+
+
+    const blessingLuckMultiplier =
+        Math.max(
+            1,
+            Number(
+                blessing?.luckMultiplier
+                ?? blessing?.luckmultiplier
+            ) || 1
         );
 
 
+    const blessedProfile =
+        blessingLuckMultiplier > 1
+            ? {
+                ...resolvedProfile,
+                order:
+                    Math.max(
+                        1,
+                        Number(resolvedProfile?.order) || 0
+                    ),
+                multiplier:
+                    Math.max(
+                        1,
+                        Number(resolvedProfile?.multiplier) || 1
+                    ) * blessingLuckMultiplier,
+                commandMultiplier:
+                    Math.max(
+                        1,
+                        Number(
+                            resolvedProfile?.commandMultiplier
+                            ?? resolvedProfile?.multiplier
+                        ) || 1
+                    ) * blessingLuckMultiplier,
+                rollWeightFactor:
+                    Math.max(
+                        1,
+                        Number(resolvedProfile?.rollWeightFactor) || 1
+                    ) * blessingLuckMultiplier,
+                criticalChanceBonus:
+                    Math.max(
+                        0,
+                        Number(resolvedProfile?.criticalChanceBonus) || 0
+                    ) + (
+                        blessingLuckMultiplier >= 20
+                            ? 10
+                            : 3
+                    ),
+                blessingLuckMultiplier,
+                blessingExpiresAt:
+                    Number(
+                        blessing?.expiresAt
+                        ?? blessing?.expiresat
+                    ) || 0
+            }
+            : resolvedProfile;
+
+
     return {
-        ...resolvedProfile,
+        ...blessedProfile,
         leaderboardRollLuckMultiplier
     };
 
@@ -1769,16 +1832,19 @@ function getWeightedChanceTable(
 
 
 const ROLLING_UPGRADE_WEIGHT_FACTORS = {
-    neutral: [1, 0.97, 0.90, 0.85, 0.75, 0.65, 0.50],
-    negative: [1, 0.80, 0.70, 0.48, 0.30, 0.25, 0.17],
-    common: [1, 1.15, 1.35, 1.50, 2, 2.20, 2.50],
-    fiveThousand: [1, 1.20, 2, 3, 4, 7, 8],
+    neutral: [1, 0.96, 0.88, 0.82, 0.70, 0.58, 0.42, 0.25, 0.10],
+    negative: [1, 0.77, 0.66, 0.44, 0.27, 0.21, 0.14, 0.07, 0.02],
+    common: [1, 1.18, 1.40, 1.58, 2.10, 2.35, 2.70, 3, 3.50],
+    fiveThousand: [1, 1.25, 2.10, 3.15, 4.25, 7.40, 8.50, 10, 14],
     // Keep each higher reward band's step-up at least as strong as the band
     // below it. Normalization can otherwise make an upgrade hurt jackpot odds.
-    twentyFiveThousand: [1, 1.25, 2.10, 3.20, 4.30, 7.60, 9],
-    rare: [1, 1.30, 2.20, 3.40, 4.60, 8.20, 10],
-    mega: [1, 1.35, 2.30, 3.60, 4.90, 8.80, 12],
-    ultra: [1, 1.40, 2.40, 3.80, 5.20, 9.40, 14]
+    twentyFiveThousand: [1, 1.30, 2.20, 3.35, 4.55, 8, 9.50, 16, 25],
+    seventyFiveThousand: [1, 1.32, 2.25, 3.42, 4.65, 8.15, 9.75, 100, 160],
+    twoHundredThousand: [1, 1.34, 2.28, 3.48, 4.75, 8.35, 10.10, 250, 400],
+    million: [1, 1.35, 2.30, 3.55, 4.85, 8.60, 10.60, 31.80, 3000],
+    rare: [1, 1.37, 2.34, 3.62, 4.95, 8.85, 12, 36, 180],
+    mega: [1, 1.40, 2.40, 3.80, 5.20, 9.25, 12.75, 38.25, 220],
+    ultra: [1, 1.45, 2.50, 4, 5.50, 9.90, 14.90, 44.70, 260]
 };
 
 
@@ -1804,7 +1870,7 @@ function getRollingUpgradeChanceTable(
         Math.max(
             0,
             Math.min(
-                6,
+                8,
                 Math.floor(
                     Number(rollingLevel) || 0
                 )
@@ -1826,8 +1892,17 @@ function getRollingUpgradeChanceTable(
                 else if(Number(outcome.min) >= 10000001){
                     group = "mega";
                 }
-                else if(Number(outcome.min) >= 500000){
+                else if(Number(outcome.min) >= 2000000){
                     group = "rare";
+                }
+                else if(Number(outcome.min) >= 500000){
+                    group = "million";
+                }
+                else if(Number(outcome.min) >= 200000){
+                    group = "twoHundredThousand";
+                }
+                else if(Number(outcome.min) >= 75000){
+                    group = "seventyFiveThousand";
                 }
                 else if(Number(outcome.min) >= 25000){
                     group = "twentyFiveThousand";
@@ -2317,6 +2392,136 @@ function getCommandLuckOrder(profile){
 }
 
 
+// =====================================================
+// EVOLVED COMMAND RARITIES
+// =====================================================
+//
+// The normal rarity is always selected first. A second, independent roll
+// then decides whether that exact rarity evolves. Permanent upgrades do not
+// affect this chance; only the highest active Luck Boost tier does.
+const EVOLVED_XP_MULTIPLIER =
+    10;
+
+
+const EVOLVED_BASE_CHANCE_PERCENT =
+    1;
+
+
+const EVOLVED_LUCK_BONUS_PERCENT =
+    Object.freeze({
+        tier1: 1,
+        tier2: 3,
+        tier3: 5,
+        max: 7,
+        omega: 15
+    });
+
+
+function getEvolvedChancePercent(profile){
+
+    const tier =
+        String(profile?.tier || "")
+            .toLowerCase();
+
+
+    return Math.min(
+        100,
+        EVOLVED_BASE_CHANCE_PERCENT +
+        (
+            EVOLVED_LUCK_BONUS_PERCENT[tier]
+            || 0
+        )
+    );
+
+}
+
+
+function rollEvolvedCommandRarity(
+    profile,
+    random = Math.random
+){
+
+    const chancePercent =
+        getEvolvedChancePercent(profile);
+
+
+    const position =
+        Math.max(
+            0,
+            Math.min(
+                0.999999999999,
+                Number(random()) || 0
+            )
+        );
+
+
+    return (
+        position * 100 <
+        chancePercent
+    );
+
+}
+
+
+function applyEvolvedXP(
+    amount,
+    evolved
+){
+
+    const safeAmount =
+        Math.trunc(
+            Number(amount) || 0
+        );
+
+
+    return evolved
+        ? safeAmount * EVOLVED_XP_MULTIPLIER
+        : safeAmount;
+
+}
+
+
+function buildEvolvedCommandExtra(
+    evolved,
+    _rarity = ""
+){
+
+    if(!evolved){
+        return "";
+    }
+
+    return (
+        `\n✨ This evolved result was multiplied by **${EVOLVED_XP_MULTIPLIER}×**.`
+    );
+
+}
+
+
+function buildEvolvedRarityMarker(
+    guild,
+    evolved
+){
+
+    if(!evolved){
+        return "";
+    }
+
+
+    const emoji =
+        guild?.emojis?.cache?.find?.(
+            entry =>
+                entry.name ===
+                    "evolved_common_leaf"
+        );
+
+
+    return (
+        ` ${emoji ? emoji.toString() : ":evolved_common_leaf:"} **(EVOLVED)**`
+    );
+
+}
+
+
 function rollCommandOutcome(
     outcomes,
     profile
@@ -2684,6 +2889,39 @@ async function giveLuckBoost(
             wonRole.tier,
             1
         );
+
+
+    const questEvent =
+        wonRole.tier === "omega"
+            ? "obtain_luck_omega"
+            : wonRole.tier === "max"
+                ? "obtain_luck_max"
+                : null;
+
+
+    if(questEvent){
+        const quests =
+            require("../systems/quests");
+
+
+        await quests.recordEvent(
+            {
+                guild: member.guild,
+                client: member.client || member.guild?.client,
+                user: member.user || {id: member.id}
+            },
+            questEvent,
+            1,
+            {
+                userID: member.id
+            }
+        ).catch(error => {
+            console.error(
+                `Could not record ${questEvent} quest progress for ${member.id}:`,
+                error
+            );
+        });
+    }
 
 
     console.log(
@@ -3780,6 +4018,22 @@ module.exports = {
     getRollingUpgradeChanceTable,
 
     getResolvedRollChanceTable,
+
+    EVOLVED_XP_MULTIPLIER,
+
+    EVOLVED_BASE_CHANCE_PERCENT,
+
+    EVOLVED_LUCK_BONUS_PERCENT,
+
+    getEvolvedChancePercent,
+
+    rollEvolvedCommandRarity,
+
+    applyEvolvedXP,
+
+    buildEvolvedCommandExtra,
+
+    buildEvolvedRarityMarker,
 
     rollCommandOutcome,
 
