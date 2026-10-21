@@ -185,7 +185,7 @@ const reward =
 
 
 const questChatXPMultiplier =
-    await database.getQuestChatXPMultiplier(
+    await database.consumeQuestChatXPMultiplier(
         guildID,
         userID
     );
@@ -200,9 +200,25 @@ const upgradeChatXPMultiplier =
     );
 
 
+const activeGuildBlessing =
+    await database.getActiveGuildBlessing(
+        guildID
+    );
+
+
+const blessingChatXPMultiplier =
+    Math.max(
+        1,
+        Number(
+            activeGuildBlessing?.chatXPMultiplier
+        ) || 1
+    );
+
+
 const chatXPMultiplier =
     questChatXPMultiplier *
-    upgradeChatXPMultiplier;
+    upgradeChatXPMultiplier *
+    blessingChatXPMultiplier;
 
 
     const earnedXPBeforeTroll =
@@ -213,6 +229,46 @@ const trollResolution =
     trolls.resolveChatEffect(
         trollChatEffect,
         earnedXPBeforeTroll
+    );
+
+
+// Degeneration bosses ignore the Luck Boost's critical influence, but XP
+// Boosts, chat multipliers, upgrades and troll redirections still count. If
+// this exact critical roll needed luck to succeed, reconstruct the same
+// message as a normal XP reward while preserving its XP Boost.
+const rewardWithoutLuck =
+    reward.critical
+    &&
+    !reward.criticalWithoutLuck
+        ? {
+            ...reward,
+            critical: false,
+            xp: reward.normalXP,
+            criticalStreak: 0,
+            criticalMultiplier: 1,
+            streakXPMultiplier: 1
+        }
+        : reward;
+
+const bossXPWithoutLuckBeforeTroll =
+    xp.getBalancedChatXP(
+        rewardWithoutLuck,
+        chatXPMultiplier
+    );
+
+const bossTrollResolutionWithoutLuck =
+    trolls.resolveChatEffect(
+        trollChatEffect,
+        bossXPWithoutLuckBeforeTroll
+    );
+
+const bossXPWithoutLuck =
+    bossTrollResolutionWithoutLuck
+        .targetXP;
+
+const bossCriticalWithoutLuck =
+    Boolean(
+        reward.criticalWithoutLuck
     );
 
 
@@ -523,6 +579,12 @@ return {
 
 
     earnedXP,
+
+
+    bossXPWithoutLuck,
+
+
+    bossCriticalWithoutLuck,
 
 
     earnedXPBeforeTroll,
