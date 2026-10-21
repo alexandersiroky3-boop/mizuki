@@ -4,6 +4,7 @@ const luck = require("../utils/luck");
 const leveling = require("../systems/leveling");
 const boosts = require("../systems/boosts");
 const trolls = require("../systems/trolls");
+const quests = require("../systems/quests");
 
 const economyLimits =
     require("../utils/economyLimits");
@@ -411,7 +412,7 @@ function getEZWinEmojis(guild){
             getCustomEmoji(
                 guild,
                 "evolved_common_leaf",
-                "🍃"
+                ":evolved_common_leaf:"
             ),
 
         goldenHeart:
@@ -597,7 +598,7 @@ function buildEZWinDialogue(
 
         const heading =
             evolved
-                ? `${emojis.goldenHeart} **LEGENDARY** ${emojis.evolvedLegendaryFallingStar} **(EVOLVED)**`
+                ? `${emojis.goldenHeart} **LEGENDARY** ${emojis.evolvedCommonLeaf} **(EVOLVED)**`
                 : `${emojis.goldenHeart} **LEGENDARY** 🌠`;
 
         const title =
@@ -844,7 +845,7 @@ async function resetEZWin(message){
 // COMMAND
 // ======================
 
-async function execute(message){
+async function execute(message, options = {}){
 
 
     if(!message.guild)
@@ -858,16 +859,85 @@ async function execute(message){
         message.author.id;
 
 
+    if(!options.questRepeatChild){
+
+        const repeatCount =
+            await quests.getSocialCommandRepeatCount(
+                guildID,
+                userID,
+                "ezwin"
+            );
+
+
+        if(repeatCount > 1){
+
+            const currentRemaining =
+                await database.getCommandCooldownRemaining(
+                    guildID,
+                    userID,
+                    "ezwin"
+                );
+
+
+            if(currentRemaining > 0){
+                return execute(
+                    message,
+                    {questRepeatChild: true}
+                );
+            }
+
+
+            const appliedRepeatCount =
+                await quests.consumeSocialCommandRepeat(
+                    guildID,
+                    userID,
+                    "ezwin"
+                );
+
+
+            for(
+                let repeatIndex = 0;
+                repeatIndex < appliedRepeatCount;
+                repeatIndex++
+            ){
+                await execute(
+                    message,
+                    {
+                        questRepeatChild: true,
+                        skipCooldown:
+                            repeatIndex > 0,
+                        skipXPBoostDrop:
+                            repeatIndex > 0
+                    }
+                );
+            }
+
+
+            await boosts.tryOmegaDropFromBoostUpgrade(
+                message,
+                "!ezwin"
+            );
+
+
+            return;
+
+        }
+
+    }
+
+
     // ======================
     // COOLDOWN
     // ======================
 
     const remaining =
-        await database.getCommandCooldownRemaining(
-            guildID,
-            userID,
-            "ezwin"
-        );
+        options.skipCooldown
+            ? 0
+            : await database.getCommandCooldownRemaining(
+                guildID,
+                userID,
+                "ezwin"
+            );
 
 
     if(remaining > 0){
@@ -911,12 +981,14 @@ async function execute(message){
 
     // Load/create the user first. This prevents a failed profile lookup from
     // leaving a fresh player stuck with a 24-hour cooldown.
-    await database.setCommandCooldown(
-        guildID,
-        userID,
-        "ezwin",
-        Date.now() + COOLDOWN
-    );
+    if(!options.skipCooldown){
+        await database.setCommandCooldown(
+            guildID,
+            userID,
+            "ezwin",
+            Date.now() + COOLDOWN
+        );
+    }
 
     const currentLevel =
         xp.getLevel(
@@ -1028,11 +1100,13 @@ async function execute(message){
         // The database transaction has already rolled back. Remove the early
         // cooldown too, so a temporary database failure does not lock the
         // player out of !ezwin for the next 24 hours.
-        await database.clearCommandCooldown(
-            guildID,
-            userID,
-            "ezwin"
-        ).catch(() => {});
+        if(!options.skipCooldown){
+            await database.clearCommandCooldown(
+                guildID,
+                userID,
+                "ezwin"
+            ).catch(() => {});
+        }
 
 
         throw error;
@@ -1047,6 +1121,22 @@ async function execute(message){
                 ...trollEffect.payload,
                 reflectedXP: gainedXP
             }
+        );
+    }
+
+
+    await quests.recordEvent(
+        message,
+        "ezwin_success",
+        1
+    );
+
+
+    if(String(rarity).toLowerCase() === "legendary"){
+        await quests.recordEvent(
+            message,
+            "legendary_ezwin",
+            1
         );
     }
 
@@ -1073,11 +1163,13 @@ async function execute(message){
     );
 
 
-    await boosts.tryAndAnnounceXPBoostDrop(
-        message,
-        "social",
-        "!ezwin"
-    );
+    if(!options.skipXPBoostDrop){
+        await boosts.tryAndAnnounceXPBoostDrop(
+            message,
+            "social",
+            "!ezwin"
+        );
+    }
 
 
     const dialogue =
@@ -1096,18 +1188,30 @@ async function execute(message){
         );
 
 
-    return sendLongDialogue(
-        message.channel,
-        dialogue,
-        [
-            message.author.id,
-            ...(
-                trollEffect
-                    ? [trollEffect.sourceUserID]
-                    : []
-            )
-        ]
-    );
+    const sentMessage =
+        await sendLongDialogue(
+            message.channel,
+            dialogue,
+            [
+                message.author.id,
+                ...(
+                    trollEffect
+                        ? [trollEffect.sourceUserID]
+                        : []
+                )
+            ]
+        );
+
+
+    if(!options.questRepeatChild){
+        await boosts.tryOmegaDropFromBoostUpgrade(
+            message,
+            "!ezwin"
+        );
+    }
+
+
+    return sentMessage;
 
 }
 
