@@ -22,24 +22,6 @@ const COOLDOWN =
     20 * 60 * 1000;
 
 
-// Luck MAX remains powerful, but !steal gets its own softer profile so its
-// high-value Legendary/Mythic ranges do not dominate the economy. Luck Omega
-// is intentionally left unchanged.
-const STEAL_LUCK_MAX_MULTIPLIER_SCALE =
-    0.60;
-
-const STEAL_LUCK_MAX_MIN_REWARD_BIAS_POWER =
-    0.50;
-
-
-// A protected victim loses only this portion of the normally rolled amount.
-const LEVEL1_TO99_STEAL_MULTIPLIER =
-    0.05;
-
-const LEVEL100_TO199_STEAL_MULTIPLIER =
-    0.20;
-
-
 const BOT_NAMES = [
     "bot",
     "mizuki"
@@ -152,218 +134,6 @@ function getStealOutcomesForLevel(level){
     return Number(level) >= 100
         ? LEVEL100_PLUS_STEAL_OUTCOMES
         : LEVEL1_TO99_STEAL_OUTCOMES;
-
-}
-
-
-function getStealCommandLuckProfile(
-    activeLuck,
-    thiefLevel
-){
-
-    const commandLuck =
-        Number(thiefLevel) >= 100
-            ? luck.getLevel100PlusCommandLuckProfile(
-                activeLuck
-            )
-            : activeLuck;
-
-
-    if(
-        Number(thiefLevel) < 100
-        ||
-        String(
-            commandLuck?.tier || ""
-        ).toLowerCase() !== "max"
-    ){
-        return commandLuck;
-    }
-
-
-    const currentMultiplier =
-        Math.max(
-            1,
-            Number(
-                commandLuck.commandMultiplier
-                ?? commandLuck.multiplier
-            ) || 1
-        );
-
-    const currentRewardBiasPower =
-        Number(
-            commandLuck.commandRewardBiasPower
-        );
-
-
-    return {
-        ...commandLuck,
-
-        commandMultiplier:
-            currentMultiplier *
-            STEAL_LUCK_MAX_MULTIPLIER_SCALE,
-
-        commandRewardBiasPower:
-            Number.isFinite(
-                currentRewardBiasPower
-            )
-                ? Math.max(
-                    STEAL_LUCK_MAX_MIN_REWARD_BIAS_POWER,
-                    currentRewardBiasPower
-                )
-                : STEAL_LUCK_MAX_MIN_REWARD_BIAS_POWER
-    };
-
-}
-
-
-function getStealVictimProtection(
-    thiefLevel,
-    victimLevel
-){
-
-    const safeThiefLevel =
-        Math.max(
-            1,
-            Math.floor(
-                Number(thiefLevel) || 1
-            )
-        );
-
-    const safeVictimLevel =
-        Math.max(
-            1,
-            Math.floor(
-                Number(victimLevel) || 1
-            )
-        );
-
-
-    // This stronger protection always wins, including when the thief is also
-    // below Level 100.
-    if(safeVictimLevel < 100){
-
-        return {
-            levelRange: "Level 1-99",
-            multiplier:
-                LEVEL1_TO99_STEAL_MULTIPLIER,
-            reductionPercent: 95
-        };
-
-    }
-
-
-    if(
-        safeThiefLevel >= 200
-        &&
-        safeVictimLevel < 200
-    ){
-
-        return {
-            levelRange: "Level 100-199",
-            multiplier:
-                LEVEL100_TO199_STEAL_MULTIPLIER,
-            reductionPercent: 80
-        };
-
-    }
-
-
-    return null;
-
-}
-
-
-function getProtectedStealAmount(
-    amount,
-    multiplier
-){
-
-    const safeAmount =
-        Math.max(
-            0,
-            Math.floor(
-                Number(amount) || 0
-            )
-        );
-
-
-    if(safeAmount <= 0)
-        return 0;
-
-
-    return Math.max(
-        1,
-        Math.floor(
-            safeAmount *
-            Math.max(
-                0,
-                Math.min(
-                    1,
-                    Number(multiplier) || 0
-                )
-            )
-        )
-    );
-
-}
-
-
-function getMythicStealProtection(
-    amount,
-    thiefLevel
-){
-
-    const safeAmount =
-        Math.max(
-            0,
-            Math.floor(
-                Number(amount) || 0
-            )
-        );
-
-
-    return {
-        level100XPThreshold:
-            xp.getCurrentLevelXP(100),
-
-        level200XPThreshold:
-            xp.getCurrentLevelXP(200),
-
-        level1To99Amount:
-            getProtectedStealAmount(
-                safeAmount,
-                LEVEL1_TO99_STEAL_MULTIPLIER
-            ),
-
-        level100To199Amount:
-            Number(thiefLevel) >= 200
-                ? getProtectedStealAmount(
-                    safeAmount,
-                    LEVEL100_TO199_STEAL_MULTIPLIER
-                )
-                : safeAmount
-    };
-
-}
-
-
-function buildMythicStealProtectionExtra(
-    thiefLevel
-){
-
-    const lines = [
-        "\n🛡️ **Level 1-99 protection:** Those players lost **95% less XP**."
-    ];
-
-
-    if(Number(thiefLevel) >= 200){
-        lines.push(
-            "🛡️ **Level 100-199 protection:** Those players lost **80% less XP**."
-        );
-    }
-
-
-    return lines.join("\n");
 
 }
 
@@ -580,11 +350,18 @@ function buildStealDialogue(
     target,
     stolenXP,
     extras = "",
-    guild = null
+    guild = null,
+    evolved = false
 ){
 
     const emojis =
         getStealEmojis(guild);
+
+    const evolvedMarker =
+        luck.buildEvolvedRarityMarker(
+            guild,
+            evolved
+        );
 
     const amount =
         Math.max(
@@ -604,13 +381,13 @@ function buildStealDialogue(
         case "UNCOMMON":
             return `${emojis.robbery} **${thief} HAS STOLEN FROM ${target}** ${emojis.robbery}
 
-${emojis.runningRobbery} **UNCOMMON** 🍃
+${emojis.runningRobbery} **UNCOMMON**${evolvedMarker} 🍃
 
 **${emojis.stackedMoney} ${user} stole ${amount} XP from ${user2}!**${extras}`;
 
 
         case "RARE":
-            return `${emojis.runningRobbery} **RARE** 💫
+            return `${emojis.runningRobbery} **RARE**${evolvedMarker} 💫
 
 *${thief} was just chatting with ${target}, but while they were saying goodbye...*
 
@@ -628,7 +405,7 @@ ${emojis.runningRobbery} **UNCOMMON** 🍃
 
 
         case "EPIC":
-            return `${emojis.halfGoldenRobbery} **EPIC** ✨
+            return `${emojis.halfGoldenRobbery} **EPIC**${evolvedMarker} ✨
 
 ### Mizuki's & ${user}'s Inevitable Plan
 
@@ -658,7 +435,7 @@ ${emojis.runningRobbery} **UNCOMMON** 🍃
 
 
         case "LEGENDARY":
-            return `${emojis.goldenRobbery} **LEGENDARY** 🌠
+            return `${emojis.goldenRobbery} **LEGENDARY**${evolvedMarker} 🌠
 
 ### The Gang Robbery
 
@@ -716,7 +493,7 @@ ${emojis.runningRobbery} **UNCOMMON** 🍃
 
 
         case "MYTHIC":
-            return `${emojis.mythicRobbery} **MYTHIC** 🌃
+            return `${emojis.mythicRobbery} **MYTHIC**${evolvedMarker} 🌃
 
 ### Mrhacker VS Everyone
 
@@ -891,7 +668,7 @@ ${emojis.runningRobbery} **UNCOMMON** 🍃
         default:
             return `${emojis.robbery} **${thief} HAS STOLEN FROM ${target}** ${emojis.robbery}
 
-${emojis.runningRobbery} **COMMON** 🌿
+${emojis.runningRobbery} **COMMON**${evolvedMarker} 🌿
 
 **${emojis.stackedMoney} ${user} stole ${amount} XP from ${user2}!**${extras}`;
 
@@ -987,6 +764,30 @@ async function execute(message, options = {}){
         message.author.id;
 
 
+    const sendStealOutcome =
+        async (dialogue, allowedUserIDs) => {
+
+            const sentMessage =
+                await sendLongDialogue(
+                    message.channel,
+                    dialogue,
+                    allowedUserIDs
+                );
+
+
+            if(!options.questRepeatChild){
+                await boosts.tryOmegaDropFromBoostUpgrade(
+                    message,
+                    "!steal"
+                );
+            }
+
+
+            return sentMessage;
+
+        };
+
+
     if(!options.questRepeatChild){
 
         const targetInput =
@@ -1018,7 +819,8 @@ async function execute(message, options = {}){
             normalizedTargetID !== userID
                 ? await quests.getSocialCommandRepeatCount(
                     guildID,
-                    userID
+                    userID,
+                    "steal"
                 )
                 : 1;
 
@@ -1045,9 +847,17 @@ async function execute(message, options = {}){
             }
 
 
+            const appliedRepeatCount =
+                await quests.consumeSocialCommandRepeat(
+                    guildID,
+                    userID,
+                    "steal"
+                );
+
+
             for(
                 let repeatIndex = 0;
-                repeatIndex < repeatCount;
+                repeatIndex < appliedRepeatCount;
                 repeatIndex++
             ){
 
@@ -1064,6 +874,12 @@ async function execute(message, options = {}){
                 );
 
             }
+
+
+            await boosts.tryOmegaDropFromBoostUpgrade(
+                message,
+                "!steal"
+            );
 
 
             return;
@@ -1164,13 +980,14 @@ if(remaining > 0){
         xp.getLevel(thiefXP);
 
 
-    // Luck belongs to the thief. !steal applies its own extra Luck MAX
-    // softening after the shared Level 100+ command balance.
+    // Luck belongs to the thief. Level 100+ users keep the command-specific
+    // Luck II/III/MAX balance already used by the rest of the bot.
     const commandLuck =
-        getStealCommandLuckProfile(
-            activeLuck,
-            thiefLevel
-        );
+        thiefLevel >= 100
+            ? luck.getLevel100PlusCommandLuckProfile(
+                activeLuck
+            )
+            : activeLuck;
 
 
     // ==========================
@@ -1231,8 +1048,7 @@ const luckExtra =
 
         if(stealOutcome.key === "failure"){
 
-            return sendLongDialogue(
-                message.channel,
+            return sendStealOutcome(
                 buildFailedStealDialogue(
                     message.author,
                     botTarget,
@@ -1248,27 +1064,45 @@ const luckExtra =
         }
 
 
-        const reward =
-            luck.rollCommandXP(
-                stealOutcome.min,
-                stealOutcome.max,
+        // The rarity above is final. Evolved is a separate second roll that
+        // only multiplies this successful result; it never changes rarity.
+        const evolved =
+            luck.rollEvolvedCommandRarity(
                 commandLuck
+            );
+
+
+        const reward =
+            luck.applyEvolvedXP(
+                luck.rollCommandXP(
+                    stealOutcome.min,
+                    stealOutcome.max,
+                    commandLuck
+                ),
+                evolved
+            );
+
+
+        const evolvedExtra =
+            luck.buildEvolvedCommandExtra(
+                evolved,
+                stealOutcome.rarity
             );
 
 
         if(stealOutcome.rarity === "MYTHIC"){
 
-            const mythicProtection =
-                getMythicStealProtection(
-                    reward,
-                    thiefLevel
-                );
-
             await database.performMythicSteal(
                 guildID,
                 userID,
-                reward,
-                mythicProtection
+                reward
+            );
+
+
+            await quests.recordEvent(
+                message,
+                "mythic_steal",
+                1
             );
 
         }
@@ -1310,21 +1144,15 @@ const luckExtra =
         );
 
 
-        return sendLongDialogue(
-            message.channel,
+        return sendStealOutcome(
             buildStealDialogue(
                 stealOutcome.rarity,
                 message.author,
                 botTarget,
                 reward,
-                `${usedLuckExtra}${luckExtra}${
-                    stealOutcome.rarity === "MYTHIC"
-                        ? buildMythicStealProtectionExtra(
-                            thiefLevel
-                        )
-                        : ""
-                }`,
-                message.guild
+                `${usedLuckExtra}${luckExtra}${evolvedExtra}`,
+                message.guild,
+                evolved
             ),
             [
                 message.author.id,
@@ -1440,11 +1268,13 @@ const luckExtra =
         xp.getLevel(victimXP);
 
 
-    const victimProtection =
-        getStealVictimProtection(
-            thiefLevel,
-            victimLevel
-        );
+    // Serious protection:
+    // If the thief is Level 100+ and the victim is Level 1-99,
+    // only 10% of the normally rolled steal amount can be taken.
+    const lowLevelVictimProtection =
+        thiefLevel >= 100
+        &&
+        victimLevel < 100;
 
 
     if(victimXP <= 0){
@@ -1511,8 +1341,7 @@ const luckExtra =
 
     if(stealOutcome.key === "failure"){
 
-        return sendLongDialogue(
-            message.channel,
+        return sendStealOutcome(
             buildFailedStealDialogue(
                 message.author,
                 target,
@@ -1528,14 +1357,24 @@ const luckExtra =
     }
 
 
+    // Roll Evolved only after the normal steal rarity has been selected.
+    const evolved =
+        luck.rollEvolvedCommandRarity(
+            commandLuck
+        );
+
+
     // Player-to-player steals intentionally use the full rarity range.
     // The old Level 1-99 social cap would flatten higher rarity rewards.
     // Victim balance and low-level victim protection are still applied below.
     const attemptedAmount =
-        luck.rollCommandXP(
-            stealOutcome.min,
-            stealOutcome.max,
-            commandLuck
+        luck.applyEvolvedXP(
+            luck.rollCommandXP(
+                stealOutcome.min,
+                stealOutcome.max,
+                commandLuck
+            ),
+            evolved
         );
 
 
@@ -1543,21 +1382,28 @@ const luckExtra =
         stealOutcome.rarity;
 
 
+    const evolvedExtra =
+        luck.buildEvolvedCommandExtra(
+            evolved,
+            rarity
+        );
+
+
     // Mythic steals are server-wide: every registered user except the thief
     // loses up to the rolled amount, while the thief receives that amount once.
     if(rarity === "MYTHIC"){
 
-        const mythicProtection =
-            getMythicStealProtection(
-                attemptedAmount,
-                thiefLevel
-            );
-
         await database.performMythicSteal(
             guildID,
             userID,
-            attemptedAmount,
-            mythicProtection
+            attemptedAmount
+        );
+
+
+        await quests.recordEvent(
+            message,
+            "mythic_steal",
+            1
         );
 
 
@@ -1606,19 +1452,15 @@ const luckExtra =
         );
 
 
-        return sendLongDialogue(
-            message.channel,
+        return sendStealOutcome(
             buildStealDialogue(
                 rarity,
                 message.author,
                 target,
                 attemptedAmount,
-                `${usedLuckExtra}${luckExtra}${
-                    buildMythicStealProtectionExtra(
-                        thiefLevel
-                    )
-                }`,
-                message.guild
+                `${usedLuckExtra}${luckExtra}${evolvedExtra}`,
+                message.guild,
+                evolved
             ),
             [
                 message.author.id,
@@ -1634,10 +1476,12 @@ const luckExtra =
     // ==========================
 
     const protectedAttemptedAmount =
-        victimProtection
-            ? getProtectedStealAmount(
-                attemptedAmount,
-                victimProtection.multiplier
+        lowLevelVictimProtection
+            ? Math.max(
+                1,
+                Math.floor(
+                    attemptedAmount * 0.10
+                )
             )
             : attemptedAmount;
 
@@ -1650,8 +1494,8 @@ const luckExtra =
 
 
     const protectionExtra =
-        victimProtection
-            ? `\n🛡️ **${victimProtection.levelRange} protection:** ${target.username} lost **${victimProtection.reductionPercent}% less XP** than the normal steal amount.`
+        lowLevelVictimProtection
+            ? `\n🛡️ **Level 1-99 protection:** ${target.username} kept **90%** of the XP that would normally have been stolen.`
             : "";
 
 
@@ -1744,15 +1588,15 @@ await syncAndTrackLevel(
 
 
 
-    return sendLongDialogue(
-        message.channel,
+    return sendStealOutcome(
         buildStealDialogue(
             rarity,
             message.author,
             target,
             stolenXP,
-            `${usedLuckExtra}${luckExtra}${protectionExtra}`,
-            message.guild
+            `${usedLuckExtra}${luckExtra}${evolvedExtra}${protectionExtra}`,
+            message.guild,
+            evolved
         ),
         [
             message.author.id,
@@ -1768,21 +1612,12 @@ module.exports = {
 
     execute,
     getStealOutcomesForLevel,
-    getStealCommandLuckProfile,
-    getStealVictimProtection,
-    getProtectedStealAmount,
-    getMythicStealProtection,
-    buildMythicStealProtectionExtra,
     getCustomEmoji,
     getStealEmojis,
     splitLongMessage,
     sendLongDialogue,
     buildFailedStealDialogue,
     buildStealDialogue,
-    STEAL_LUCK_MAX_MULTIPLIER_SCALE,
-    STEAL_LUCK_MAX_MIN_REWARD_BIAS_POWER,
-    LEVEL1_TO99_STEAL_MULTIPLIER,
-    LEVEL100_TO199_STEAL_MULTIPLIER,
     LEVEL1_TO99_STEAL_OUTCOMES,
     LEVEL100_PLUS_STEAL_OUTCOMES
 
