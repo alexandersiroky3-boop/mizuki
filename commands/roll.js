@@ -6,6 +6,8 @@ const luck =
     require("../utils/luck");
 const trolls =
     require("../systems/trolls");
+const chests =
+    require("../systems/chests");a
 
 const quests =
     require("../systems/quests");
@@ -435,11 +437,14 @@ function buildRollGuaranteeFooter(
 
 
     return (
-        `\n\n🎯 100 Rolls Guarantee: ${progress}/${threshold}`
+        `\n\n🎯 ${threshold}-Roll Guarantee: ${progress}/${threshold}`
         +
         (
             rollGuarantee?.guaranteed
-                ? `\n🎁 **Milestone reached — ${ROLL_GUARANTEE_MIN_XP.toLocaleString()} XP minimum, with greatly boosted odds for more than 2,000,000 XP!**`
+                ? `\n🎁 **Milestone reached — ${Math.max(
+                    ROLL_GUARANTEE_MIN_XP,
+                    Number(rollGuarantee?.minimumXP) || 0
+                ).toLocaleString()} XP minimum, with greatly boosted rare-outcome odds!**`
                 : ""
         )
     );
@@ -1743,6 +1748,8 @@ function rollPercentageLessBonus(
 function buildPositiveRollDialogue({
     message,
     rolledXP,
+    rarityXP = rolledXP,
+    evolved = false,
     bonusXP = 0,
     rollCooldownExtra = "",
     rollContextExtras = "",
@@ -1769,10 +1776,22 @@ function buildPositiveRollDialogue({
         rollCooldownExtra +
         rollContextExtras;
 
+    const evolvedMarker =
+        luck.buildEvolvedRarityMarker(
+            message.guild,
+            evolved
+        );
 
-    if(rolledXP >= 100000000){
 
-        return `${emojis.rainbowRoll} ${author} ROLLED A JACKPOT 🎰 **[${formattedRolledXP} XP]**${resultExtras}
+    // Evolved multiplies the payout, not the rarity. Story/dialogue selection
+    // therefore stays tied to the original normal result.
+    const rarityRolledXP =
+        Number(rarityXP) || 0;
+
+
+    if(rarityRolledXP >= 100000000){
+
+        return `${emojis.rainbowRoll} **JACKPOT**${evolvedMarker} ${author} ROLLED A JACKPOT 🎰 **[${formattedRolledXP} XP]**${resultExtras}
 
 ### The future?
 
@@ -1827,9 +1846,9 @@ gorjezz then decides to ask:*
     }
 
 
-    if(rolledXP > 5000000){
+    if(rarityRolledXP > 5000000){
 
-        return `${emojis.mythicRoll} ${author} rolled **+${formattedRolledXP} XP!** 🌃${resultExtras}
+        return `${emojis.mythicRoll} **MYTHIC**${evolvedMarker} ${author} rolled **+${formattedRolledXP} XP!** 🌃${resultExtras}
 
 ### The Great Ruler
 
@@ -1906,9 +1925,9 @@ Then Kape finally equipped it and felt the bonus, unfathomable power coursing th
     }
 
 
-    if(rolledXP > 500000){
+    if(rarityRolledXP > 500000){
 
-        return `${emojis.goldenRoll} ${author} rolled **+${formattedRolledXP} XP!** 🌠${resultExtras}
+        return `${emojis.goldenRoll} **LEGENDARY**${evolvedMarker} ${author} rolled **+${formattedRolledXP} XP!** 🌠${resultExtras}
 
 ### ${author} VS beyondborder_08386
 
@@ -1971,9 +1990,9 @@ ${author} gritted their teeth and swore they would make beyondborder_08386 pay..
     }
 
 
-    if(rolledXP > 100000){
+    if(rarityRolledXP > 100000){
 
-        return `${emojis.halfGoldenRoll} ${author} rolled **+${formattedRolledXP} XP!** ${emojis.inevitableGalaxy}${resultExtras}
+        return `${emojis.halfGoldenRoll} **EPIC**${evolvedMarker} ${author} rolled **+${formattedRolledXP} XP!** ${emojis.inevitableGalaxy}${resultExtras}
 
 *Kape was sitting on the crew's couch with gorjezz before seeing ${author} arrive...*
 
@@ -2012,9 +2031,9 @@ Kape sighed, slightly annoyed, and raised his Gauntlet toward ${author}. Using t
     }
 
 
-    if(rolledXP > 25000){
+    if(rarityRolledXP > 25000){
 
-        return `${emojis.roll} ${author} rolled **+${formattedRolledXP} XP!** ✨${resultExtras}
+        return `${emojis.roll} **RARE**${evolvedMarker} ${author} rolled **+${formattedRolledXP} XP!** ✨${resultExtras}
 
 *Mrnoob was wandering outside beside the crew's house when he saw thezdrink and ${author} walking nearby. Mrnoob quickly approached them...*
 
@@ -2041,9 +2060,9 @@ Kape sighed, slightly annoyed, and raised his Gauntlet toward ${author}. Using t
     }
 
 
-    if(rolledXP > 5000){
+    if(rarityRolledXP > 5000){
 
-        return `${emojis.roll} ${author} rolled **+${formattedRolledXP} XP!**${resultExtras}
+        return `${emojis.roll} **UNCOMMON**${evolvedMarker} ${author} rolled **+${formattedRolledXP} XP!**${resultExtras}
 
 *Mizuki told ${author} that if they rolled a die and it landed on the number 6, Mizuki would reward them...
 
@@ -2058,7 +2077,7 @@ A deal is a deal...*
     }
 
 
-    return `${emojis.roll} ${author} rolled **+${formattedRolledXP} XP!**${resultExtras}${rollGuaranteeFooter}`;
+    return `${emojis.roll} **COMMON**${evolvedMarker} ${author} rolled **+${formattedRolledXP} XP!**${resultExtras}${rollGuaranteeFooter}`;
 
 }
 
@@ -2614,13 +2633,19 @@ const rollGuarantee =
     await database.advanceRollGuarantee(
         message.guild.id,
         userID,
-        ROLL_GUARANTEE_THRESHOLD
+        upgradeEffects.rollGuaranteeThreshold
+        || ROLL_GUARANTEE_THRESHOLD
     );
+
+
+rollGuarantee.minimumXP =
+    upgradeEffects.rollGuaranteeMinimumXP
+    || ROLL_GUARANTEE_MIN_XP;
 
 
 if(rollGuarantee.guaranteed){
 
-    const milestoneRolledXP =
+    let milestoneRolledXP =
         luck.rollGuaranteedChanceTableWithLuck(
             getRollGuaranteeChanceTable(
                 rollLuckProfile
@@ -2632,6 +2657,19 @@ if(rollGuarantee.guaranteed){
             null,
             0
         );
+
+
+    if(upgradeEffects.rollingLevel >= 8){
+        milestoneRolledXP =
+            luck.rollGuaranteedMinimumWithLuck(
+                milestoneRolledXP,
+                5000001,
+                rollChanceTable,
+                levelTableName,
+                rollLuckProfile,
+                upgradeEffects.rollingLevel
+            );
+    }
 
 
     // The milestone table is the complete 100th-roll result, rather than an
@@ -2681,6 +2719,27 @@ if(forcedNegativeByTroll){
 }
 
 
+// The normal result—including guarantees and the Rolling upgrade—is final
+// before this independent Evolved check. Negative/troll-loss results never
+// evolve, while every result inside Multi Roll gets its own second roll.
+const rarityRolledXP =
+    rolledXP;
+
+
+const evolved =
+    rolledXP > 0
+    && luck.rollEvolvedCommandRarity(
+        luckResult.profile
+    );
+
+
+rolledXP =
+    luck.applyEvolvedXP(
+        rolledXP,
+        evolved
+    );
+
+
 // This is the Luck Boost used
 // during the current roll.
 //
@@ -2704,7 +2763,7 @@ const redirectedRollXP =
 
 const bonusPercentRange =
     getRollBonusPercentRange(
-        rolledXP
+        rarityRolledXP
     );
 
 let bonusXP =
@@ -2821,6 +2880,49 @@ await quests.recordEvent(
 );
 
 
+if(rollGuarantee.guaranteed){
+    await quests.recordEvent(
+        message,
+        "roll_guarantee",
+        1
+    );
+}
+
+
+const questRarityXP =
+    redirectedByTroll
+        ? 0
+        : rarityRolledXP;
+
+
+const questRollRarity =
+    questRarityXP >= 100000000
+        ? 6
+        : questRarityXP > 5000000
+            ? 5
+            : questRarityXP > 500000
+                ? 4
+                : 0;
+
+
+if(questRollRarity > 0){
+    await quests.recordEvent(
+        message,
+        "roll_rarity",
+        questRollRarity
+    );
+}
+
+
+if(questRollRarity >= 5){
+    await quests.recordEvent(
+        message,
+        "mythic_roll",
+        1
+    );
+}
+
+
 await quests.recordEvent(
     message,
     "roll_xp",
@@ -2920,9 +3022,21 @@ const wonLuckBoost =
     );
 
 
+const chestDrop =
+    await chests.tryRollChestDrop(
+        message
+    );
+
+
 const xpBoostDropExtra =
     xpBoostDropMessage
         ? `\n${xpBoostDropMessage}`
+        : "";
+
+
+const chestDropExtra =
+    chestDrop
+        ? `\n${chestDrop.text}`
         : "";
 
 
@@ -2940,7 +3054,7 @@ const guaranteedRollExtra =
 
 const megaRollExtra =
     !forcedNegativeByTroll
-    && rolledXP >= luck.LUCK_MEGA_ROLL_MIN_XP
+    && rarityRolledXP >= luck.LUCK_MEGA_ROLL_MIN_XP
         ? "\n💎 **MEGA ROLL!** This result landed in the **10,000,000+ XP** range."
         : "";
 
@@ -2949,6 +3063,13 @@ const rollingUpgradeExtra =
     rollingUpgradeDoubled
         ? "\n🎲 **Rolling Upgrade:** Your 10,000,000+ XP result was doubled."
         : "";
+
+
+const evolvedExtra =
+    luck.buildEvolvedCommandExtra(
+        evolved,
+        "ROLL"
+    );
 
 
 const rollContextExtras =
@@ -2960,7 +3081,9 @@ const rollContextExtras =
     + xpBoostDropExtra
     + guaranteedRollExtra
     + megaRollExtra
-    + rollingUpgradeExtra;
+    + rollingUpgradeExtra
+    + evolvedExtra
+    + chestDropExtra;
 
 
 const rollCooldownExtra =
@@ -3026,6 +3149,9 @@ if(rolledXP > 0){
         buildPositiveRollDialogue({
             message,
             rolledXP,
+            rarityXP:
+                rarityRolledXP,
+            evolved,
             bonusXP,
             rollCooldownExtra,
             rollContextExtras,
