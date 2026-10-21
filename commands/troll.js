@@ -3,15 +3,14 @@ const xp = require("../utils/xp");
 const luck = require("../utils/luck");
 const leveling = require("../systems/leveling");
 const trolls = require("../systems/trolls");
+const quests = require("../systems/quests");
+const boosts = require("../systems/boosts");
 const {
     ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType,
     MessageFlags, SlashCommandBuilder
 } = require("discord.js");
 
 const COOLDOWN = 5 * 60 * 1000;
-
-const OWNER_ID =
-    "1239975819112353969";
 
 function formatCooldown(ms){
     const seconds = Math.ceil(Math.max(0, ms) / 1000);
@@ -73,17 +72,25 @@ function resultPayload(
             .replace(/^\s+/, "");
 
 
+    const repeatLine =
+        Number(result?.attemptCount) > 1
+            ? `Quest reward: **best of ${Number(result.attemptCount)} troll attempts**.`
+            : "";
+
+
     const content = backfired
         ? [
             `${emoji} **Your troll on <@${targetID}> backfired!**`,
             `**Rarity:** FAILED`,
             `**Result:** ${result.publicDescription || "The troll affected you instead."}`,
+            repeatLine,
             luckLine
         ]
         : [
             `${emoji} **Your secret troll result for <@${targetID}>:**`,
             `**Rarity:** ${result.rarity.toUpperCase()}`,
             `**Effect:** ${formatSecretEffect(result.effect)}`,
+            repeatLine,
             "*Only you can see this. The target learns the effect when it triggers.*",
             luckLine
         ];
@@ -108,88 +115,6 @@ function replyPayload(text){
             repliedUser: false
         }
     };
-}
-
-
-function getClearTrollTargetID(message){
-
-    const content =
-        String(message.content || "")
-            .trim();
-
-    const match = content.match(
-        /^!cleartroll(?:\s+(?:<@!?)?(\d{16,22})>?)?\s*$/i
-    );
-
-
-    if(!match){
-        return null;
-    }
-
-
-    return match[1]
-        || String(message.author.id);
-
-}
-
-
-async function clearTrollEffect(message){
-
-    if(!message.guild || message.author?.bot){
-        return null;
-    }
-
-
-    if(String(message.author.id) !== OWNER_ID){
-        return message.reply(
-            replyPayload(
-                "❌ Only the bot owner can use **!cleartroll**."
-            )
-        );
-    }
-
-
-    const targetID =
-        getClearTrollTargetID(message);
-
-
-    if(!targetID){
-        return message.reply(
-            replyPayload(
-                "Usage: **!cleartroll** or **!cleartroll @user**."
-            )
-        );
-    }
-
-
-    const cleared =
-        await database.clearTrollEffectsForTarget(
-            message.guild.id,
-            targetID
-        );
-
-
-    if(cleared.total === 0){
-        return message.reply(
-            replyPayload(
-                `✅ <@${targetID}> has no stored troll effects.`
-            )
-        );
-    }
-
-
-    const effectWord =
-        cleared.total === 1
-            ? "effect"
-            : "effects";
-
-
-    return message.reply(
-        replyPayload(
-            `✅ Cleared **${cleared.total} troll ${effectWord}** from <@${targetID}>. They can now be trolled again.`
-        )
-    );
-
 }
 
 
@@ -305,11 +230,20 @@ async function applyTroll(message, targetID){
         );
 
 
+    const trollAttemptCount =
+        await quests.consumeSocialCommandRepeat(
+            guildID,
+            actorID,
+            "troll"
+        );
+
+
     const result = await trolls.createTrollAttempt({
         guildID, actorID, targetID,
         actorLevel,
         targetLevel: xp.getLevel(Number(targetUser?.xp) || 0),
-        luckProfile: actorLuck.commandLuck
+        luckProfile: actorLuck.commandLuck,
+        attemptCount: trollAttemptCount
     });
     if(!result?.success && result?.status === "target-active") return reply(
         "That user already has a troll effect active."
@@ -324,6 +258,25 @@ async function applyTroll(message, targetID){
         await leveling.syncLevelAndAnnounce(
             message.client, guildID, userID
         ).catch(error => console.error("!troll level sync failed:", error));
+    }
+
+
+    await quests.recordEvent(
+        message,
+        "troll_success",
+        Math.max(
+            1,
+            Number(result.attemptCount) || 1
+        )
+    );
+
+
+    if(String(result.rarity).toLowerCase() === "legendary"){
+        await quests.recordEvent(
+            message,
+            "legendary_troll",
+            1
+        );
     }
 
 
@@ -479,6 +432,12 @@ async function execute(message){
     );
 
 
+    await boosts.tryOmegaDropFromBoostUpgrade(
+        message,
+        "!troll"
+    );
+
+
     return panel;
 }
 
@@ -498,6 +457,7 @@ async function executeInteraction(interaction){
         member: interaction.member,
         author: interaction.user,
         client: interaction.client,
+        channel: interaction.channel,
         mentions: {
             users: {first: () => user},
             members: {first: () => null}
@@ -539,14 +499,19 @@ async function executeInteraction(interaction){
     }
 
 
+    await boosts.tryOmegaDropFromBoostUpgrade(
+        message,
+        "!troll"
+    ).catch(() => null);
+
+
     return interaction.editReply(
         attempt.payload
     );
 }
 
 module.exports = {
-    execute, executeInteraction, clearTrollEffect, slashCommand,
+    execute, executeInteraction, slashCommand,
     COOLDOWN, formatCooldown, getTargetID, resolveTarget,
-    formatSecretEffect, resultPayload,
-    OWNER_ID, getClearTrollTargetID
+    formatSecretEffect, resultPayload
 };
