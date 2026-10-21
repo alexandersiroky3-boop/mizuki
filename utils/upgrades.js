@@ -18,7 +18,10 @@ const BOOST_LABELS = Object.freeze({
     "luck:max": "<@&1533961286310953042>",
     "luck:omega": "<@&1535700310402670592>",
     "xp:max": "<@&1526995218098815016>",
-    "xp:infinity": "<@&1540496714903986388>"
+    "xp:infinity": "<@&1540496714903986388>",
+    "rune:tier3": "<@&1551190400599855165>",
+    "chest:bronze": ":bronze_chest: Bronze Chest",
+    "chest:gilded": ":gilded_chest: Gilded Chest"
 });
 
 
@@ -103,6 +106,17 @@ const UPGRADE_DEFINITIONS = Object.freeze({
                     { boostType: "xp", tier: "infinity", amount: 1 }
                 ]),
                 "Make 25,000+ rolls very common and double rare-outcome weights."
+            ),
+            upgrade(
+                freezeCost(1500000000),
+                "Make 75,000 and 200,000 XP rolls very common, triple rare-outcome weights, and improve the roll guarantee from 100 to 75 rolls."
+            ),
+            upgrade(
+                freezeCost(25000000000, [
+                    { boostType: "chest", tier: "bronze", amount: 1000 },
+                    { boostType: "chest", tier: "gilded", amount: 100 }
+                ]),
+                "Make 1,000,000 XP rolls very common, apply the strongest rare-outcome weights, improve the guarantee to 50 rolls, and guarantee Mythic-or-higher XP at every milestone."
             )
         ])
     }),
@@ -130,6 +144,14 @@ const UPGRADE_DEFINITIONS = Object.freeze({
                     { boostType: "luck", tier: "omega", amount: 1 }
                 ]),
                 "Raise active boost strength to 1.5x, double every newly activated boost's timer, and raise the criticals reward bonus up to 15%."
+            ),
+            upgrade(
+                freezeCost(0, [
+                    { boostType: "luck", tier: "omega", amount: 10 },
+                    { boostType: "xp", tier: "infinity", amount: 10 },
+                    { boostType: "rune", tier: "tier3", amount: 30 }
+                ]),
+                "Strengthen active boost multipliers to their 3x limit and add a 1% Luck Boost Ω drop chance to successful supported commands except !roll and !coinflip."
             )
         ])
     }),
@@ -138,11 +160,11 @@ const UPGRADE_DEFINITIONS = Object.freeze({
         key: "quests",
         name: "Quests",
         emoji: "📜",
-        summary: "Improve daily/weekly pools, rewards, rare rewards, and rerolls.",
+        summary: "Add more and stronger rewards without making quest targets harder.",
         upgrades: Object.freeze([
-            upgrade(freezeCost(10000000), "Buff daily and weekly rewards and add tougher, more rewarding quest targets."),
-            upgrade(freezeCost(125000000), "Buff rewards again, add a 10% rare weekly boost chance, and unlock unfinished quest resets."),
-            upgrade(freezeCost(1000000000), "Raise the rare weekly boost chance to 25%, halve reset prices, and apply the strongest reward pool.")
+            upgrade(freezeCost(10000000), "Raise daily rewards to as many as 4 and weekly rewards to as many as 5, improve their strength, and add Power Rune rewards."),
+            upgrade(freezeCost(125000000), "Buff every reward again, unlock unfinished daily/weekly resets, and add a 15% weekly special-boost chance."),
+            upgrade(freezeCost(1000000000), "Greatly buff every reward, add a 10% daily and 45% weekly special-boost chance, halve reset prices, and add a 5% chance to double an entire weekly reward set.")
         ])
     }),
 
@@ -260,7 +282,7 @@ function getUpgradeEffects(levels = {}){
     const criticalChanceByLevel = [0, 0, 1, 2.5, 2.5, 2.5, 5, 8, 12];
     const chatDropByLevel = [1, 1, 1, 1.25, 1.25, 1.25, 1.25, 1.6, 2];
     const burstChanceByLevel = [0, 0, 0, 0, 0, 2, 10, 25, 25];
-    const criticalStreakRewardScaleByBoostLevel = [1, 1.05, 1.10, 1.15];
+    const criticalStreakRewardScaleByBoostLevel = [1, 1.05, 1.10, 1.15, 1.20];
 
     return Object.freeze({
         levels: Object.freeze(safe),
@@ -272,18 +294,25 @@ function getUpgradeEffects(levels = {}){
 
         rollingLevel: roll,
         doubleTenMillionRolls: roll >= 5,
-        rareRollWeightMultiplier: roll >= 6 ? 2 : 1,
+        rareRollWeightMultiplier: roll >= 8 ? 6 : (roll >= 7 ? 3 : (roll >= 6 ? 2 : 1)),
+        rollGuaranteeThreshold: roll >= 8 ? 50 : (roll >= 7 ? 75 : 100),
+        rollGuaranteeMinimumXP: roll >= 8 ? 5000001 : 500000,
 
-        boostMultiplierScale: boost >= 3 ? 1.5 : (boost >= 1 ? 1.2 : 1),
+        boostMultiplierScale: boost >= 4 ? 3 : (boost >= 3 ? 1.5 : (boost >= 1 ? 1.2 : 1)),
         boostDurationScale: boost >= 3 ? 2 : (boost >= 2 ? 1.5 : 1),
+        boostOmegaCommandDropChance: boost >= 4 ? 1 : 0,
         criticalStreakRewardScale:
             criticalStreakRewardScaleByBoostLevel[boost],
 
         questLevel: quest,
         questResetUnlocked: quest >= 2,
-        questRareBoostChance: quest >= 3 ? 25 : (quest >= 2 ? 10 : 0),
+        questRareBoostChance: quest >= 3 ? 45 : (quest >= 2 ? 15 : 0),
+        questDailyRareBoostChance: quest >= 3 ? 10 : 0,
+        questWeeklyDoubleRewardChance: quest >= 3 ? 5 : 0,
+        questDailyRewardLimit: quest >= 1 ? 4 : 2,
+        questWeeklyRewardLimit: quest >= 1 ? 5 : 3,
         questResetPriceScale: quest >= 3 ? 0.5 : 1,
-        questRewardMultiplier: quest >= 3 ? 1.5 : 1,
+        questRewardMultiplier: quest >= 3 ? 3 : (quest >= 2 ? 2 : (quest >= 1 ? 1.5 : 1)),
 
         shopDiscountPercent: commerce >= 3 ? 30 : (commerce >= 1 ? 15 : 0),
         merchantXPDiscountPercent: commerce >= 2 ? 10 : 0,
