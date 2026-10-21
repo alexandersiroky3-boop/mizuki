@@ -11,6 +11,7 @@ const leveling = require("./systems/leveling");
 const boosts = require("./systems/boosts");
 const powerRunes = require("./systems/powerRunes");
 const trolls = require("./systems/trolls");
+const bosses = require("./systems/bosses");
 const database = require("./database");
 const luck =
     require("./utils/luck");
@@ -61,11 +62,26 @@ require("./commands/fixlevels");
 const ezwinCommand =
 require("./commands/ezwin");
 
+const bossCommand =
+require("./commands/boss");
+
 const rollCommand =
 require("./commands/roll");
 
 const stealCommand =
 require("./commands/steal");
+
+const fightCommand =
+require("./commands/fight");
+
+const blessCommand =
+require("./commands/bless");
+
+const spawnBossCommand =
+require("./commands/spawnboss");
+
+const coinflipCommand =
+require("./commands/coinflip");
 
 const giveallxp =
     require("./commands/giveallxp");
@@ -105,6 +121,122 @@ const sendStaffRulesMSGCommand = require("./commands/sendstaffrulesmsg");
 
 const missingMessageHookWarnings =
     new Set();
+
+
+const BOSS_DAMAGE_COMMANDS =
+    new Set([
+        "!roll",
+        "!kiss",
+        "!steal",
+        "!ezwin",
+        "!troll",
+        "!fight"
+    ]);
+
+
+function parseXPBalance(value){
+
+    try{
+
+        return BigInt(
+            String(value ?? 0)
+                .split(".")[0]
+        );
+
+    }
+    catch(error){
+        return 0n;
+    }
+
+}
+
+
+async function captureCommandXPBalance(
+    message
+){
+
+    const user =
+        await database.getUser(
+            message.guild.id,
+            message.author.id
+        );
+
+
+    return parseXPBalance(
+        user?.xp
+    );
+
+}
+
+
+async function processBossCommandDamage(
+    message,
+    commandLabel,
+    xpBefore,
+    commandStartedAt
+){
+
+    if(xpBefore == null){
+        return;
+    }
+
+
+    const xpAfter =
+        await captureCommandXPBalance(
+            message
+        );
+
+    const chatXPLogged =
+        await database.getChatXPLoggedSince(
+            message.guild.id,
+            message.author.id,
+            commandStartedAt
+        );
+
+    const rawDifference =
+        xpAfter -
+        xpBefore -
+        BigInt(
+            Math.max(
+                0,
+                Math.floor(
+                    Number(chatXPLogged) || 0
+                )
+            )
+        );
+
+
+    if(rawDifference <= 0n){
+        return;
+    }
+
+
+    const earnedCommandXP =
+        Number(
+            rawDifference >
+                BigInt(
+                    Number.MAX_SAFE_INTEGER
+                )
+                ? BigInt(
+                    Number.MAX_SAFE_INTEGER
+                )
+                : rawDifference
+        );
+
+    const result =
+        await bosses.handleCommandXP(
+            message,
+            commandLabel,
+            earnedCommandXP
+        );
+
+
+    await bossCommand.handleCombatResult(
+        message,
+        result
+    );
+
+}
 
 
 function warnAboutMissingMessageHook(
@@ -332,12 +464,73 @@ async function executePrefixCommandSafely(
     }
 
 
+    const normalizedLabel =
+        String(label || "")
+            .toLowerCase();
+
+    const tracksBossDamage =
+        BOSS_DAMAGE_COMMANDS.has(
+            normalizedLabel
+        );
+
+    const commandStartedAt =
+        Date.now();
+
+    let xpBefore =
+        null;
+
+
+    if(tracksBossDamage){
+
+        try{
+
+            xpBefore =
+                await captureCommandXPBalance(
+                    message
+                );
+
+        }
+        catch(error){
+
+            // The command must still run if raid damage tracking has a
+            // temporary database problem.
+            console.error(
+                `Could not capture ${label} XP before raid damage tracking:`,
+                error
+            );
+
+        }
+
+    }
+
+
     try{
 
         await handler.call(
             commandModule,
             message
         );
+
+
+        if(tracksBossDamage){
+
+            await processBossCommandDamage(
+                message,
+                normalizedLabel,
+                xpBefore,
+                commandStartedAt
+            ).catch(error => {
+
+                // Command rewards have already been committed. Boss tracking
+                // cannot turn a successful command into a visible failure.
+                console.error(
+                    `Could not apply ${label} XP to the raid boss:`,
+                    error
+                );
+
+            });
+
+        }
 
     }
     catch(error){
@@ -395,6 +588,8 @@ async function dispatchPrefixCommand(
             ["!ping", ["!ping", pingCommand]],
             ["!fixlevels", ["!fixlevels", fixLevelsCommand]],
             ["!ezwin", ["!ezwin", ezwinCommand]],
+            ["!boss", ["!boss", bossCommand]],
+            ["!spawnboss", ["!spawnboss", spawnBossCommand]],
             ["!roll", ["!roll", rollCommand]],
             ["!fixallusersinleaderboard", ["!fixallusersinleaderboard", fixAllUsersInLeaderboardCommand]],
             ["!logs", ["!logs", logsCommand]],
@@ -436,6 +631,9 @@ async function dispatchPrefixCommand(
         ["!kiss", /^!kiss(?:\s|$)/i, kissCommand],
         ["!warn", /^!warn(?:\s|$)/i, warnCommand],
         ["!steal", /^!steal(?:\s|$)/i, stealCommand],
+        ["!fight", /^!fight(?:\s|$)/i, fightCommand],
+        ["!bless", /^!bless(?:\s|$)/i, blessCommand],
+        ["!coinflip", /^!coinflip(?:\s|$)/i, coinflipCommand],
         ["!giveallxp", /^!giveallxp(?:\s|$)/i, giveallxp],
         ["!hug", /^!hug(?:\s|$)/i, hugCommand],
         ["!givexp", /^!givexp(?:\s|$)/i, giveXPCommand]
@@ -744,6 +942,20 @@ client.once("clientReady", async () => {
     await luck.restoreLuckBoosts(client);
     await trades.restoreTrades(client);
 
+    await bosses.cleanupExpiredBosses(client)
+        .then(result =>
+            bossCommand.handleExpiredBosses(
+                client,
+                result
+            )
+        )
+        .catch(error => {
+            console.error(
+                "Initial raid boss cleanup failed:",
+                error
+            );
+        });
+
     if(MAIN_GUILD_ID){
         const guild = await client.guilds.fetch(MAIN_GUILD_ID).catch(() => null);
         if(guild){
@@ -899,6 +1111,25 @@ setInterval(async () => {
     await powerRunes.removeExpiredPowerRuneRoles(client, MAIN_GUILD_ID)
         .catch(error => console.error("Power Rune role cleanup failed:", error));
 }, 5000);
+
+
+setInterval(async () => {
+
+    await bosses.cleanupExpiredBosses(client)
+        .then(result =>
+            bossCommand.handleExpiredBosses(
+                client,
+                result
+            )
+        )
+        .catch(error => {
+            console.error(
+                "Raid boss expiry cleanup failed:",
+                error
+            );
+        });
+
+}, 15000);
 
 
 setInterval(async()=>{
@@ -1251,6 +1482,57 @@ client.on(
         }
 
 
+        let bossHandled = false;
+
+
+        try{
+
+            bossHandled =
+                await bossCommand.handleInteraction(
+                    interaction
+                );
+
+        }
+        catch(error){
+
+            console.error(
+                "Boss interaction failed:",
+                error
+            );
+
+
+            const errorPayload = {
+                content:
+                    "❌ The boss panel could not finish displaying that action. Reopen `!boss` and check your shards/inventory before trying again.",
+                flags: 64
+            };
+
+
+            if(
+                interaction.deferred
+                || interaction.replied
+            ){
+                await interaction.followUp(
+                    errorPayload
+                ).catch(() => null);
+            }
+            else{
+                await interaction.reply(
+                    errorPayload
+                ).catch(() => null);
+            }
+
+
+            return;
+
+        }
+
+
+        if(bossHandled){
+            return;
+        }
+
+
         const sellHandled =
             await sellCommand.handleInteraction(
                 interaction
@@ -1467,11 +1749,6 @@ async message => {
             );
 
         }
-
-
-        await recordMessageQuestSafely(
-            message
-        );
 
 
         if(
@@ -1788,6 +2065,18 @@ if(message.content.startsWith("!steal")){
 
 }
 
+if(
+    /^!fight(?:\s|$)/i.test(
+        message.content.trim()
+    )
+){
+
+    return fightCommand.execute(
+        message
+    );
+
+}
+
 if(message.content.startsWith("!giveallxp")){
 
     return giveallxp.execute(
@@ -1846,6 +2135,44 @@ if(
 
         if(!result)
             return;
+
+
+const bossCombatResult =
+    await bosses.handleChatXP(
+        message,
+        result
+    ).catch(error => {
+
+        // Chat XP has already been awarded. A boss-system failure must not
+        // break criticals, quests, drops, or level-up messages afterward.
+        console.error(
+            "Raid boss chat-XP hook failed:",
+            error
+        );
+
+        return null;
+
+    });
+
+
+await bossCommand.handleCombatResult(
+    message,
+    bossCombatResult
+).catch(error => {
+
+    console.error(
+        "Raid boss announcement failed:",
+        error
+    );
+
+});
+
+
+if(Number(result.earnedXP) > 0){
+    await recordMessageQuestSafely(
+        message
+    );
+}
 
 
 await boosts.sendXPBoostDropReply(
