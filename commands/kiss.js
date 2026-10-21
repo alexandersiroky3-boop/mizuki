@@ -523,11 +523,18 @@ function buildKissDialogue(
     target,
     rewards,
     extras = "",
-    guild = null
+    guild = null,
+    evolved = false
 ){
 
     const emojis =
         getKissEmojis(guild);
+
+    const evolvedMarker =
+        luck.buildEvolvedRarityMarker(
+            guild,
+            evolved
+        );
 
     const user =
         author.username;
@@ -557,7 +564,7 @@ function buildKissDialogue(
     switch(String(rarity || "").toUpperCase()){
 
         case "UNCOMMON":
-            return `${emojis.heartpulse} **UNCOMMON** 🍃
+            return `${emojis.heartpulse} **UNCOMMON**${evolvedMarker} 🍃
 
 *${target} was just walking until ${author} showed up, quickly kissed ${target}, and disappeared as if nothing happened.*
 
@@ -569,7 +576,7 @@ ${commonEnding}`;
 
 
         case "RARE":
-            return `${emojis.heartpulse} **RARE** 💫
+            return `${emojis.heartpulse} **RARE**${evolvedMarker} 💫
 
 *${target} was getting slightly annoyed by ${author} constantly kissing them.*
 
@@ -593,7 +600,7 @@ ${commonEnding}`;
 
 
         case "EPIC":
-            return `${emojis.halfGoldenHeart} **EPIC** ✨
+            return `${emojis.halfGoldenHeart} **EPIC**${evolvedMarker} ✨
 
 ### The Group Kiss
 
@@ -635,7 +642,7 @@ ${commonEnding}`;
 
 
         case "LEGENDARY":
-            return `${emojis.goldenHeart} **LEGENDARY** 🌠
+            return `${emojis.goldenHeart} **LEGENDARY**${evolvedMarker} 🌠
 
 ### Kape's & Mizuki's Stunning Kiss...
 
@@ -721,7 +728,7 @@ ${commonEnding}`;
 
 
         case "MYTHIC":
-            return `${emojis.mythicHeart} **MYTHIC** 🌃
+            return `${emojis.mythicHeart} **MYTHIC**${evolvedMarker} 🌃
 
 ### The Aftermath of Mrhacker's Snap
 
@@ -772,7 +779,7 @@ ${commonEnding}`;
 
         case "COMMON":
         default:
-            return `${emojis.heartpulse} **COMMON** 🌿
+            return `${emojis.heartpulse} **COMMON**${evolvedMarker} 🌿
 
 *${target} was just walking until ${author} showed up, quickly kissed ${target}, and disappeared as if nothing happened.*
 
@@ -856,7 +863,8 @@ async function execute(message, options = {}){
             normalizedTargetID !== userID
                 ? await quests.getSocialCommandRepeatCount(
                     guildID,
-                    userID
+                    userID,
+                    "kiss"
                 )
                 : 1;
 
@@ -883,9 +891,17 @@ async function execute(message, options = {}){
             }
 
 
+            const appliedRepeatCount =
+                await quests.consumeSocialCommandRepeat(
+                    guildID,
+                    userID,
+                    "kiss"
+                );
+
+
             for(
                 let repeatIndex = 0;
-                repeatIndex < repeatCount;
+                repeatIndex < appliedRepeatCount;
                 repeatIndex++
             ){
 
@@ -902,6 +918,12 @@ async function execute(message, options = {}){
                 );
 
             }
+
+
+            await boosts.tryOmegaDropFromBoostUpgrade(
+                message,
+                "!kiss"
+            );
 
 
             return;
@@ -1032,6 +1054,28 @@ if(remaining > 0){
 
     if(isMizukiTarget){
 
+
+        const sendBotKissOutcome =
+            async content => {
+
+                const sentMessage =
+                    await message.channel.send(
+                        content
+                    );
+
+
+                if(!options.questRepeatChild){
+                    await boosts.tryOmegaDropFromBoostUpgrade(
+                        message,
+                        "!kiss"
+                    );
+                }
+
+
+                return sentMessage;
+
+            };
+
 await database.setCommandCooldown(
     guildID,
     userID,
@@ -1141,7 +1185,7 @@ if(trollShare?.sourceUserID){
 
 
 
-            return message.channel.send(
+            return sendBotKissOutcome(
 
 `*Goth mommy bot blushed so hard that her whole face turned as red as a tomato... then she licks her lips and keeps looking at you.*
 
@@ -1206,7 +1250,7 @@ await syncAndTrackLevel(
 
 
 
-            return message.channel.send(
+            return sendBotKissOutcome(
 
 `*Goth mommy blushes for a second... then suddenly slaps you.*
 
@@ -1405,6 +1449,14 @@ const outcome =
     );
 
 
+// The kiss rarity is selected first. Evolved is a completely separate roll,
+// so it cannot alter the existing normal rarity chances.
+const evolved =
+    luck.rollEvolvedCommandRarity(
+        commandLuck
+    );
+
+
 const rolledReward =
     luck.rollCommandXP(
         outcome.min,
@@ -1426,7 +1478,7 @@ const protectedTargetReward =
         : rolledReward;
 
 
-const targetReward =
+const baseTargetReward =
     economyLimits.capSocialXP(
         "kiss",
         protectedTargetReward,
@@ -1435,24 +1487,43 @@ const targetReward =
 
 
 const targetLevelCapApplied =
-    targetReward <
+    baseTargetReward <
     protectedTargetReward;
 
 
-const calculatedRewards =
+const baseCalculatedRewards =
     calculateKissRewards(
-        targetReward
+        baseTargetReward
     );
 
 
+const baseKisserReward =
+    economyLimits.capSocialXP(
+        "kiss",
+        baseCalculatedRewards.kisserReward,
+        currentLevel
+    );
+
+
+// Multiply after normal protection/caps so Evolved is exactly 10× the
+// command's already-balanced payout for the kisser, target, and Mythic share.
 const kissRewards = {
-    ...calculatedRewards,
+    targetReward:
+        luck.applyEvolvedXP(
+            baseCalculatedRewards.targetReward,
+            evolved
+        ),
 
     kisserReward:
-        economyLimits.capSocialXP(
-            "kiss",
-            calculatedRewards.kisserReward,
-            currentLevel
+        luck.applyEvolvedXP(
+            baseKisserReward,
+            evolved
+        ),
+
+    everyoneReward:
+        luck.applyEvolvedXP(
+            baseCalculatedRewards.everyoneReward,
+            evolved
         )
 };
 
@@ -1488,6 +1559,18 @@ else{
         kissRewards.kisserReward
     );
 
+}
+
+
+if(outcome.key === "mythic"){
+    await quests.recordEvent(
+        message,
+        "mythic_kiss",
+        1,
+        {
+            userID
+        }
+    );
 }
 
 
@@ -1559,25 +1642,45 @@ const protectionExtra =
     `${targetLevelCapApplied ? "\n🛡️ **Level 1-99 reward cap applied.**" : ""}`;
 
 
+const evolvedExtra =
+    luck.buildEvolvedCommandExtra(
+        evolved,
+        outcome.rarity
+    );
+
+
 const dialogue =
     buildKissDialogue(
         outcome.rarity,
         message.author,
         target,
         kissRewards,
-        `${usedLuckExtra}${luckExtra}${protectionExtra}`,
-        message.guild
+        `${usedLuckExtra}${luckExtra}${evolvedExtra}${protectionExtra}`,
+        message.guild,
+        evolved
     );
 
 
-return sendLongDialogue(
-    message.channel,
-    dialogue,
-    [
-        message.author.id,
-        target.id
-    ]
-);
+const sentMessage =
+    await sendLongDialogue(
+        message.channel,
+        dialogue,
+        [
+            message.author.id,
+            target.id
+        ]
+    );
+
+
+if(!options.questRepeatChild){
+    await boosts.tryOmegaDropFromBoostUpgrade(
+        message,
+        "!kiss"
+    );
+}
+
+
+return sentMessage;
 
 
 
