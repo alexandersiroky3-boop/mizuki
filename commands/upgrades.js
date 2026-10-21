@@ -9,6 +9,7 @@ const {
 
 const database = require("../database");
 const upgrades = require("../utils/upgrades");
+const chests = require("../systems/chests");
 
 
 const PANEL_LIFETIME_MS =
@@ -21,7 +22,20 @@ function progressBar(level, maxLevel){
 }
 
 
-function buildCategoryField(category, level){
+function renderUpgradeCost(guild, cost){
+    return upgrades.formatCost(cost)
+        .replaceAll(
+            ":bronze_chest:",
+            chests.getChestEmoji(guild, "bronze")
+        )
+        .replaceAll(
+            ":gilded_chest:",
+            chests.getChestEmoji(guild, "gilded")
+        );
+}
+
+
+function buildCategoryField(category, level, guild = null){
     const definition = upgrades.UPGRADE_DEFINITIONS[category];
     const maxLevel = definition.upgrades.length;
     const next = upgrades.getNextUpgrade(category, level);
@@ -36,7 +50,7 @@ function buildCategoryField(category, level){
         lines.push(
             "",
             `**Next — Upgrade ${next.level}:** ${next.description}`,
-            `**Cost:** ${upgrades.formatCost(next.cost)}`
+            `**Cost:** ${renderUpgradeCost(guild, next.cost)}`
         );
     }
     else{
@@ -86,7 +100,12 @@ function buildButtons(levels, disabled = false){
 }
 
 
-function buildPanel(user, levels, disabled = false){
+function buildPanel(
+    user,
+    levels,
+    disabled = false,
+    guild = null
+){
     const safeLevels = upgrades.normalizeLevels(levels);
 
     const embed = new EmbedBuilder()
@@ -98,7 +117,11 @@ function buildPanel(user, levels, disabled = false){
         )
         .addFields(
             ...upgrades.UPGRADE_CATEGORIES.map(category =>
-                buildCategoryField(category, safeLevels[category])
+                buildCategoryField(
+                    category,
+                    safeLevels[category],
+                    guild
+                )
             )
         )
         .setFooter({
@@ -119,14 +142,19 @@ function buildPanel(user, levels, disabled = false){
 }
 
 
-function getFailureMessage(result){
+function getFailureMessage(result, guild = null){
     if(result.status === "not-enough-xp"){
         return `❌ You need **${Number(result.missing).toLocaleString()} more XP** for this upgrade.`;
     }
 
     if(result.status === "not-enough-boosts"){
         const key = `${result.boost.boostType}:${result.boost.tier}`;
-        const label = upgrades.BOOST_LABELS[key] || key;
+        const label = {
+            "chest:bronze":
+                `${chests.getChestEmoji(guild, "bronze")} Bronze Chest`,
+            "chest:gilded":
+                `${chests.getChestEmoji(guild, "gilded")} Gilded Chest`
+        }[key] || upgrades.BOOST_LABELS[key] || key;
         return `❌ You need **${Number(result.missing).toLocaleString()} more** ${label}.`;
     }
 
@@ -149,7 +177,12 @@ async function execute(message){
     );
 
     const panelMessage = await message.reply(
-        buildPanel(message.author, levels)
+        buildPanel(
+            message.author,
+            levels,
+            false,
+            message.guild
+        )
     );
 
     const collector = panelMessage.createMessageComponentCollector({
@@ -182,7 +215,12 @@ async function execute(message){
             );
 
             await interaction.editReply(
-                buildPanel(message.author, levels)
+                buildPanel(
+                    message.author,
+                    levels,
+                    false,
+                    message.guild
+                )
             );
 
             if(result.success){
@@ -198,7 +236,10 @@ async function execute(message){
             }
             else{
                 await interaction.followUp({
-                    content: getFailureMessage(result),
+                    content: getFailureMessage(
+                        result,
+                        message.guild
+                    ),
                     flags: MessageFlags.Ephemeral,
                     allowedMentions: { parse: [] }
                 });
@@ -221,7 +262,12 @@ async function execute(message){
         ).catch(() => levels);
 
         await panelMessage.edit(
-            buildPanel(message.author, levels, true)
+            buildPanel(
+                message.author,
+                levels,
+                true,
+                message.guild
+            )
         ).catch(() => {});
     });
 }
