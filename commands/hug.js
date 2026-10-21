@@ -129,126 +129,6 @@ const LEVEL100_PLUS_HUG_OUTCOMES =
     HUG_TABLES.level100Plus;
 
 
-// Luck Ω uses an exact Mythic chance for Level 100+ player hugs.
-// Every permanent Boost upgrade adds 3 percentage points without changing
-// how the remaining non-Mythic rarities are weighted.
-const LEVEL100_OMEGA_HUG_MYTHIC_BASE_PERCENT =
-    13;
-
-const LEVEL100_OMEGA_HUG_MYTHIC_PER_BOOST_UPGRADE =
-    3;
-
-const MAX_BOOST_UPGRADE_LEVEL =
-    3;
-
-
-function getLevel100OmegaHugMythicChance(
-    boostUpgradeLevel = 0
-){
-
-    const safeUpgradeLevel =
-        Math.max(
-            0,
-            Math.min(
-                MAX_BOOST_UPGRADE_LEVEL,
-                Math.floor(
-                    Number(boostUpgradeLevel) || 0
-                )
-            )
-        );
-
-
-    return (
-        LEVEL100_OMEGA_HUG_MYTHIC_BASE_PERCENT
-        +
-        safeUpgradeLevel *
-        LEVEL100_OMEGA_HUG_MYTHIC_PER_BOOST_UPGRADE
-    );
-
-}
-
-
-function rollHugOutcome(
-    outcomes,
-    profile,
-    authorLevel,
-    boostUpgradeLevel = 0
-){
-
-    const isLevel100PlusOmega =
-        Number(authorLevel) >= 100
-        &&
-        String(profile?.tier || "")
-            .toLowerCase() === "omega";
-
-
-    if(!isLevel100PlusOmega){
-
-        return luck.rollCommandOutcome(
-            outcomes,
-            profile
-        );
-
-    }
-
-
-    const mythicOutcome =
-        outcomes.find(
-            outcome =>
-                String(outcome?.key || "")
-                    .toLowerCase() === "mythic"
-        );
-
-
-    if(!mythicOutcome){
-
-        return luck.rollCommandOutcome(
-            outcomes,
-            profile
-        );
-
-    }
-
-
-    const mythicChancePercent =
-        getLevel100OmegaHugMythicChance(
-            boostUpgradeLevel
-        );
-
-
-    if(
-        Math.random() * 100
-        <
-        mythicChancePercent
-    ){
-
-        return mythicOutcome;
-
-    }
-
-
-    // Preserve all six rarity positions so the existing Luck Ω weighting
-    // remains identical after conditioning on a non-Mythic result.
-    const nonMythicOutcomes =
-        outcomes.map(
-            outcome =>
-                outcome === mythicOutcome
-                    ? {
-                        ...outcome,
-                        chancePercent: 0
-                    }
-                    : outcome
-        );
-
-
-    return luck.rollCommandOutcome(
-        nonMythicOutcomes,
-        profile
-    );
-
-}
-
-
 function getHugTableForLevel(level){
 
     return Number(level) >= 100
@@ -534,11 +414,18 @@ function buildHugDialogue(
     target,
     rewards,
     extras = "",
-    guild = null
+    guild = null,
+    evolved = false
 ){
 
     const emojis =
         getHugEmojis(guild);
+
+    const evolvedMarker =
+        luck.buildEvolvedRarityMarker(
+            guild,
+            evolved
+        );
 
     const participantRewards =
         buildParticipantRewardLines(
@@ -555,13 +442,13 @@ function buildHugDialogue(
         case "UNCOMMON":
             return `**${emojis.peopleHugging} ${author} hugged ${target}! ${emojis.peopleHugging}**
 
-${emojis.revolvingHearts} **UNCOMMON** 🍃
+${emojis.revolvingHearts} **UNCOMMON**${evolvedMarker} 🍃
 
 ${participantRewards}${extras}`;
 
 
         case "RARE":
-            return `${emojis.revolvingHearts} **RARE** 💫
+            return `${emojis.revolvingHearts} **RARE**${evolvedMarker} 💫
 
 *${target} was just walking when ${author} suddenly hugged them from behind.*
 
@@ -575,7 +462,7 @@ ${participantRewards}${extras}`;
 
 
         case "EPIC":
-            return `${emojis.halfGoldenHug} **EPIC** ✨
+            return `${emojis.halfGoldenHug} **EPIC**${evolvedMarker} ✨
 
 ### The Self-Confident Hug
 
@@ -619,7 +506,7 @@ ${participantRewards.replaceAll(emojis.giftHeart, emojis.halfGoldenHeart)}${extr
 
 
         case "LEGENDARY":
-            return `${emojis.goldenHug} **LEGENDARY** 🌠
+            return `${emojis.goldenHug} **LEGENDARY**${evolvedMarker} 🌠
 
 ### The Multiverse Hug
 
@@ -685,7 +572,7 @@ ${participantRewards.replaceAll(emojis.giftHeart, emojis.goldenHeart)}
 
 
         case "MYTHIC":
-            return `${emojis.mythicHug} **MYTHIC** 🌃
+            return `${emojis.mythicHug} **MYTHIC**${evolvedMarker} 🌃
 
 ### The Creator
 
@@ -740,7 +627,7 @@ ${participantRewards.replaceAll(emojis.giftHeart, emojis.mythicHeart)}
         default:
             return `**${emojis.peopleHugging} ${author} hugged ${target}! ${emojis.peopleHugging}**
 
-${emojis.revolvingHearts} **COMMON** 🌿
+${emojis.revolvingHearts} **COMMON**${evolvedMarker} 🌿
 
 ${participantRewards}${extras}`;
 
@@ -871,6 +758,12 @@ async function execute(message, options = {}){
             }
 
 
+            await boosts.tryOmegaDropFromBoostUpgrade(
+                message,
+                "!hug"
+            );
+
+
             return;
 
         }
@@ -989,6 +882,28 @@ if(remaining > 0){
     if(target.bot){
 
 
+        const sendBotHugOutcome =
+            async content => {
+
+                const sentMessage =
+                    await message.channel.send(
+                        content
+                    );
+
+
+                if(!options.questRepeatChild){
+                    await boosts.tryOmegaDropFromBoostUpgrade(
+                        message,
+                        "!hug"
+                    );
+                }
+
+
+                return sentMessage;
+
+            };
+
+
 await database.setCommandCooldown(
     guildID,
     userID,
@@ -1080,7 +995,7 @@ await syncAndTrackLevel(
 );
 
 
-            return message.channel.send(
+            return sendBotHugOutcome(
 
 `*Mizuki was just hovering above the ground, looking at her cute members, but suddenly ${message.author} ran up to her and wrapped their arms around her, hugging her tightly... Mizuki immediately blushed and smiled.*
 
@@ -1137,7 +1052,7 @@ await syncAndTrackLevel(
 );
 
 
-        return message.channel.send(
+        return sendBotHugOutcome(
 
 `*${message.author} suddenly ran toward Mizuki and tried to hug her, but Mizuki quickly moved out of the way.*
 
@@ -1191,29 +1106,18 @@ await syncAndTrackLevel(
             authorLevel
         );
 
-
-    const boostUpgradeLevel =
-        authorLevel >= 100
-        &&
-        String(commandLuck?.tier || "")
-            .toLowerCase() === "omega"
-            ? Number(
-                (
-                    await database.getUserUpgradeEffects(
-                        guildID,
-                        userID
-                    )
-                )?.levels?.boosts
-            ) || 0
-            : 0;
-
-
     const outcome =
-        rollHugOutcome(
+        luck.rollCommandOutcome(
             hugTable,
-            commandLuck,
-            authorLevel,
-            boostUpgradeLevel
+            commandLuck
+        );
+
+
+    // The normal hug rarity is chosen first. Evolved is an independent
+    // second roll and multiplies the complete successful payout by 10×.
+    const evolved =
+        luck.rollEvolvedCommandRarity(
+            commandLuck
         );
 
 
@@ -1225,7 +1129,7 @@ await syncAndTrackLevel(
         );
 
 
-    const authorReward =
+    const baseAuthorReward =
         economyLimits.capSocialXP(
             "hug",
             rolledReward,
@@ -1235,28 +1139,44 @@ await syncAndTrackLevel(
 
     // The high-level author keeps their normal reward.
     // The protected Lv1-99 target only receives 10%.
-    const protectedTargetReward =
+    const baseProtectedTargetReward =
         lowLevelTargetProtection
             ? Math.max(
                 1,
                 Math.floor(
-                    authorReward * 0.10
+                    baseAuthorReward * 0.10
                 )
             )
-            : authorReward;
+            : baseAuthorReward;
 
 
-    const targetReward =
+    const baseTargetReward =
         economyLimits.capSocialXP(
             "hug",
-            protectedTargetReward,
+            baseProtectedTargetReward,
             targetLevel
         );
 
 
     const targetLevelCapApplied =
-        targetReward <
-        protectedTargetReward;
+        baseTargetReward <
+        baseProtectedTargetReward;
+
+
+    // Apply Evolved after normal level caps/protection so every successful
+    // payout is exactly 10× its already-balanced non-evolved result.
+    const authorReward =
+        luck.applyEvolvedXP(
+            baseAuthorReward,
+            evolved
+        );
+
+
+    const targetReward =
+        luck.applyEvolvedXP(
+            baseTargetReward,
+            evolved
+        );
 
 
     const everyonePercent =
@@ -1283,9 +1203,12 @@ await syncAndTrackLevel(
 
     const mythicBonus =
         outcome.key === "mythic"
-            ? random(
-                5000000,
-                25000000
+            ? luck.applyEvolvedXP(
+                random(
+                    5000000,
+                    25000000
+                ),
+                evolved
             )
             : 0;
 
@@ -1450,6 +1373,13 @@ const luckExtra =
         `${targetLevelCapApplied ? "\n🛡️ **Level 1–99 reward cap applied to the base reward.**" : ""}`;
 
 
+    const evolvedExtra =
+        luck.buildEvolvedCommandExtra(
+            evolved,
+            outcome.rarity
+        );
+
+
     const dialogue =
         buildHugDialogue(
             outcome.rarity,
@@ -1463,12 +1393,14 @@ const luckExtra =
                 everyoneLowReward,
                 mythicBonus
             },
-            `${usedLuckExtra}${luckExtra}${protectionExtra}`,
-            message.guild
+            `${usedLuckExtra}${luckExtra}${evolvedExtra}${protectionExtra}`,
+            message.guild,
+            evolved
         );
 
 
-    return sendLongDialogue(
+    const sentMessage =
+        await sendLongDialogue(
         message.channel,
         dialogue,
         [
@@ -1476,6 +1408,17 @@ const luckExtra =
             target.id
         ]
     );
+
+
+    if(!options.questRepeatChild){
+        await boosts.tryOmegaDropFromBoostUpgrade(
+            message,
+            "!hug"
+        );
+    }
+
+
+    return sentMessage;
 
 }
 
@@ -1489,8 +1432,6 @@ module.exports = {
     LEVEL100_PLUS_HUG_OUTCOMES,
     HUG_BOT_REWARD_TABLES,
     getHugTableForLevel,
-    getLevel100OmegaHugMythicChance,
-    rollHugOutcome,
     getCustomEmoji,
     getHugEmojis,
     splitLongMessage,
