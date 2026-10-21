@@ -1,131 +1,73 @@
-const { EmbedBuilder } = require("discord.js");
+const {EmbedBuilder} = require("discord.js");
+const chests = require("../systems/chests");
 
 
-async function execute(message) {
+function buildCommandsEmbed(guild = null){
 
-
-    const embed = new EmbedBuilder()
-
-        .setColor("#8A2BE2")
-
-        .setTitle("📜 Bot Commands")
-
+    return new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle("📖 Mizuki Commands")
         .setDescription(
-`
-Here are all available commands:
-
-★ **Level System**
-
-\`!level\`
-> Shows your level, XP, message count and progress.
-
-\`!rank\`
-> Shows the server XP leaderboard.
-
-\`!boost\`
-> Shows your current XP Boost Tier, timer, progress and next tier.
-
-
-🥵 **Fun Commands**
-
-\`!ping\`
-> Just pings the bot, nothing special...
-
-\`!kiss @user/userid/bot\`
-> You're able to kiss the user..... and even the bot~
-
-\`!steal @user/userid/bot\`
-> You can steal XP from other users... or even the bot
-
-\`!hug @user/userid/bot\`
-> You can hug other users and even the bot
-
-\`!trade @user/userid\`
-> Trade Boosts or XP with users.
-
-\`!troll @user/userid\`
-> Troll users and give them some bad effects hehe....
-
-\`!values\`
-> Shows the current Trading Values of each Boost.
-
-\`!ezwin\`
-> Takes everyone's XP (except you) and you gain XP...
-
-\`!roll\`
-> Roll a dice and get random XP rewards (you can earn/lose big amount of XP)...
-
-\`!warn @user/userid\`
-> Warn a bad behaving little user and remove 500+ XP from them...
-> My dad can only use this. (aka Kape)
-
-
-🛡️ **Moderator Commands**
-
-\`!ban @user <time> <reason>\`
-> Temporarily bans a member and saves their roles. Time examples: 30m, 12h, 7d, 2w.
-
-\`!unban @user/userid\`
-> Ends a temporary ban and restores the member's saved roles. Can also remove a permanent Discord ban by ID.
-
-\`!kick @user [reason]\`
-> Kicks a member, but allows them to join again.
-
-\`!permaban @user [reason]\`
-> Permanently bans a member from the server.
-
-
-✦ **XP Management**
-
-\`!givexp userid amount\`
-> Gives XP to a user.
-> My dad can only use this. (aka Kape)
-
-\`!setlevel userid levelamount\`
-> Sets a specific level to a user.
-> My dad can only use this. (aka Kape)
-
-
-⚙️ **System**
-
-\`!logs\`
-> Shows the last 20 XP logs of the user.
-
-\`!mute\`
-> You can mute either your Critical replies or your XP boosts replies.
-
-\`!afk\`
-> Make yourself afk.
-
-\`!updates\`
-> Shows all of the previous & current updates on the bot.
-
-\`!commands\`
-> Shows this command list.
-
-*more commands are coming*
-`
+            "Use `!` before each command. Commands marked 🔒 must first be obtained or unlocked."
         )
-
+        .addFields(
+            {
+                name: "📈 Progress & economy",
+                value:
+                    "`!level` • `!rank` / `!leaderboard` • `!quests` • `!upgrades`\n" +
+                    "`!boost` • `!values` • `!sell` • `!shop` • `!merchant` • `!trade @user`"
+            },
+            {
+                name: "🎲 XP commands",
+                value:
+                    "`!roll` • `!hug @user` • `!kiss @user` • `!steal @user`\n" +
+                    "`!troll @user` • `!ezwin` • `!boss`"
+            },
+            {
+                name: "🔒 Obtainable commands",
+                value:
+                    "`!fight @user` — complete Boss Challenge #3\n" +
+                    `\`!bless everyone\` — ${chests.getChestEmoji(guild, "bronze")} Bronze Chest reward\n` +
+                    `\`!spawnboss\` — consumes one ${chests.getChestEmoji(guild, "boss")} Boss Chest reward use\n` +
+                    `\`!coinflip heads|tails <XP> <1.1x-10x>\` — ${chests.getChestEmoji(guild, "boss")} Boss Chest reward`
+            },
+            {
+                name: "🧰 Utility",
+                value:
+                    "`!afk` • `!mute` • `!updates` • `!ping` • `!commands`"
+            },
+            {
+                name: "🛡️ Staff",
+                value:
+                    "`!warn @user` • `!ban @user` • `!unban userID` • `!kick @user` • `!permaban userID`"
+            }
+        )
         .setFooter({
-            text: "my own level system because arcane sucks :3"
-        })
-
-        .setTimestamp();
-
-
-
-    message.reply({
-        embeds:[embed]
-    });
-
+            text: "Open !boost for chests • Open !boss for raids, challenges, and the Boss Shop"
+        });
 
 }
 
 
+async function execute(message){
+
+    if(!message.guild){
+        return null;
+    }
+
+
+    return message.reply({
+        embeds: [buildCommandsEmbed(message.guild)],
+        allowedMentions: {
+            parse: [],
+            repliedUser: false
+        }
+    });
+
+}
+
 
 module.exports = {
-
-    execute
-
+    execute,
+    buildCommandsEmbed
 };
