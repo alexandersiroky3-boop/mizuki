@@ -71,8 +71,8 @@ const LONG_CRITICAL_CAP_XP_BY_CHAT_LEVEL =
         1500000,
         1500000,
         5000000,
-        12000000,
-        30000000
+        7000000,
+        12500000
     ]);
 
 
@@ -778,6 +778,20 @@ function getXPAmount(
         );
 
 
+    // Boost upgrades strengthen an active item; they must not turn the
+    // neutral 1x "No XP Boost" profile into free 1.2x/1.5x/3x chat XP.
+    const activeXPBoostUpgradeScale =
+        activeXPBoost?.tier
+            ? Math.max(
+                1,
+                Number(
+                    upgradeEffects
+                        .boostMultiplierScale
+                ) || 1
+            )
+            : 1;
+
+
     const xpBoostMultiplier =
         Math.max(
             1,
@@ -785,13 +799,7 @@ function getXPAmount(
                 activeXPBoost.multiplier
             ) || 1
         ) *
-        Math.max(
-            1,
-            Number(
-                upgradeEffects
-                    .boostMultiplierScale
-            ) || 1
-        );
+        activeXPBoostUpgradeScale;
 
 
     const xpBoostCriticalBonus =
@@ -801,13 +809,7 @@ function getXPAmount(
                 activeXPBoost.criticalChanceBonus
             ) || 0
         ) *
-        Math.max(
-            1,
-            Number(
-                upgradeEffects
-                    .boostMultiplierScale
-            ) || 1
-        );
+        activeXPBoostUpgradeScale;
 
     // ======================
     // NORMAL XP
@@ -897,6 +899,30 @@ function getXPAmount(
         );
 
 
+    // Raid-boss Degeneration needs to know whether this exact message would
+    // still have crit without a Luck Boost. XP Boost critical bonuses,
+    // permanent upgrades, momentum and guaranteed criticals still count.
+    const noLuckChanceData =
+        buildCriticalChance(
+            baseCriticalChance,
+            xpBoostCriticalBonus,
+            0,
+            startingStreak,
+            DEFAULT_CRITICAL_CHANCE_CAP
+        );
+
+    const criticalChanceWithoutLuck =
+        Math.max(
+            0,
+            Math.min(
+                noLuckChanceData
+                    .criticalChanceCap,
+                noLuckChanceData.finalChance *
+                    criticalChanceMultiplier
+            )
+        );
+
+
 
     // ======================
     // CRITICAL ROLL
@@ -914,14 +940,31 @@ function getXPAmount(
         );
 
 
+    const criticalRoll =
+        !forcedCriticalFailure
+        &&
+        !forcedCritical
+            ? Math.random() * 100
+            : null;
+
     const critical =
         !forcedCriticalFailure
         &&
         (
             forcedCritical
             ||
-            Math.random() * 100 <
+            criticalRoll <
                 criticalChance
+        );
+
+    const criticalWithoutLuck =
+        !forcedCriticalFailure
+        &&
+        (
+            forcedCritical
+            ||
+            criticalRoll <
+                criticalChanceWithoutLuck
         );
 
 
@@ -1111,6 +1154,15 @@ function getXPAmount(
 
 
         criticalChance,
+
+
+        criticalRoll,
+
+
+        criticalChanceWithoutLuck,
+
+
+        criticalWithoutLuck,
 
 
         nextCriticalChance:
