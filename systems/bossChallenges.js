@@ -101,7 +101,7 @@ const BOSS_CHALLENGES =
             firstReward:
                 rewardBundle({
                     xp: 50000000,
-                    shards: 250,
+                    shards: 20000,
                     chests: [
                         {tier: "boss", amount: 1}
                     ],
@@ -126,7 +126,7 @@ const BOSS_CHALLENGES =
             repeatReward:
                 rewardBundle({
                     xp: 10000000,
-                    shards: 100,
+                    shards: 2000,
                     chests: [
                         {tier: "boss", amount: 1}
                     ],
@@ -160,7 +160,7 @@ const BOSS_CHALLENGES =
             firstReward:
                 rewardBundle({
                     xp: 500000000,
-                    shards: 450,
+                    shards: 500000,
                     chests: [
                         {tier: "boss", amount: 1}
                     ],
@@ -185,7 +185,7 @@ const BOSS_CHALLENGES =
             repeatReward:
                 rewardBundle({
                     xp: 75000000,
-                    shards: 200,
+                    shards: 15000,
                     chests: [
                         {tier: "boss", amount: 1}
                     ],
@@ -228,7 +228,7 @@ const BOSS_CHALLENGES =
             firstReward:
                 rewardBundle({
                     xp: 2000000000,
-                    shards: 750,
+                    shards: 2000000,
                     chests: [
                         {tier: "boss", amount: 1}
                     ],
@@ -255,7 +255,7 @@ const BOSS_CHALLENGES =
             repeatReward:
                 rewardBundle({
                     xp: 300000000,
-                    shards: 350,
+                    shards: 100000,
                     chests: [
                         {tier: "boss", amount: 1}
                     ],
