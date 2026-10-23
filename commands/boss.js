@@ -287,13 +287,19 @@ function buildBossEmbed(guild, boss, options = {}){
 }
 
 
-function buildNoBossEmbed(){
+function buildNoBossEmbed(options = {}){
+    const challengeHint =
+        options.showChallengeHint === false
+            ? ""
+            : " Personal Challenges are still available below.";
+
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle("⚔️ RAID BOSS")
         .setDescription(
             "There is **no active global raid boss** right now.\n\n"
-            + "A spawn can be rolled only after at least **2 different users** earn chat XP within **10 minutes**. Personal Challenges are still available below."
+            + "A spawn can be rolled only after at least **2 different users** earn chat XP within **10 minutes**."
+            + challengeHint
         )
         .addFields({
             name: "Raid duration",
@@ -338,6 +344,21 @@ function buildBossPayload(guild, boss, options = {}){
         ],
         components: [buildMainButtons()],
         allowedMentions: {parse: [], repliedUser: false}
+    };
+}
+
+
+function buildRaidStatusPayload(guild, boss, options = {}){
+    return {
+        embeds: [
+            boss
+                ? buildBossEmbed(guild, boss, options)
+                : buildNoBossEmbed({
+                    showChallengeHint: false
+                })
+        ],
+        components: [],
+        allowedMentions: {parse: []}
     };
 }
 
@@ -687,7 +708,7 @@ async function ensureRaidStatusMessage(
 
 
     const payload =
-        buildBossPayload(
+        buildRaidStatusPayload(
             guild,
             boss,
             {
@@ -1793,6 +1814,7 @@ module.exports = {
     buildBossEmbed,
     buildNoBossEmbed,
     buildBossPayload,
+    buildRaidStatusPayload,
     buildBossShopPayload,
     getRaidStatusChannel,
     isRaidStatusPanelMessage,
