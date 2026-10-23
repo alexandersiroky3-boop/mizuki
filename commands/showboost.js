@@ -55,6 +55,94 @@ const POWER_RUNE_TIERS =
     powerRunes.POWER_RUNE_TIERS;
 
 
+const CHEST_OPENING_FRAME_MS =
+    450;
+
+
+const CHEST_OPENING_FRAMES =
+    Object.freeze([
+        ".",
+        "..",
+        "...",
+        ".",
+        "..",
+        "...",
+        ".",
+        "..",
+        "..."
+    ]);
+
+
+const ACTIVE_CHEST_OPENINGS =
+    new Set();
+
+
+function wait(milliseconds){
+
+    return new Promise(resolve => {
+
+        setTimeout(
+            resolve,
+            Math.max(
+                0,
+                Number(milliseconds) || 0
+            )
+        );
+
+    });
+
+}
+
+
+function buildChestOpeningText(
+    guild,
+    tier,
+    dots = "."
+){
+
+    return (
+        `${chests.getChestEmoji(guild, tier)} opening${dots}`
+    );
+
+}
+
+
+async function playChestOpeningAnimation(
+    animationMessage,
+    guild,
+    tier,
+    waitForFrame = wait
+){
+
+    for(
+        let index = 1;
+        index < CHEST_OPENING_FRAMES.length;
+        index++
+    ){
+
+        await waitForFrame(
+            CHEST_OPENING_FRAME_MS
+        );
+
+
+        await animationMessage.edit({
+            content:
+                buildChestOpeningText(
+                    guild,
+                    tier,
+                    CHEST_OPENING_FRAMES[index]
+                ),
+            allowedMentions: {
+                parse: [],
+                repliedUser: false
+            }
+        });
+
+    }
+
+}
+
+
 function inventoryMap(rows){
 
     return new Map(
@@ -820,50 +908,200 @@ async function execute(message){
 
             const tier = chestMatch[1];
 
-            await interaction.deferUpdate();
+            const openingKey =
+                `${message.guild.id}:${message.author.id}`;
 
-            const result =
-                await chests.openChest(
-                    message.guild.id,
-                    message.author.id,
+
+            if(
+                ACTIVE_CHEST_OPENINGS.has(
+                    openingKey
+                )
+            ){
+
+                await interaction.reply({
+                    content:
+                        "Your other chest is still opening...",
+                    flags:
+                        MessageFlags.Ephemeral
+                }).catch(() => {});
+
+
+                return;
+
+            }
+
+
+            ACTIVE_CHEST_OPENINGS.add(
+                openingKey
+            );
+
+
+            let animationMessage = null;
+            let chestRevealed = false;
+
+
+            try{
+
+                await interaction.deferUpdate();
+
+
+                const available =
+                    await database
+                        .getBoostInventoryAmount(
+                            message.guild.id,
+                            message.author.id,
+                            "chest",
+                            tier
+                        );
+
+
+                if(available <= 0){
+
+                    await interaction.followUp({
+                        content:
+                            `❌ You do not have a ${chests.CHEST_NAMES[tier]} to open.`,
+                        flags:
+                            MessageFlags.Ephemeral
+                    }).catch(() => {});
+
+
+                    await panel.edit(
+                        await buildBoostPanel(
+                            message.member,
+                            false,
+                            lastNotice
+                        )
+                    ).catch(() => {});
+
+
+                    return;
+
+                }
+
+
+                // This intentionally replies to the original !boost message.
+                // The animation result stays in that same reply instead of
+                // replacing the inventory panel.
+                animationMessage =
+                    await message.reply({
+                        content:
+                            buildChestOpeningText(
+                                message.guild,
+                                tier,
+                                CHEST_OPENING_FRAMES[0]
+                            ),
+                        allowedMentions: {
+                            parse: [],
+                            repliedUser: false
+                        }
+                    });
+
+
+                await playChestOpeningAnimation(
+                    animationMessage,
+                    message.guild,
                     tier
                 );
 
-            if(!result.success){
-                await interaction.followUp({
-                    content:
-                        `❌ You do not have a ${chests.CHEST_NAMES[tier]} to open.`,
-                    flags: MessageFlags.Ephemeral
-                }).catch(() => {});
 
-                await interaction.editReply(
+                const result =
+                    await chests.openChest(
+                        message.guild.id,
+                        message.author.id,
+                        tier
+                    );
+
+
+                if(!result.success){
+
+                    await animationMessage.edit({
+                        content:
+                            `❌ You no longer have a ${chests.CHEST_NAMES[tier]} to open.`,
+                        allowedMentions: {
+                            parse: [],
+                            repliedUser: false
+                        }
+                    }).catch(() => {});
+
+
+                    await panel.edit(
+                        await buildBoostPanel(
+                            message.member,
+                            false,
+                            lastNotice
+                        )
+                    ).catch(() => {});
+
+
+                    return;
+
+                }
+
+
+                await leveling.syncLevelAndAnnounce(
+                    message.client,
+                    message.guild.id,
+                    message.author.id
+                ).catch(() => {});
+
+
+                lastNotice =
+                    `${chests.getChestEmoji(message.guild, tier)} **${chests.CHEST_NAMES[tier]} opened!**\n` +
+                    `You received ${result.reward.text}. ` +
+                    `Remaining: **x${Number(result.remaining).toLocaleString()}**.`;
+
+
+                await animationMessage.edit({
+                    content:
+                        lastNotice,
+                    allowedMentions: {
+                        parse: [],
+                        repliedUser: false
+                    }
+                });
+
+
+                chestRevealed = true;
+
+
+                await panel.edit(
                     await buildBoostPanel(
                         message.member,
                         false,
                         lastNotice
                     )
                 ).catch(() => {});
-                return;
+
             }
+            catch(error){
 
-            await leveling.syncLevelAndAnnounce(
-                message.client,
-                message.guild.id,
-                message.author.id
-            ).catch(() => {});
+                if(
+                    animationMessage
+                    && !chestRevealed
+                ){
 
-            lastNotice =
-                `${chests.getChestEmoji(message.guild, tier)} **${chests.CHEST_NAMES[tier]} opened!**\n` +
-                `You received ${result.reward.text}. ` +
-                `Remaining: **x${Number(result.remaining).toLocaleString()}**.`;
+                    await animationMessage.edit({
+                        content:
+                            "❌ This chest could not finish displaying its result. Run `!boost` to refresh and verify your reward and inventory before trying again.",
+                        allowedMentions: {
+                            parse: [],
+                            repliedUser: false
+                        }
+                    }).catch(() => {});
 
-            await interaction.editReply(
-                await buildBoostPanel(
-                    message.member,
-                    false,
-                    lastNotice
-                )
-            );
+                }
+
+
+                throw error;
+
+            }
+            finally{
+
+                ACTIVE_CHEST_OPENINGS.delete(
+                    openingKey
+                );
+
+            }
 
             return;
 
@@ -1018,5 +1256,9 @@ async function execute(message){
 
 module.exports = {
     execute,
-    buildBoostPanel
+    buildBoostPanel,
+    CHEST_OPENING_FRAME_MS,
+    CHEST_OPENING_FRAMES,
+    buildChestOpeningText,
+    playChestOpeningAnimation
 };
