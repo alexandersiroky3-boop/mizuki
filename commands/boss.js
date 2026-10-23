@@ -919,16 +919,6 @@ function buildChallengeCombatEmbed(guild, boss, battle, options = {}){
 }
 
 
-function sanitizeChannelName(value){
-    return String(value || "fighter")
-        .toLowerCase()
-        .replace(/[^a-z0-9-]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 45)
-        || "fighter";
-}
-
-
 async function createChallengeBattle(interaction, challenge){
     const snapshot = await database.getBossChallengeSnapshot(
         interaction.guildId,
@@ -959,7 +949,7 @@ async function createChallengeBattle(interaction, challenge){
     const bossScope = `challenge:${interaction.guildId}:${interaction.user.id}`;
     const botID = interaction.client.user.id;
     const channel = await interaction.guild.channels.create({
-        name: `boss-${challenge.number}-${sanitizeChannelName(interaction.user.username)}-${interaction.user.id.slice(-4)}`,
+        name: `boss-${challenge.number}`,
         type: ChannelType.GuildText,
         topic: `Private Boss Challenge #${challenge.number} for ${interaction.user.tag || interaction.user.username}`,
         permissionOverwrites: [
