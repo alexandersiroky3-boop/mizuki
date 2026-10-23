@@ -1791,7 +1791,7 @@ function buildPositiveRollDialogue({
 
     if(rarityRolledXP >= 100000000){
 
-        return `${emojis.rainbowRoll} **JACKPOT**${evolvedMarker} ${author} ROLLED A JACKPOT 🎰 **[${formattedRolledXP} XP]**${resultExtras}
+        return `${emojis.rainbowRoll} **JACKPOT** ${author} ROLLED A JACKPOT 🎰 **[${formattedRolledXP} XP]**${evolvedMarker}${resultExtras}
 
 ### The future?
 
@@ -1848,7 +1848,7 @@ gorjezz then decides to ask:*
 
     if(rarityRolledXP > 5000000){
 
-        return `${emojis.mythicRoll} **MYTHIC**${evolvedMarker} ${author} rolled **+${formattedRolledXP} XP!** 🌃${resultExtras}
+        return `${emojis.mythicRoll} **MYTHIC** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker} 🌃${resultExtras}
 
 ### The Great Ruler
 
@@ -1927,7 +1927,7 @@ Then Kape finally equipped it and felt the bonus, unfathomable power coursing th
 
     if(rarityRolledXP > 500000){
 
-        return `${emojis.goldenRoll} **LEGENDARY**${evolvedMarker} ${author} rolled **+${formattedRolledXP} XP!** 🌠${resultExtras}
+        return `${emojis.goldenRoll} **LEGENDARY** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker} 🌠${resultExtras}
 
 ### ${author} VS beyondborder_08386
 
@@ -1992,7 +1992,7 @@ ${author} gritted their teeth and swore they would make beyondborder_08386 pay..
 
     if(rarityRolledXP > 100000){
 
-        return `${emojis.halfGoldenRoll} **EPIC**${evolvedMarker} ${author} rolled **+${formattedRolledXP} XP!** ${emojis.inevitableGalaxy}${resultExtras}
+        return `${emojis.halfGoldenRoll} **EPIC** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker} ${emojis.inevitableGalaxy}${resultExtras}
 
 *Kape was sitting on the crew's couch with gorjezz before seeing ${author} arrive...*
 
@@ -2033,7 +2033,7 @@ Kape sighed, slightly annoyed, and raised his Gauntlet toward ${author}. Using t
 
     if(rarityRolledXP > 25000){
 
-        return `${emojis.roll} **RARE**${evolvedMarker} ${author} rolled **+${formattedRolledXP} XP!** ✨${resultExtras}
+        return `${emojis.roll} **RARE** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker} ✨${resultExtras}
 
 *Mrnoob was wandering outside beside the crew's house when he saw thezdrink and ${author} walking nearby. Mrnoob quickly approached them...*
 
@@ -2062,7 +2062,7 @@ Kape sighed, slightly annoyed, and raised his Gauntlet toward ${author}. Using t
 
     if(rarityRolledXP > 5000){
 
-        return `${emojis.roll} **UNCOMMON**${evolvedMarker} ${author} rolled **+${formattedRolledXP} XP!**${resultExtras}
+        return `${emojis.roll} **UNCOMMON** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker}${resultExtras}
 
 *Mizuki told ${author} that if they rolled a die and it landed on the number 6, Mizuki would reward them...
 
@@ -2077,7 +2077,7 @@ A deal is a deal...*
     }
 
 
-    return `${emojis.roll} **COMMON**${evolvedMarker} ${author} rolled **+${formattedRolledXP} XP!**${resultExtras}${rollGuaranteeFooter}`;
+    return `${emojis.roll} **COMMON** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker}${resultExtras}${rollGuaranteeFooter}`;
 
 }
 
