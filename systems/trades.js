@@ -2607,6 +2607,51 @@ async function recordSuccessfulTradeQuests(
 
     ]);
 
+
+    const receivedOffers = [
+        {
+            userID: trade.user1id,
+            offer: normalizeOffer(trade.user2offer)
+        },
+        {
+            userID: trade.user2id,
+            offer: normalizeOffer(trade.user1offer)
+        }
+    ];
+
+
+    const obtainEvents = {
+        "luck:max": "obtain_luck_max",
+        "luck:omega": "obtain_luck_omega",
+        "rune:tier3": "obtain_rune_three"
+    };
+
+
+    for(const received of receivedOffers){
+        for(const [key, eventType] of Object.entries(obtainEvents)){
+            const amount =
+                Math.max(
+                    0,
+                    Number(received.offer.boosts?.[key]) || 0
+                );
+
+
+            if(amount <= 0){
+                continue;
+            }
+
+
+            await quests.recordEvent(
+                source,
+                eventType,
+                amount,
+                {
+                    userID: received.userID
+                }
+            );
+        }
+    }
+
 }
 
 
