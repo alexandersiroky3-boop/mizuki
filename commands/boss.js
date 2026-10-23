@@ -20,7 +20,13 @@ const CHALLENGE_LIST_BUTTON_ID = "raid_challenge_list";
 const BOSS_SHOP_BUTTON_ID = "raid_boss_shop";
 const BOSS_SHOP_BUY_PREFIX = "raid_boss_shop_buy:";
 const RAID_STATUS_CHANNEL_ID = "1562067936485703811";
+const RAID_STATUS_PANEL_FOOTER =
+    "Mizuki Raid Boss • Live Status";
 const HEALTH_BAR_SEGMENTS = 16;
+
+
+const raidStatusMessageIDs =
+    new Map();
 
 
 function formatNumber(value){
@@ -271,6 +277,12 @@ function buildBossEmbed(guild, boss, options = {}){
             .setThumbnail(avatarURL);
     }
 
+
+    embed.setFooter({
+        text:
+            RAID_STATUS_PANEL_FOOTER
+    });
+
     return embed;
 }
 
@@ -286,6 +298,10 @@ function buildNoBossEmbed(){
         .addFields({
             name: "Raid duration",
             value: "Every spawned raid boss remains for **1 hour** unless the server defeats it first."
+        })
+        .setFooter({
+            text:
+                RAID_STATUS_PANEL_FOOTER
         });
 
     return embed;
@@ -423,21 +439,326 @@ async function buildBossShopPayload(
 async function getRaidStatusChannel(client){
 
     const cached =
-        client.channels.cache.get(
+        client?.channels?.cache?.get?.(
             RAID_STATUS_CHANNEL_ID
         );
 
 
     const channel =
         cached
-        || await client.channels.fetch(
+        || await client?.channels?.fetch?.(
             RAID_STATUS_CHANNEL_ID
+        ).catch(error => {
+
+            console.error(
+                `Could not fetch raid status channel ${RAID_STATUS_CHANNEL_ID}:`,
+                error
+            );
+
+
+            return null;
+
+        });
+
+
+    return (
+        channel?.isTextBased?.()
+        && typeof channel.send === "function"
+    )
+        ? channel
+        : null;
+
+}
+
+
+function isRaidStatusPanelMessage(
+    message,
+    clientUserID
+){
+
+    if(
+        !message
+        || (
+            clientUserID
+            && message.author?.id !== clientUserID
+        )
+    ){
+        return false;
+    }
+
+
+    const embeds =
+        Array.from(
+            message.embeds || []
+        );
+
+
+    // The dedicated panel is sent directly to the channel. Normal !boss
+    // command replies have a message reference and must never be reused as
+    // the persistent panel, even though they render the same footer.
+    if(message.reference){
+        return false;
+    }
+
+
+    if(
+        embeds.some(embed =>
+            embed?.footer?.text ===
+                RAID_STATUS_PANEL_FOOTER
+        )
+    ){
+        return true;
+    }
+
+
+    // Reuse panels created by the earlier implementation before the footer
+    // marker existed.
+    return embeds.some(embed =>
+        [
+            "⚔️ RAID BOSS",
+            "⚔️ RAID BOSS — LIVE STATUS",
+            "⚠️ A RAID BOSS HAS ARRIVED",
+            "🏆 RAID BOSS DEFEATED",
+            "⏱️ RAID BOSS DESPAWNED"
+        ].includes(
+            embed?.title
+        )
+    );
+
+}
+
+
+async function findRaidStatusMessage(
+    client,
+    statusChannel,
+    preferredMessageIDs = []
+){
+
+    const uniqueMessageIDs =
+        Array.from(
+            new Set(
+                preferredMessageIDs
+                    .map(value =>
+                        String(value || "").trim()
+                    )
+                    .filter(Boolean)
+            )
+        );
+
+
+    for(const messageID of uniqueMessageIDs){
+
+        const message =
+            await statusChannel.messages.fetch(
+                messageID
+            ).catch(() => null);
+
+
+        if(message){
+            return message;
+        }
+
+    }
+
+
+    const recentMessages =
+        await statusChannel.messages.fetch({
+            limit: 50
+        }).catch(() => null);
+
+
+    const messages =
+        recentMessages?.values
+            ? Array.from(
+                recentMessages.values()
+            )
+            : [];
+
+
+    return messages.find(message =>
+        isRaidStatusPanelMessage(
+            message,
+            client?.user?.id
+        )
+    ) || null;
+
+}
+
+
+async function ensureRaidStatusMessage(
+    client,
+    guildID,
+    options = {}
+){
+
+    const normalizedGuildID =
+        String(guildID || "").trim();
+
+
+    if(!normalizedGuildID){
+        throw new Error(
+            "A guild ID is required to initialize the raid status panel."
+        );
+    }
+
+
+    const statusChannel =
+        await getRaidStatusChannel(
+            client
+        );
+
+
+    if(!statusChannel){
+        throw new Error(
+            `The bot cannot access raid status channel ${RAID_STATUS_CHANNEL_ID}. ` +
+            "Give it View Channel, Send Messages, Embed Links, and Read Message History permissions."
+        );
+    }
+
+
+    if(
+        statusChannel.guildId
+        && String(statusChannel.guildId) !==
+            normalizedGuildID
+    ){
+        throw new Error(
+            `Raid status channel ${RAID_STATUS_CHANNEL_ID} is not inside guild ${normalizedGuildID}.`
+        );
+    }
+
+
+    const guild =
+        options.guild
+        || statusChannel.guild
+        || client?.guilds?.cache?.get?.(
+            normalizedGuildID
+        )
+        || await client?.guilds?.fetch?.(
+            normalizedGuildID
         ).catch(() => null);
 
 
-    return channel?.isTextBased?.()
-        ? channel
-        : null;
+    if(!guild){
+        throw new Error(
+            `Could not load guild ${normalizedGuildID} for the raid status panel.`
+        );
+    }
+
+
+    const bossWasProvided =
+        Object.prototype.hasOwnProperty.call(
+            options,
+            "boss"
+        );
+
+
+    const boss =
+        bossWasProvided
+            ? options.boss
+            : await bosses.getCurrentBoss(
+                normalizedGuildID
+            );
+
+
+    const stateData =
+        boss?.stateData
+        && typeof boss.stateData === "object"
+            ? boss.stateData
+            : {};
+
+
+    if(boss){
+        boss.stateData = stateData;
+    }
+
+
+    let statusMessage =
+        await findRaidStatusMessage(
+            client,
+            statusChannel,
+            [
+                options.statusMessageID,
+                stateData.raidStatusMessageID,
+                raidStatusMessageIDs.get(
+                    normalizedGuildID
+                )
+            ]
+        );
+
+
+    const payload =
+        buildBossPayload(
+            guild,
+            boss,
+            {
+                spawned:
+                    Boolean(options.spawned),
+                defeated:
+                    Boolean(options.defeated),
+                expired:
+                    Boolean(options.expired)
+            }
+        );
+
+
+    if(statusMessage){
+
+        try{
+            await statusMessage.edit(
+                payload
+            );
+        }
+        catch(error){
+
+            console.error(
+                "Could not edit the existing raid status panel; creating a replacement:",
+                error
+            );
+
+
+            statusMessage =
+                await statusChannel.send(
+                    payload
+                );
+
+        }
+
+    }
+    else{
+        statusMessage =
+            await statusChannel.send(
+                payload
+            );
+    }
+
+
+    raidStatusMessageIDs.set(
+        normalizedGuildID,
+        statusMessage.id
+    );
+
+
+    if(
+        boss
+        && !options.defeated
+        && !options.expired
+    ){
+
+        stateData.raidStatusChannelID =
+            statusChannel.id;
+
+        stateData.raidStatusMessageID =
+            statusMessage.id;
+
+
+        await database.updateRaidBossState(
+            boss
+        );
+
+    }
+
+
+    return statusMessage;
 
 }
 
@@ -449,83 +770,26 @@ async function syncRaidStatusMessage(
 
     if(
         !result?.boss
-        || !result?.definition
         || result.challenge
     ){
         return null;
     }
 
 
-    const statusChannel =
-        await getRaidStatusChannel(
-            message.client
-        );
-
-
-    if(!statusChannel){
-        console.error(
-            `Could not access raid status channel ${RAID_STATUS_CHANNEL_ID}.`
-        );
-        return null;
-    }
-
-
-    const stateData =
-        result.boss.stateData
-        && typeof result.boss.stateData === "object"
-            ? result.boss.stateData
-            : {};
-
-
-    result.boss.stateData = stateData;
-
-
-    let statusMessage = null;
-
-
-    if(stateData.raidStatusMessageID){
-        statusMessage =
-            await statusChannel.messages.fetch(
-                stateData.raidStatusMessageID
-            ).catch(() => null);
-    }
-
-
-    const payload =
-        buildBossPayload(
-            message.guild,
-            result.boss,
-            {
-                spawned: result.spawned,
-                defeated: result.defeated
-            }
-        );
-
-
-    if(statusMessage){
-        await statusMessage.edit(payload);
-    }
-    else{
-        statusMessage =
-            await statusChannel.send(payload);
-    }
-
-
-    stateData.raidStatusChannelID =
-        statusChannel.id;
-
-    stateData.raidStatusMessageID =
-        statusMessage.id;
-
-
-    if(!result.defeated){
-        await database.updateRaidBossState(
-            result.boss
-        );
-    }
-
-
-    return statusMessage;
+    return ensureRaidStatusMessage(
+        message.client,
+        message.guild.id,
+        {
+            guild:
+                message.guild,
+            boss:
+                result.boss,
+            spawned:
+                result.spawned,
+            defeated:
+                result.defeated
+        }
+    );
 
 }
 
@@ -537,55 +801,16 @@ async function handleExpiredBosses(
 
     for(const boss of cleanupResult?.expiredBosses || []){
 
-        const statusMessageID =
-            boss.stateData?.raidStatusMessageID;
-
-
-        if(!statusMessageID){
-            continue;
-        }
-
-
-        const statusChannel =
-            await getRaidStatusChannel(client);
-
-
-        if(!statusChannel){
-            continue;
-        }
-
-
-        const statusMessage =
-            await statusChannel.messages.fetch(
-                statusMessageID
-            ).catch(() => null);
-
-
-        if(!statusMessage){
-            continue;
-        }
-
-
-        const guild =
-            client.guilds.cache.get(
-                boss.guildID
-            )
-            || await client.guilds.fetch(
-                boss.guildID
-            ).catch(() => null);
-
-
-        if(!guild){
-            continue;
-        }
-
-
-        await statusMessage.edit(
-            buildBossPayload(
-                guild,
+        await ensureRaidStatusMessage(
+            client,
+            boss.guildID,
+            {
                 boss,
-                {expired: true}
-            )
+                expired: true,
+                statusMessageID:
+                    boss.stateData
+                        ?.raidStatusMessageID
+            }
         ).catch(error => {
             console.error(
                 "Could not mark the fixed raid panel as despawned:",
@@ -1054,23 +1279,22 @@ async function execute(message){
     if(!message.guild) return;
     const boss = await bosses.getCurrentBoss(message.guild.id);
 
-    if(boss){
-        await syncRaidStatusMessage(
-            message,
-            {
-                boss,
-                definition:
-                    bosses.getBossDefinition(boss),
-                spawned: false,
-                defeated: false
-            }
-        ).catch(error => {
-            console.error(
-                "Could not refresh the fixed raid status message from !boss:",
-                error
-            );
-        });
-    }
+    await ensureRaidStatusMessage(
+        message.client,
+        message.guild.id,
+        {
+            guild:
+                message.guild,
+            boss,
+            spawned: false,
+            defeated: false
+        }
+    ).catch(error => {
+        console.error(
+            "Could not refresh the fixed raid status message from !boss:",
+            error
+        );
+    });
 
     return message.reply(buildBossPayload(message.guild, boss));
 }
@@ -1560,6 +1784,7 @@ module.exports = {
     BOSS_SHOP_BUTTON_ID,
     BOSS_SHOP_BUY_PREFIX,
     RAID_STATUS_CHANNEL_ID,
+    RAID_STATUS_PANEL_FOOTER,
     HEALTH_BAR_SEGMENTS,
     execute,
     handleInteraction,
@@ -1569,6 +1794,10 @@ module.exports = {
     buildNoBossEmbed,
     buildBossPayload,
     buildBossShopPayload,
+    getRaidStatusChannel,
+    isRaidStatusPanelMessage,
+    findRaidStatusMessage,
+    ensureRaidStatusMessage,
     syncRaidStatusMessage,
     handleExpiredBosses,
     buildInfoEmbeds,
