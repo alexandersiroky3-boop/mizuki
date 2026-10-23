@@ -354,6 +354,31 @@ async function awardPowerRune(
             );
 
 
+    if(profile.tier === "tier3"){
+        const quests =
+            require("./quests");
+
+
+        await quests.recordEvent(
+            {
+                guild: member.guild,
+                client: member.client || member.guild?.client,
+                user: member.user || {id: member.id}
+            },
+            "obtain_rune_three",
+            1,
+            {
+                userID: member.id
+            }
+        ).catch(error => {
+            console.error(
+                `Could not record Power Rune III quest progress for ${member.id}:`,
+                error
+            );
+        });
+    }
+
+
     console.log(
         `${member.user?.tag || member.id} found ${profile.name} from ${source}. Inventory: ${amount}`
     );
@@ -524,6 +549,29 @@ async function redeemPowerRunes(
             );
 
         }
+
+
+        const quests =
+            require("./quests");
+
+
+        await quests.recordEvent(
+            {
+                guild: member.guild,
+                client: member.client || member.guild?.client,
+                user: member.user || {id: member.id}
+            },
+            "power_rune_use",
+            quantity,
+            {
+                userID: member.id
+            }
+        ).catch(error => {
+            console.error(
+                `Could not record Power Rune use quest progress for ${member.id}:`,
+                error
+            );
+        });
 
     }
 
