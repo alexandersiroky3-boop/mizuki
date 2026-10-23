@@ -46,13 +46,13 @@ function progressBar(
 
     const filled =
         Math.round(
-            percentage / 10
+            percentage / 12.5
         );
 
 
     return (
-        "■".repeat(filled) +
-        "□".repeat(10 - filled)
+        "█".repeat(filled) +
+        "░".repeat(8 - filled)
     );
 
 }
@@ -67,19 +67,31 @@ function formatQuest(quest){
         );
 
 
-    const status =
+    const target =
+        Math.max(
+            1,
+            Number(quest.target) || 1
+        );
+
+
+    const percentage =
         quest.completed
-            ? "Completed"
-            : `${current.toLocaleString()} / ${Number(quest.target).toLocaleString()}`;
+            ? 100
+            : Math.floor(
+                Math.min(
+                    100,
+                    current / target * 100
+                )
+            );
 
 
     return (
-        `${quest.icon} **${quest.label}**\n` +
+        `${quest.completed ? "✅" : quest.icon} **${quest.label}**\n` +
         `\`${progressBar(
             current,
             quest.target,
             quest.completed
-        )}\` **${status}**`
+        )}\` **${current.toLocaleString()} / ${target.toLocaleString()}** • ${percentage}%`
     );
 
 }
@@ -122,176 +134,97 @@ function getResetPrice(
 }
 
 
-function formatCycle(
-    cycle,
-    cycleName,
-    cycleType
+function createNavigationButtons(
+    activeView,
+    disableAll = false
 ){
 
-    const questText =
-        cycle.quests
-            .map(formatQuest)
-            .join("\n\n");
-
-
-    const rewardStatus =
-        cycle.rewarded
-            ? "\n\n**All rewards claimed.**"
-            : "";
-
-
-    const resetTimestamp =
-        Math.floor(
-            Number(cycle.expiresat) /
-            1000
+    return new ActionRowBuilder()
+        .addComponents(
+            ...[
+                ["daily", "Daily"],
+                ["weekly", "Weekly"],
+                ["info", "Info"]
+            ].map(([view, label]) =>
+                new ButtonBuilder()
+                    .setCustomId(
+                        `quests_view:${view}`
+                    )
+                    .setLabel(label)
+                    .setStyle(
+                        view === activeView
+                            ? ButtonStyle.Primary
+                            : ButtonStyle.Secondary
+                    )
+                    .setDisabled(
+                        disableAll ||
+                        view === activeView
+                    )
+            )
         );
-
-
-    const resetConfig =
-        quests.QUEST_RESET_CONFIG[
-            cycleType
-        ];
-
-
-    return (
-        `${questText}\n\n` +
-        `**${cycleName} Rewards**\n` +
-        `${formatRewards(cycle.rewards)}` +
-        `${rewardStatus}\n\n` +
-        `Paid resets used: **${getResetCount(cycle)}/${resetConfig.maxResets}**\n` +
-        `Naturally resets <t:${resetTimestamp}:R>`
-    );
-
-}
-
-
-function formatResetOptions(dashboard){
-
-    const dailyConfig =
-        quests.QUEST_RESET_CONFIG.daily;
-
-
-    const weeklyConfig =
-        quests.QUEST_RESET_CONFIG.weekly;
-
-
-    const dailyPrice =
-        getResetPrice(
-            "daily",
-            dashboard
-        );
-
-
-    const weeklyPrice =
-        getResetPrice(
-            "weekly",
-            dashboard
-        );
-
-
-    const dailyUsed =
-        getResetCount(
-            dashboard.daily
-        );
-
-
-    const weeklyUsed =
-        getResetCount(
-            dashboard.weekly
-        );
-
-
-    const dailyCompleted =
-        quests.isQuestCycleCompleted(
-            dashboard.daily
-        );
-
-
-    const weeklyCompleted =
-        quests.isQuestCycleCompleted(
-            dashboard.weekly
-        );
-
-
-    if(!dashboard.questResetUnlocked){
-
-        return (
-            "🔒 **Paid resets are locked.** Purchase **Quest Upgrade 2/3** through `!upgrades` to unlock them.\n\n" +
-            "Once unlocked, a paid reset only rerolls an **unfinished** section. It replaces that section's quests and rewards and erases **all current progress**."
-        );
-
-    }
-
-
-    return (
-        `🔄 **Daily:** ${dailyPrice.toLocaleString()} XP • ` +
-        (
-            dailyCompleted
-                ? "**Completed — reset unavailable**"
-                : `**${Math.max(0, dailyConfig.maxResets - dailyUsed)}** reset(s) remaining today`
-        ) +
-        "\n" +
-        `🔁 **Weekly:** ${weeklyPrice.toLocaleString()} XP • ` +
-        (
-            weeklyCompleted
-                ? "**Completed — reset unavailable**"
-                : `**${Math.max(0, weeklyConfig.maxResets - weeklyUsed)}** reset(s) remaining this week`
-        ) +
-        "\n\nA paid reset only rerolls an **unfinished** section. It replaces that section's quests and rewards and erases **all current progress**. A completed section cannot be reset."
-    );
 
 }
 
 
 function createResetButtons(
     dashboard,
+    activeView = "daily",
     disableAll = false
 ){
 
-    const dailyConfig =
-        quests.QUEST_RESET_CONFIG.daily;
+    if(typeof activeView === "boolean"){
+        disableAll = activeView;
+        activeView = "daily";
+    }
 
 
-    const weeklyConfig =
-        quests.QUEST_RESET_CONFIG.weekly;
+    const cycleType =
+            ["daily", "weekly"].includes(activeView)
+                ? activeView
+                : null;
 
 
-    const dailyPrice =
+    if(!cycleType){
+        return [];
+    }
+
+
+    const cycle =
+        dashboard[cycleType];
+
+
+    const config =
+        quests.QUEST_RESET_CONFIG[cycleType];
+
+
+    const price =
         getResetPrice(
-            "daily",
+            cycleType,
             dashboard
         );
 
 
-    const weeklyPrice =
-        getResetPrice(
-            "weekly",
-            dashboard
-        );
+    const used =
+        getResetCount(cycle);
 
 
-    const dailyUsed =
-        getResetCount(
-            dashboard.daily
-        );
+    const completed =
+        quests.isQuestCycleCompleted(cycle);
 
 
-    const weeklyUsed =
-        getResetCount(
-            dashboard.weekly
-        );
+    let label =
+        `Reset ${cycleType === "daily" ? "Daily" : "Weekly"} • ${price.toLocaleString()} XP`;
 
 
-    const dailyCompleted =
-        quests.isQuestCycleCompleted(
-            dashboard.daily
-        );
-
-
-    const weeklyCompleted =
-        quests.isQuestCycleCompleted(
-            dashboard.weekly
-        );
+    if(!dashboard.questResetUnlocked){
+        label = "Reset locked • Quest Upgrade 2";
+    }
+    else if(completed){
+        label = "Completed • Reset unavailable";
+    }
+    else if(used >= config.maxResets){
+        label = "Reset already used";
+    }
 
 
     return [
@@ -299,55 +232,18 @@ function createResetButtons(
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId(
-                        "quests_reset:daily"
+                        `quests_reset:${cycleType}`
                     )
-                    .setLabel(
-                        !dashboard.questResetUnlocked
-                            ? "Daily Reset - Requires Quest Upgrade 2"
-                            : dailyCompleted
-                            ? "Daily Completed - Reset Locked"
-                            : `Reset Daily - ${dailyPrice.toLocaleString()} XP (${dailyUsed}/${dailyConfig.maxResets})`
-                    )
-                    .setEmoji("🔄")
+                    .setLabel(label)
                     .setStyle(
                         ButtonStyle.Danger
                     )
                     .setDisabled(
-                        disableAll
-                        ||
-                        !dashboard.questResetUnlocked
-                        ||
-                        dailyCompleted
-                        ||
-                        dailyUsed >=
-                            dailyConfig.maxResets
-                    ),
-                new ButtonBuilder()
-                    .setCustomId(
-                        "quests_reset:weekly"
-                    )
-                    .setLabel(
-                        !dashboard.questResetUnlocked
-                            ? "Weekly Reset - Requires Quest Upgrade 2"
-                            : weeklyCompleted
-                            ? "Weekly Completed - Reset Locked"
-                            : `Reset Weekly - ${weeklyPrice.toLocaleString()} XP (${weeklyUsed}/${weeklyConfig.maxResets})`
-                    )
-                    .setEmoji("🔁")
-                    .setStyle(
-                        ButtonStyle.Danger
-                    )
-                    .setDisabled(
-                        disableAll
-                        ||
-                        !dashboard.questResetUnlocked
-                        ||
-                        !dashboard.weekly
-                        ||
-                        weeklyCompleted
-                        ||
-                        weeklyUsed >=
-                            weeklyConfig.maxResets
+                        disableAll ||
+                        !dashboard.questResetUnlocked ||
+                        !cycle ||
+                        completed ||
+                        used >= config.maxResets
                     )
             )
     ];
@@ -358,8 +254,20 @@ function createResetButtons(
 async function buildQuestPanel(
     guildID,
     user,
+    activeView = "daily",
     disableAll = false
 ){
+
+    if(typeof activeView === "boolean"){
+        disableAll = activeView;
+        activeView = "daily";
+    }
+
+
+    const selectedView =
+        ["daily", "weekly", "info"].includes(activeView)
+            ? activeView
+            : "daily";
 
     const dashboard =
         await quests.getDashboard(
@@ -369,74 +277,161 @@ async function buildQuestPanel(
 
 
     const embed =
-        new EmbedBuilder()
-            .setColor("#7A5CFF")
-            .setAuthor({
-                name:
-                    `${user.username}'s Quests`,
-                iconURL:
-                    user.displayAvatarURL()
-            })
-            .setDescription(
-                "Complete every quest in a section to receive all of its rewards automatically. Quest rewards now depend on your permanent **Quest Upgrade**, never your player level."
-            )
-            .addFields(
-                {
-                    name: "🧬 Quest Upgrade",
+            new EmbedBuilder()
+                .setColor(
+                    selectedView === "daily"
+                        ? "#5865F2"
+                        : selectedView === "weekly"
+                            ? "#D6A13B"
+                            : "#3B3F46"
+                )
+                .setAuthor({
+                    name: `${user.username}'s Quests`,
+                    iconURL: user.displayAvatarURL()
+                });
+
+
+    if(selectedView === "info"){
+            const upgradeLevel =
+                Number(dashboard.questUpgradeLevel) || 0;
+
+
+            const resetStatus =
+                dashboard.questResetUnlocked
+                    ? "Unlocked"
+                    : "Locked until Quest Upgrade 2";
+
+
+            const dailyRewardCount =
+                upgradeLevel === 0
+                    ? "2"
+                    : upgradeLevel === 1
+                        ? "3–4"
+                        : "4";
+
+
+            const weeklyRewardCount =
+                upgradeLevel === 0
+                    ? "3"
+                    : upgradeLevel === 1
+                        ? "4–5"
+                        : "5";
+
+
+            embed
+                .setTitle("Quest information")
+                .setDescription(
+                    "Quest upgrades improve the rewards. They do **not** make the Daily or Weekly objectives harder."
+                )
+                .addFields(
+                    {
+                        name: "Current upgrade",
+                        value:
+                            `**Quest Upgrade ${upgradeLevel}/3**\n` +
+                            `Daily rewards: **${dailyRewardCount}**\n` +
+                            `Weekly rewards: **${weeklyRewardCount}**`,
+                        inline: true
+                    },
+                    {
+                        name: "Paid resets",
+                        value:
+                            `**${resetStatus}**\n` +
+                            `Daily: **${getResetPrice("daily", dashboard).toLocaleString()} XP**\n` +
+                            `Weekly: **${getResetPrice("weekly", dashboard).toLocaleString()} XP**`,
+                        inline: true
+                    },
+                    {
+                        name: "Upgrade rewards",
+                        value:
+                            "**1:** More rewards + Power Runes\n" +
+                            "**2:** Resets + 15% Weekly special boost chance\n" +
+                            "**3:** 10% Daily / 45% Weekly special boost chance, half-price resets, and a 5% Weekly double-reward chance",
+                        inline: false
+                    },
+                    {
+                        name: "Reset schedule",
+                        value:
+                            `Daily renews <t:${Math.floor(Number(dashboard.daily.expiresat) / 1000)}:R>\n` +
+                            `Weekly renews <t:${Math.floor(Number(dashboard.weekly.expiresat) / 1000)}:R>`,
+                        inline: false
+                    }
+                )
+                .setFooter({
+                    text: "Rewards are claimed automatically when all quests in a section are complete."
+                });
+    }
+    else{
+            const cycle =
+                dashboard[selectedView];
+
+
+            const completedCount =
+                cycle.quests.filter(
+                    quest => Boolean(quest.completed)
+                ).length;
+
+
+            const totalCount =
+                cycle.quests.length;
+
+
+            const resetConfig =
+                quests.QUEST_RESET_CONFIG[selectedView];
+
+
+            const resetCount =
+                getResetCount(cycle);
+
+
+            const resetText =
+                !dashboard.questResetUnlocked
+                    ? "Paid reset locked"
+                    : quests.isQuestCycleCompleted(cycle)
+                        ? "Reset unavailable after completion"
+                        : `Paid reset ${resetCount}/${resetConfig.maxResets}`;
+
+
+            embed
+                .setTitle(
+                    selectedView === "daily"
+                        ? "Daily quests"
+                        : "Weekly quests"
+                )
+                .setDescription(
+                    `**${completedCount}/${totalCount} complete** • ${resetText} • Renews <t:${Math.floor(Number(cycle.expiresat) / 1000)}:R>\n\n` +
+                    cycle.quests
+                        .map(formatQuest)
+                        .join("\n\n")
+                )
+                .addFields({
+                    name:
+                        cycle.rewarded
+                            ? "Rewards claimed"
+                            : "Rewards",
                     value:
-                        `**${Number(dashboard.questUpgradeLevel) || 0}/3** • ` +
-                        (
-                            dashboard.questResetUnlocked
-                                ? "Paid unfinished-quest resets unlocked."
-                                : "Upgrade to **2/3** through `!upgrades` to unlock paid resets."
-                        ),
+                        formatRewards(cycle.rewards),
                     inline: false
-                },
-                {
-                    name: "Daily Quests",
-                    value:
-                        formatCycle(
-                            dashboard.daily,
-                            "Daily",
-                            "daily"
-                        ),
-                    inline: false
-                },
-                {
-                    name: "Weekly Quests",
-                    value:
-                        formatCycle(
-                            dashboard.weekly,
-                            "Weekly",
-                            "weekly"
-                        ),
-                    inline: false
-                },
-                {
-                    name: "Paid Quest Resets",
-                    value:
-                        formatResetOptions(
-                            dashboard
-                        ),
-                    inline: false
-                }
-            )
-            .setFooter({
-                text:
-                    "Daily quests renew at 00:00 UTC; weekly quests renew each Monday at 00:00 UTC."
-            })
-            .setTimestamp();
+                })
+                .setFooter({
+                    text:
+                        `Quest Upgrade ${Number(dashboard.questUpgradeLevel) || 0}/3 • Rewards claim automatically`
+                });
+    }
 
 
     return {
-        embeds: [
-            embed
-        ],
-        components:
-            createResetButtons(
-                dashboard,
+        embeds: [embed],
+        components: [
+            createNavigationButtons(
+                selectedView,
                 disableAll
             ),
+            ...createResetButtons(
+                dashboard,
+                selectedView,
+                disableAll
+            )
+        ],
         allowedMentions: {
             parse: [],
             repliedUser: false
@@ -558,11 +553,16 @@ async function execute(message){
         message.author.id;
 
 
+    let activeView =
+        "daily";
+
+
     const questMessage =
         await message.reply(
             await buildQuestPanel(
                 message.guild.id,
-                message.author
+                message.author,
+                activeView
             )
         );
 
@@ -584,7 +584,11 @@ async function execute(message){
             ] = interaction.customId.split(":");
 
 
-            if(action !== "quests_reset"){
+            if(
+                action !== "quests_view"
+                &&
+                action !== "quests_reset"
+            ){
                 return;
             }
 
@@ -598,6 +602,26 @@ async function execute(message){
                         MessageFlags.Ephemeral
                 });
 
+            }
+
+
+            if(action === "quests_view"){
+                activeView =
+                    ["daily", "weekly", "info"].includes(cycleType)
+                        ? cycleType
+                        : "daily";
+
+
+                await interaction.deferUpdate();
+
+
+                return questMessage.edit(
+                    await buildQuestPanel(
+                        interaction.guild.id,
+                        message.author,
+                        activeView
+                    )
+                );
             }
 
 
@@ -653,7 +677,8 @@ async function execute(message){
                     const updatedPanel =
                         await buildQuestPanel(
                             interaction.guild.id,
-                            message.author
+                            message.author,
+                            activeView
                         );
 
 
@@ -728,6 +753,7 @@ async function execute(message){
 module.exports = {
     execute,
     buildQuestPanel,
+    createNavigationButtons,
     createResetButtons,
     getResetResultMessage
 };
