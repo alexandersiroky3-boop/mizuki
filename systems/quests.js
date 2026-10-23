@@ -14,6 +14,9 @@ const luck =
 const leveling =
     require("./leveling");
 
+const powerRunes =
+    require("./powerRunes");
+
 
 const QUEST_RESET_TIME_ZONE =
     "UTC";
@@ -36,15 +39,23 @@ const QUEST_UPGRADE_TWO =
     2;
 
 
+const QUEST_UPGRADE_THREE =
+    3;
+
+
 const QUEST_RULESET_VERSION =
-    12;
+    13;
 
 
 // Stored on every newly generated weekly reward. Active, unclaimed weekly
 // cycles from older builds are rerolled once so users see the new economy
 // immediately without losing any quest progress.
 const WEEKLY_REWARD_RULESET_VERSION =
-    3;
+    4;
+
+
+const HOUR =
+    60 * 60 * 1000;
 
 
 // Daily-only Luck Boost MAX quantities. Weekly Luck MAX rewards keep their
@@ -53,10 +64,10 @@ const DAILY_LUCK_MAX_AMOUNTS =
     [1, 2, 3];
 
 
-// Quest chat-XP rewards deliberately stop at 2x. Merchant chat-XP deals are
-// a separate system and keep their own stronger 8x/12x/15x reward pool.
+// Explicit quest multiplier tiers keep saved rewards stable and let each
+// Quest Upgrade use only the values advertised by its reward pool.
 const QUEST_CHAT_XP_MULTIPLIERS =
-    Object.freeze([1.5, 1.75, 2]);
+    Object.freeze([1.3, 1.5, 1.8, 2, 3, 4, 5, 7, 10]);
 
 
 function normalizeQuestChatXPMultiplier(
@@ -617,6 +628,53 @@ const WEEKLY_TARGET_MIGRATIONS = {
 };
 
 
+// Quest upgrades never change these targets. Every upgrade level draws from
+// these exact shared pools; upgrades only affect rewards and reset perks.
+const DAILY_QUEST_POOL = [
+    {key: "earn_xp", type: "earn_xp", icon: "✦", targets: [500000, 1500000, 2000000], label: target => `Earn ${target.toLocaleString()} XP`},
+    {key: "hug", type: "hug_given", icon: "🫂", targets: [1], label: () => "Hug someone"},
+    {key: "kiss_once", type: "kiss_given", icon: "💋", targets: [1], label: () => "Kiss someone"},
+    {key: "kiss_twice", type: "kiss_given", icon: "💋", targets: [2], label: () => "Kiss someone 2 times"},
+    {key: "gain_level", type: "level_change", icon: "★", targets: [1], mode: "max", label: () => "Gain a level"},
+    {key: "roll_xp", type: "roll_xp", icon: "🎲", targets: [500000, 1000000, 1500000], label: target => `Roll a total of ${target.toLocaleString()} XP`},
+    {key: "roll_rarity", type: "roll_rarity", icon: "🌠", targets: [4, 5], mode: "max", label: target => `Roll a ${target === 5 ? "Mythic" : "Legendary"} roll`},
+    {key: "shop", type: "shop_purchase", icon: "💸", targets: [1], label: () => "Buy something from the shop"},
+    {key: "roll_count", type: "roll_count", icon: "🎲", targets: [5, 10, 15], label: target => `Roll ${target} times`},
+    {key: "roll_guarantee", type: "roll_guarantee", icon: "🎯", targets: [1], label: () => "Get a roll guarantee"},
+    {key: "trade", type: "successful_trade", icon: "🤝", targets: [1], label: () => "Trade someone successfully"},
+    {key: "troll", type: "troll_success", icon: "🎭", targets: [1], label: () => "Troll someone"},
+    {key: "luck_max", type: "obtain_luck_max", icon: "🍀", targets: [1], label: () => "Obtain Luck Boost MAX"},
+    {key: "steal", type: "steal_xp", icon: "💰", targets: [1], label: () => "Steal from someone"},
+    {key: "legendary_troll", type: "legendary_troll", icon: "🎭", targets: [1], label: () => "Troll someone with a Legendary troll"},
+    {key: "critical_streak", type: "critical_streak", icon: "💥", targets: [5, 10], mode: "max", label: target => `Get ${target} consecutive criticals`},
+    {key: "chat_xp", type: "chat_xp", icon: "💬✦", targets: [200000, 450000, 700000], label: target => `Earn ${target.toLocaleString()} XP by chatting`},
+    {key: "ezwin", type: "ezwin_success", icon: "🏆", targets: [1], label: () => "Ezwin everybody"},
+    {key: "power_rune_use", type: "power_rune_use", icon: "🔷", targets: [1], label: () => "Use a Power Rune"},
+    {key: "messages", type: "messages", icon: "💬", targets: [50, 100, 125], label: target => `Send ${target.toLocaleString()} earned-XP messages`}
+];
+
+
+const WEEKLY_QUEST_POOL = [
+    {key: "earn_xp", type: "earn_xp", icon: "✦", targets: [35000000, 50000000, 75000000], label: target => `Earn ${target.toLocaleString()} XP`},
+    {key: "hug", type: "hug_given", icon: "🫂", targets: [3, 4, 5], label: target => `Hug someone ${target} times`},
+    {key: "kiss", type: "kiss_given", icon: "💋", targets: [25, 35, 50], label: target => `Kiss someone ${target} times`},
+    {key: "mythic_kiss", type: "mythic_kiss", icon: "💖", targets: [1], label: () => "Kiss someone with a Mythic kiss"},
+    {key: "roll_xp", type: "roll_xp", icon: "🎲", targets: [75000000, 100000000, 125000000], label: target => `Roll a total of ${target.toLocaleString()} XP`},
+    {key: "mythic_roll", type: "mythic_roll", icon: "🌃", targets: [8, 10, 15], label: target => `Roll a Mythic roll ${target} times`},
+    {key: "buy_luck_max", type: "buy_luck_max", icon: "🍀", targets: [10, 15, 20], label: target => `Buy ${target} Luck Boost MAX`},
+    {key: "roll_count", type: "roll_count", icon: "🎲", targets: [300, 500, 1000], label: target => `Roll ${target.toLocaleString()} times`},
+    {key: "rune_three", type: "obtain_rune_three", icon: "🔷", targets: [1], label: () => "Obtain Power Rune III"},
+    {key: "troll", type: "troll_success", icon: "🎭", targets: [75, 125, 150], label: target => `Troll someone ${target} times`},
+    {key: "luck_omega", type: "obtain_luck_omega", icon: "👁️‍🗨️", targets: [1], label: () => "Obtain Luck Boost Ω"},
+    {key: "mythic_steal", type: "mythic_steal", icon: "💰", targets: [1], label: () => "Steal from someone with a Mythic steal"},
+    {key: "legendary_troll", type: "legendary_troll", icon: "🎭", targets: [3, 5], label: target => `Get a Legendary troll ${target} times`},
+    {key: "critical_streak", type: "critical_streak", icon: "💥", targets: [35, 50], mode: "max", label: target => `Get ${target} consecutive criticals`},
+    {key: "chat_xp", type: "chat_xp", icon: "💬✦", targets: [37500000, 55000000, 70000000], label: target => `Earn ${target.toLocaleString()} XP by chatting`},
+    {key: "legendary_ezwin", type: "legendary_ezwin", icon: "🏆", targets: [1], label: () => "Get a Legendary Ezwin"},
+    {key: "messages", type: "messages", icon: "💬", targets: [750, 1000, 1250], label: target => `Send ${target.toLocaleString()} earned-XP messages`}
+];
+
+
 function hasQuestUpgradeOne(level){
 
     return (
@@ -638,17 +696,9 @@ function hasQuestUpgradeTwo(level){
 
 
 function getQuestUpgradeBand(level){
-
-    if(hasQuestUpgradeTwo(level)){
-
-        return "elite";
-
-    }
-
-
-    return hasQuestUpgradeOne(level)
-        ? "high"
-        : "low";
+    return ["base", "improved", "enhanced", "ultimate"][
+        Math.max(0, Math.min(3, Math.floor(Number(level) || 0)))
+    ];
 
 }
 
@@ -741,7 +791,7 @@ function makeQuest(
 
     return {
         id:
-            `${definition.type}:${slot}`,
+            `${definition.key || definition.type}:${slot}`,
 
         rulesetVersion:
             QUEST_RULESET_VERSION,
@@ -777,27 +827,12 @@ function makeQuest(
 
 function generateQuests(
     cycleType,
-    level
+    _level
 ){
-
-    const highLevel =
-        hasQuestUpgradeOne(
-            level
-        );
-
-
     const pool =
         cycleType === "daily"
-            ? (
-                highLevel
-                    ? DAILY_QUEST_POOL_HIGH
-                    : DAILY_QUEST_POOL_LOW
-            )
-            : (
-                highLevel
-                    ? WEEKLY_QUEST_POOL_HIGH
-                    : WEEKLY_QUEST_POOL_LOW
-            );
+            ? DAILY_QUEST_POOL
+            : WEEKLY_QUEST_POOL;
 
 
     const amount =
@@ -806,17 +841,34 @@ function generateQuests(
             : WEEKLY_QUEST_COUNT;
 
 
-    // Quest Upgrade 1 introduces the harder/expanded target pools. Quest
-    // Upgrades 2 and 3 improve rewards and reset perks without silently
-    // making those targets harder again.
     const band =
-        highLevel
-            ? "high"
-            : "low";
+        "shared";
 
 
-    return shuffle(pool)
-        .slice(0, amount)
+    const selected = [];
+    const selectedTypes = new Set();
+
+
+    for(const definition of shuffle(pool)){
+        // Variants such as "Kiss someone" and "Kiss someone 2 times"
+        // remain independently reachable, but never occupy two slots in the
+        // same cycle for the exact same action.
+        if(selectedTypes.has(definition.type)){
+            continue;
+        }
+
+
+        selected.push(definition);
+        selectedTypes.add(definition.type);
+
+
+        if(selected.length >= amount){
+            break;
+        }
+    }
+
+
+    return selected
         .map(
             (definition, slot) =>
                 makeQuest(
@@ -1430,62 +1482,539 @@ function applyStrongestQuestRewardBuff(
 }
 
 
+function clampQuestUpgradeLevel(level){
+
+    return Math.max(
+        0,
+        Math.min(
+            3,
+            Math.floor(Number(level) || 0)
+        )
+    );
+
+}
+
+
+function choiceByLevel(valuesByLevel, level){
+
+    return randomChoice(
+        valuesByLevel[
+            clampQuestUpgradeLevel(level)
+        ]
+    );
+
+}
+
+
+function getRewardCount(cycleType, level){
+
+    const safeLevel =
+        clampQuestUpgradeLevel(level);
+
+
+    if(cycleType === "daily"){
+        if(safeLevel === 0) return 2;
+        if(safeLevel === 1) return randomChoice([3, 4]);
+        return 4;
+    }
+
+
+    if(safeLevel === 0) return 3;
+    if(safeLevel === 1) return randomChoice([4, 5]);
+    return 5;
+
+}
+
+
+function getDailyRewardPool(level){
+
+    const safeLevel =
+        clampQuestUpgradeLevel(level);
+
+
+    const durationHours =
+        choiceByLevel(
+            [
+                [8, 12, 18],
+                [12, 18, 24],
+                [12, 18, 24],
+                [18, 24, 36]
+            ],
+            safeLevel
+        );
+
+
+    const timedExtraRolls =
+        choiceByLevel(
+            [[3, 6], [6, 9], [9, 12], [12, 18]],
+            safeLevel
+        );
+
+
+    const pool = [
+        {
+            type: "chat_xp_multiplier",
+            multiplier: choiceByLevel(
+                [
+                    [1.3, 1.5, 1.8, 2],
+                    [1.5, 1.8, 2],
+                    [1.8, 2, 3],
+                    [2, 3, 4]
+                ],
+                safeLevel
+            ),
+            durationMs: durationHours * HOUR
+        },
+        {
+            type: "multi_roll",
+            extraRolls: timedExtraRolls,
+            rollCount: 1 + timedExtraRolls,
+            durationMs: durationHours * HOUR
+        },
+        {
+            type: "next_roll_burst",
+            rollCount: choiceByLevel(
+                [[25, 35, 50], [35, 50], [50, 100], [100, 200]],
+                safeLevel
+            ),
+            amount: 1
+        },
+        {
+            type: "guaranteed_roll_minimum",
+            minXP: choiceByLevel(
+                [
+                    [1000000, 2000000, 5000000],
+                    [2000000, 5000000, 10000000],
+                    [5000000, 10000000, 15000000],
+                    [10000000, 15000000, 25000000]
+                ],
+                safeLevel
+            ),
+            amount: 1
+        },
+        {
+            type: "boost",
+            boostType: "luck",
+            tier: "max",
+            amount: choiceByLevel(
+                [[3, 5, 6], [5, 8, 10], [8, 12, 16], [20, 30, 40]],
+                safeLevel
+            )
+        },
+        {
+            type: "boost",
+            boostType: "luck",
+            tier: "tier3",
+            amount: choiceByLevel(
+                [[6, 8, 10], [10, 15, 20], [20, 30, 40], [60, 80, 100]],
+                safeLevel
+            )
+        },
+        {
+            type: "shop_discount",
+            discountPercent: choiceByLevel(
+                [[25, 30, 50], [30, 50], [50, 75], [75, 90]],
+                safeLevel
+            ),
+            durationMs: choiceByLevel(
+                [[4, 8, 10], [8, 10, 12], [10, 12, 18], [18, 24, 36]],
+                safeLevel
+            ) * HOUR
+        },
+        {
+            type: "next_social_repeat",
+            commandName: "hug",
+            repeatCount: choiceByLevel(
+                [[3, 6], [6, 9], [9, 12], [12, 18]],
+                safeLevel
+            ),
+            amount: 1
+        },
+        {
+            type: "next_social_repeat",
+            commandName: "kiss",
+            repeatCount: choiceByLevel(
+                [[5, 10], [10, 15], [15, 20], [20, 30]],
+                safeLevel
+            ),
+            amount: 1
+        },
+        {
+            type: "guaranteed_criticals",
+            amount: choiceByLevel(
+                [[10, 15], [15, 20], [20, 30], [35, 50]],
+                safeLevel
+            )
+        },
+        {
+            type: "boost",
+            boostType: "xp",
+            tier: "max",
+            amount: choiceByLevel(
+                [[5, 8, 12], [8, 12, 16], [12, 18, 24], [30, 45, 60]],
+                safeLevel
+            )
+        }
+    ];
+
+
+    if(safeLevel >= QUEST_UPGRADE_ONE){
+        pool.push(
+            {
+                type: "boost",
+                boostType: "rune",
+                tier: "tier2",
+                amount: choiceByLevel(
+                    [[1], [3, 5, 8], [5, 8, 12], [15, 25, 40]],
+                    safeLevel
+                )
+            },
+            {
+                type: "boost",
+                boostType: "rune",
+                tier: "tier1",
+                amount: choiceByLevel(
+                    [[1], [20, 30, 40], [30, 45, 60], [75, 100, 150]],
+                    safeLevel
+                )
+            }
+        );
+    }
+
+
+    return pool;
+
+}
+
+
+function getWeeklyRewardPool(level){
+
+    const safeLevel =
+        clampQuestUpgradeLevel(level);
+
+
+    const durationHours =
+        choiceByLevel(
+            [
+                [8, 12, 18],
+                [12, 18, 24],
+                [18, 24, 30],
+                [24, 36, 48]
+            ],
+            safeLevel
+        );
+
+
+    const timedExtraRolls =
+        choiceByLevel(
+            [[15, 18, 21], [18, 21, 24], [21, 24, 30], [30, 40, 50]],
+            safeLevel
+        );
+
+
+    const pool = [
+        {
+            type: "chat_xp_multiplier",
+            multiplier: choiceByLevel(
+                [[3, 4, 5], [3, 4, 5], [4, 5, 7], [5, 7, 10]],
+                safeLevel
+            ),
+            durationMs: durationHours * HOUR
+        },
+        {
+            type: "multi_roll",
+            extraRolls: timedExtraRolls,
+            rollCount: 1 + timedExtraRolls,
+            durationMs: durationHours * HOUR
+        },
+        {
+            type: "next_roll_burst",
+            rollCount: choiceByLevel(
+                [[100, 200], [100, 200], [200], [200]],
+                safeLevel
+            ),
+            amount: choiceByLevel(
+                [[1], [1], [1, 2], [2, 3]],
+                safeLevel
+            )
+        },
+        {
+            type: "guaranteed_jackpot",
+            amount: choiceByLevel(
+                [[1], [1], [1, 2], [2, 3]],
+                safeLevel
+            )
+        },
+        {
+            type: "boost",
+            boostType: "luck",
+            tier: "max",
+            amount: choiceByLevel(
+                [[15, 20, 30], [20, 30, 40], [35, 45, 60], [80, 120, 160]],
+                safeLevel
+            )
+        },
+        {
+            type: "boost",
+            boostType: "luck",
+            tier: "tier3",
+            amount: choiceByLevel(
+                [[30, 35, 45], [40, 50, 60], [60, 80, 100], [150, 200, 250]],
+                safeLevel
+            )
+        },
+        {
+            type: "shop_free_purchases",
+            amount: choiceByLevel(
+                [[5], [5, 7], [7, 10], [10, 15]],
+                safeLevel
+            )
+        },
+        {
+            type: "command_multi",
+            extraUses: choiceByLevel(
+                [[3, 6], [3, 6], [6, 9], [9, 12]],
+                safeLevel
+            )
+        },
+        {
+            type: "counted_chat_multiplier",
+            amount: choiceByLevel(
+                [[50, 100, 125], [75, 125, 175], [100, 175, 250], [250, 400, 500]],
+                safeLevel
+            ),
+            multiplier: choiceByLevel(
+                [[5, 7, 10], [7, 10], [7, 10], [10]],
+                safeLevel
+            )
+        }
+    ];
+
+
+    if(safeLevel >= QUEST_UPGRADE_ONE){
+        pool.push({
+            type: "boost",
+            boostType: "rune",
+            tier: "tier2",
+            amount: choiceByLevel(
+                [[1], [20, 30, 40], [30, 45, 60], [75, 100, 150]],
+                safeLevel
+            )
+        });
+    }
+
+
+    return pool;
+
+}
+
+
+function rollSpecialReward(cycleType, level){
+
+    const safeLevel =
+        clampQuestUpgradeLevel(level);
+
+
+    const chance =
+        cycleType === "daily"
+            ? (safeLevel >= QUEST_UPGRADE_THREE ? 0.10 : 0)
+            : (
+                safeLevel >= QUEST_UPGRADE_THREE
+                    ? 0.45
+                    : safeLevel >= QUEST_UPGRADE_TWO
+                        ? 0.15
+                        : 0
+            );
+
+
+    if(Math.random() >= chance){
+        return null;
+    }
+
+
+    const levelBand =
+        getQuestUpgradeBand(safeLevel);
+
+
+    if(cycleType === "daily"){
+        return randomChoice([
+            {type: "boost", boostType: "luck", tier: "omega", amount: 1, levelBand},
+            {type: "boost", boostType: "xp", tier: "infinity", amount: randomChoice([1, 2, 3, 4]), levelBand},
+            {type: "boost", boostType: "rune", tier: "tier3", amount: randomChoice([8, 12, 15]), levelBand}
+        ]);
+    }
+
+
+    return randomChoice([
+        {
+            type: "boost",
+            boostType: "luck",
+            tier: "omega",
+            amount: safeLevel >= QUEST_UPGRADE_THREE ? randomChoice([1, 2]) : 1,
+            levelBand
+        },
+        {
+            type: "boost",
+            boostType: "xp",
+            tier: "infinity",
+            amount: safeLevel >= QUEST_UPGRADE_THREE ? randomChoice([2, 3, 4]) : randomChoice([1, 2, 3]),
+            levelBand
+        },
+        {
+            type: "boost",
+            boostType: "rune",
+            tier: "tier3",
+            amount: safeLevel >= QUEST_UPGRADE_THREE ? randomChoice([8, 12, 15]) : randomChoice([3, 5, 7]),
+            levelBand
+        }
+    ]);
+
+}
+
+
+function doubleWeeklyReward(reward){
+
+    const doubled = {
+        ...reward,
+        doubled: true
+    };
+
+
+    if([
+        "xp",
+        "boost",
+        "guaranteed_criticals",
+        "shop_free_purchases",
+        "counted_chat_multiplier"
+    ].includes(reward.type)){
+        doubled.amount = Number(reward.amount) * 2;
+    }
+
+
+    if([
+        "chat_xp_multiplier",
+        "multi_roll",
+        "shop_discount"
+    ].includes(reward.type)){
+        doubled.durationMs = Number(reward.durationMs) * 2;
+    }
+
+
+    if(reward.type === "next_social_repeat"){
+        doubled.repeatCount = Number(reward.repeatCount) * 2;
+    }
+
+
+    if(reward.type === "command_multi"){
+        doubled.extraUses = Number(reward.extraUses) * 2;
+    }
+
+
+    if([
+        "guaranteed_roll_minimum",
+        "guaranteed_jackpot",
+        "next_roll_burst"
+    ].includes(reward.type)){
+        doubled.amount = Number(reward.amount || 1) * 2;
+    }
+
+
+    return doubled;
+
+}
+
+
 function generateRewards(
     cycleType,
     level
 ){
+    const safeLevel =
+        clampQuestUpgradeLevel(level);
 
-    let rewards;
+
+    const levelBand =
+        getQuestUpgradeBand(safeLevel);
 
 
-    if(cycleType === "daily"){
+    const xpAmounts =
+        cycleType === "daily"
+            ? [
+                [3000000, 6500000, 10000000],
+                [5000000, 10000000, 15000000],
+                [10000000, 20000000, 30000000],
+                [100000000, 250000000, 300000000]
+            ]
+            : [
+                [50000000, 75000000, 125000000],
+                [75000000, 125000000, 175000000],
+                [150000000, 200000000, 300000000],
+                [750000000, 1250000000, 1500000000]
+            ];
 
-        if(hasQuestUpgradeTwo(level)){
 
-            rewards = applyStrongestQuestRewardBuff(
-                generateDailyRewardsElite(),
-                level
-            );
-
-        }
-        else{
-
-            rewards = hasQuestUpgradeOne(level)
-                ? generateDailyRewardsHigh()
-                : generateDailyRewardsLow();
-
-        }
-
-    }
-    else if(hasQuestUpgradeTwo(level)){
-
-        rewards = applyStrongestQuestRewardBuff(
-            generateWeeklyRewardsElite(
-                level
-            ),
-            level
+    const totalCount =
+        getRewardCount(
+            cycleType,
+            safeLevel
         );
 
-    }
-    else{
 
-        rewards = hasQuestUpgradeOne(level)
-            ? generateWeeklyRewardsHigh()
-            : generateWeeklyRewardsBase();
-
-    }
+    const specialReward =
+        rollSpecialReward(
+            cycleType,
+            safeLevel
+        );
 
 
-    return rewards.map(reward => ({
-        ...reward,
-        questUpgradeLevel:
-            Math.max(
+    const extraPool =
+        cycleType === "daily"
+            ? getDailyRewardPool(safeLevel)
+            : getWeeklyRewardPool(safeLevel);
+
+
+    const rewards = [
+        {
+            type: "xp",
+            amount: randomChoice(
+                xpAmounts[safeLevel]
+            ),
+            levelBand
+        },
+        ...(specialReward ? [specialReward] : []),
+        ...shuffle(extraPool)
+            .slice(
                 0,
-                Math.min(
-                    3,
-                    Number(level) || 0
-                )
+                totalCount - 1 - (specialReward ? 1 : 0)
             )
+            .map(reward => ({
+                ...reward,
+                levelBand
+            }))
+    ];
+
+
+    const doubleRewardSet =
+        cycleType === "weekly"
+        &&
+        safeLevel >= QUEST_UPGRADE_THREE
+        &&
+        Math.random() < 0.05;
+
+
+    return (
+        doubleRewardSet
+            ? rewards.map(doubleWeeklyReward)
+            : rewards
+    ).map(reward => ({
+        ...reward,
+        questUpgradeLevel: safeLevel,
+        rewardRulesetVersion:
+            WEEKLY_REWARD_RULESET_VERSION,
+        weeklyRewardRulesetVersion:
+            cycleType === "weekly"
+                ? WEEKLY_REWARD_RULESET_VERSION
+                : undefined,
+        doubleRewardSet
     }));
 
 }
@@ -2504,6 +3033,109 @@ function migrateCycleData(
     }
 
 
+    // Ruleset 13 deliberately removes every retired quest. Unclaimed cycles
+    // from an older ruleset are rerolled once instead of retaining an
+    // impossible or no-longer-approved objective. Buying a Quest upgrade
+    // afterward changes only the unclaimed rewards, never the quest targets.
+    {
+        const safeLevel =
+            clampQuestUpgradeLevel(level);
+
+
+        if(normalized.rewarded){
+            return {
+                changed: false,
+                cycle: normalized
+            };
+        }
+
+
+        if(
+            normalized.quests.length > 0
+            &&
+            normalized.quests.every(
+                quest => Boolean(quest?.completed)
+            )
+        ){
+            return {
+                changed: false,
+                cycle: normalized
+            };
+        }
+
+
+        const requiredQuestCount =
+            normalized.cycletype === "daily"
+                ? DAILY_QUEST_COUNT
+                : WEEKLY_QUEST_COUNT;
+
+
+        const activePool =
+            normalized.cycletype === "daily"
+                ? DAILY_QUEST_POOL
+                : WEEKLY_QUEST_POOL;
+
+
+        const questsAreCurrent =
+            normalized.quests.length === requiredQuestCount
+            &&
+            normalized.quests.every(quest =>
+                Number(quest?.rulesetVersion) === QUEST_RULESET_VERSION
+                &&
+                activePool.some(definition =>
+                    definition.type === quest?.type
+                )
+            );
+
+
+        const rewardsAreCurrent =
+            normalized.rewards.length > 0
+            &&
+            normalized.rewards.every(reward =>
+                Number(reward?.rewardRulesetVersion) ===
+                    WEEKLY_REWARD_RULESET_VERSION
+                &&
+                Number(reward?.questUpgradeLevel) === safeLevel
+            );
+
+
+        const nextQuests =
+            questsAreCurrent
+                ? normalized.quests
+                : generateQuests(
+                    normalized.cycletype,
+                    safeLevel
+                );
+
+
+        const nextRewards =
+            questsAreCurrent && rewardsAreCurrent
+                ? normalized.rewards
+                : generateRewards(
+                    normalized.cycletype,
+                    safeLevel
+                );
+
+
+        const migrationChanged =
+            JSON.stringify(nextQuests) !==
+                JSON.stringify(normalized.quests)
+            ||
+            JSON.stringify(nextRewards) !==
+                JSON.stringify(normalized.rewards);
+
+
+        return {
+            changed: migrationChanged,
+            cycle: {
+                ...normalized,
+                quests: nextQuests,
+                rewards: nextRewards
+            }
+        };
+    }
+
+
     const beforeQuests =
         JSON.stringify(
             normalized.quests
@@ -2903,7 +3535,7 @@ async function migrateActiveQuestCycles(
 
 
     console.log(
-        `✅ Quest ruleset v${QUEST_RULESET_VERSION} migrated ${changedCount} active cycles and auto-claimed ${autoClaimedCount} eligible completed cycles without resetting progress.`
+        `✅ Quest ruleset v${QUEST_RULESET_VERSION} migrated ${changedCount} active cycles, removed retired objectives, and auto-claimed ${autoClaimedCount} eligible completed cycles.`
     );
 
 
@@ -3351,9 +3983,14 @@ function formatRewardDuration(durationMs){
 
 function formatReward(reward){
 
+    const display = text =>
+        reward?.doubleRewardSet
+            ? `🎁 **DOUBLE REWARD:** ${text}`
+            : text;
+
     if(reward.type === "xp"){
 
-        return `**${Number(reward.amount).toLocaleString()} XP**`;
+        return display(`**${Number(reward.amount).toLocaleString()} XP**`);
 
     }
 
@@ -3363,7 +4000,9 @@ function formatReward(reward){
         const profile =
             reward.boostType === "xp"
                 ? boosts.BOOST_PROFILES[reward.tier]
-                : luck.LUCK_ROLES[reward.tier];
+                : reward.boostType === "rune"
+                    ? powerRunes.POWER_RUNE_PROFILES[reward.tier]
+                    : luck.LUCK_ROLES[reward.tier];
 
 
         const name =
@@ -3372,7 +4011,7 @@ function formatReward(reward){
                 : `${reward.boostType} ${reward.tier}`;
 
 
-        return `**${reward.amount}x** ${name}`;
+        return display(`**${reward.amount}x** ${name}`);
 
     }
 
@@ -3406,7 +4045,7 @@ function formatReward(reward){
 
     if(reward.type === "guaranteed_roll_minimum"){
 
-        return (
+        return display(
             `Guaranteed **${Number(reward.minXP).toLocaleString()}+ XP** ` +
             "on your next `!roll`"
         );
@@ -3416,8 +4055,17 @@ function formatReward(reward){
 
     if(reward.type === "next_roll_burst"){
 
-        return (
-            `Your next \`!roll\` performs **${Number(reward.rollCount).toLocaleString()} rolls at once**`
+        const uses =
+            Math.max(
+                1,
+                Number(reward.amount) || 1
+            );
+
+
+        return display(
+            uses === 1
+                ? `Your next \`!roll\` performs **${Number(reward.rollCount).toLocaleString()} rolls at once**`
+                : `Your next **${uses}** \`!roll\` commands each perform **${Number(reward.rollCount).toLocaleString()} rolls at once**`
         );
 
     }
@@ -3425,7 +4073,7 @@ function formatReward(reward){
 
     if(reward.type === "shop_discount"){
 
-        return (
+        return display(
             `**${Number(reward.discountPercent)}% off** \`!shop\` for ` +
             `**${formatRewardDuration(reward.durationMs)}**`
         );
@@ -3435,7 +4083,7 @@ function formatReward(reward){
 
     if(reward.type === "guaranteed_criticals"){
 
-        return (
+        return display(
             `Your next **${Number(reward.amount)}** chat XP drops are guaranteed criticals in a row`
         );
 
@@ -3444,7 +4092,7 @@ function formatReward(reward){
 
     if(reward.type === "chat_xp_multiplier"){
 
-        return (
+        return display(
             `Earn **${normalizeQuestChatXPMultiplier(reward.multiplier)}x chat XP** for ` +
             `**${formatRewardDuration(reward.durationMs)}**`
         );
@@ -3454,8 +4102,20 @@ function formatReward(reward){
 
     if(reward.type === "multi_roll"){
 
-        return (
-            `Each \`!roll\` performs **${Number(reward.rollCount)} rolls at once** for ` +
+        const extraRolls =
+            Math.max(
+                0,
+                Number(reward.extraRolls) || 0
+            );
+
+
+        return display(
+            (
+                extraRolls > 0
+                    ? `Each \`!roll\` performs **+${extraRolls} extra rolls** ` +
+                        `(**${Number(reward.rollCount)} total**) for `
+                    : `Each \`!roll\` performs **${Number(reward.rollCount)} rolls at once** for `
+            ) +
             `**${formatRewardDuration(reward.durationMs)}**`
         );
 
@@ -3478,6 +4138,56 @@ function formatReward(reward){
         return (
             "Your next valid `!hug` performs " +
             `**${Number(reward.repeatCount) || 3} hugs at once**`
+        );
+
+    }
+
+
+    if(reward.type === "guaranteed_jackpot"){
+
+        return display(
+            `Your next **${Number(reward.amount) || 1}** \`!roll\` ` +
+            `${Number(reward.amount) === 1 ? "is a" : "are"} guaranteed Jackpot roll${Number(reward.amount) === 1 ? "" : "s"}`
+        );
+
+    }
+
+
+    if(reward.type === "shop_free_purchases"){
+
+        return display(
+            `**100% off** your next **${Number(reward.amount).toLocaleString()}** \`!shop\` purchases`
+        );
+
+    }
+
+
+    if(reward.type === "next_social_repeat"){
+
+        const commandName = String(reward.commandName || "hug").toLowerCase();
+
+        return display(
+            `Your next valid \`!${commandName}\` performs **${Number(reward.repeatCount)} ${commandName === "kiss" ? "kisses" : "hugs"} at once**`
+        );
+
+    }
+
+
+    if(reward.type === "command_multi"){
+
+        return display(
+            "Your next valid `!hug`, `!kiss`, `!steal`, `!roll`, and `!troll` each perform " +
+            `**+${Number(reward.extraUses)} extra uses**`
+        );
+
+    }
+
+
+    if(reward.type === "counted_chat_multiplier"){
+
+        return display(
+            `Your next **${Number(reward.amount).toLocaleString()}** earned chat-XP messages give ` +
+            `**${Number(reward.multiplier)}x XP**`
         );
 
     }
@@ -3944,6 +4654,8 @@ module.exports = {
     QUEST_UPGRADE_ONE,
 
     QUEST_UPGRADE_TWO,
+
+    QUEST_UPGRADE_THREE,
 
     QUEST_RESET_CONFIG,
 
