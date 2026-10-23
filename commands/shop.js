@@ -912,7 +912,20 @@ async function syncShopPurchase(
         await quests.recordEvent(
             interaction,
             "buy_luck_max",
-            1
+            Math.max(
+                1,
+                Number(result.rewardAmount) || 1
+            )
+        );
+
+
+        await quests.recordEvent(
+            interaction,
+            "obtain_luck_max",
+            Math.max(
+                1,
+                Number(result.rewardAmount) || 1
+            )
         );
 
     }
@@ -959,6 +972,50 @@ async function syncMerchantPurchase(
         "shop_purchase",
         1
     );
+
+
+    for(const reward of result.effectiveReward?.boosts || []){
+        const boostType =
+            String(reward.boostType || "").toLowerCase();
+
+
+        const tier =
+            String(reward.tier || "").toLowerCase();
+
+
+        const amount =
+            Math.max(1, Number(reward.amount) || 1);
+
+
+        if(boostType === "luck" && tier === "max"){
+            await quests.recordEvent(
+                interaction,
+                "buy_luck_max",
+                amount
+            );
+
+
+            await quests.recordEvent(
+                interaction,
+                "obtain_luck_max",
+                amount
+            );
+        }
+        else if(boostType === "luck" && tier === "omega"){
+            await quests.recordEvent(
+                interaction,
+                "obtain_luck_omega",
+                amount
+            );
+        }
+        else if(boostType === "rune" && tier === "tier3"){
+            await quests.recordEvent(
+                interaction,
+                "obtain_rune_three",
+                amount
+            );
+        }
+    }
 
 
     await boosts.updateBoost(
