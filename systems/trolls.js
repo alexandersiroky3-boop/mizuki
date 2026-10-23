@@ -388,13 +388,42 @@ async function createTrollAttempt({
     actorLevel,
     targetLevel,
     luckProfile = null,
+    attemptCount = 1,
     random = Math.random
 }){
 
-    const rarity = rollTrollRarity(
-        random,
-        luckProfile
-    );
+    const safeAttemptCount =
+        Math.max(
+            1,
+            Math.min(
+                25,
+                Math.floor(Number(attemptCount) || 1)
+            )
+        );
+
+
+    const rarityRanks = {
+        failed: 0,
+        common: 1,
+        rare: 2,
+        legendary: 3
+    };
+
+
+    const rarity =
+        Array.from(
+            {length: safeAttemptCount},
+            () => rollTrollRarity(
+                random,
+                luckProfile
+            )
+        ).reduce(
+            (best, current) =>
+                rarityRanks[current] > rarityRanks[best]
+                    ? current
+                    : best,
+            "failed"
+        );
     const now = Date.now();
 
 
@@ -445,6 +474,7 @@ async function createTrollAttempt({
                     return {
                         success: true,
                         rarity,
+                        attemptCount: safeAttemptCount,
                         effect: activated,
                         changedUserIDs: []
                     };
@@ -457,6 +487,7 @@ async function createTrollAttempt({
         return {
             success: true,
             rarity,
+            attemptCount: safeAttemptCount,
             effect,
             changedUserIDs: []
         };
@@ -494,6 +525,7 @@ async function createTrollAttempt({
         return {
             success: true,
             rarity,
+            attemptCount: safeAttemptCount,
             immediate: true,
             effectType: definition.effectType,
             amount,
@@ -516,6 +548,7 @@ async function createTrollAttempt({
         return {
             success: true,
             rarity,
+            attemptCount: safeAttemptCount,
             immediate: true,
             effectType: definition.effectType,
             amount,
@@ -559,6 +592,7 @@ async function createTrollAttempt({
             return {
                 success: true,
                 rarity,
+                attemptCount: safeAttemptCount,
                 immediate: true,
                 effectType: fallback.effectType,
                 amount,
@@ -576,6 +610,7 @@ async function createTrollAttempt({
         return {
             success: true,
             rarity,
+            attemptCount: safeAttemptCount,
             immediate: true,
             effectType: fallback.effectType,
             amount,
@@ -598,6 +633,7 @@ async function createTrollAttempt({
     return {
         success: true,
         rarity,
+        attemptCount: safeAttemptCount,
         effect,
         publicDescription: descriptions[definition.effectType],
         changedUserIDs: []
