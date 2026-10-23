@@ -961,6 +961,21 @@ client.once("clientReady", async () => {
         if(guild){
             await guild.emojis.fetch().catch(error =>
                 console.error("Could not load critical emojis:", error));
+            await bossCommand.ensureRaidStatusMessage(
+                client,
+                MAIN_GUILD_ID,
+                {guild}
+            ).then(statusMessage => {
+                console.log(
+                    `Raid boss live-status panel ready in channel ${bossCommand.RAID_STATUS_CHANNEL_ID} (message ${statusMessage.id}).`
+                );
+            }).catch(error => {
+                console.error(
+                    "Could not initialize the dedicated raid boss status panel. " +
+                    "Check the channel ID and the bot's View Channel, Send Messages, Embed Links, and Read Message History permissions:",
+                    error
+                );
+            });
             await guild.commands.create(trollCommand.slashCommand.toJSON())
                 .catch(error => console.error("Could not register /troll:", error));
             await powerRunes.restorePowerRuneRoles(client, MAIN_GUILD_ID)
@@ -2316,7 +2331,7 @@ if(result.critical){
 
         message.reply(
 
-            `${criticalEmojis.text} **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `${criticalEmojis.text} **${message.author.username} got ${result.criticalStreak} critical streaks!**\n🎯 Next critical chance: **${result.nextCriticalChance}%**`
 
         ).catch(() => {});
 
@@ -2338,7 +2353,7 @@ else if(result.lostCriticalStreak >= 2){
 
     message.reply(
 
-        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
+        `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!`
 
     ).catch(() => {});
 
