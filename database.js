@@ -162,6 +162,10 @@ const ROLL_IN_PROGRESS_TIMEOUT_MS =
     15 * 60 * 1000;
 
 
+const RAID_BOSS_SPAWN_COOLDOWN_MS =
+    4 * 60 * 60 * 1000;
+
+
 const LEADERBOARD_HOUR_MS =
     60 * 60 * 1000;
 
@@ -2601,6 +2605,75 @@ await db.query(`
     )
 
 `);
+
+
+// The active boss row is removed after a defeat or despawn, so the latest
+// global spawn needs its own persistent record. This prevents a restart or a
+// fast defeat from bypassing the four-hour raid spawn interval.
+await db.query(`
+
+    CREATE TABLE IF NOT EXISTS raid_boss_spawn_cooldowns (
+
+        guildID TEXT PRIMARY KEY,
+
+        lastSpawnedAt BIGINT NOT NULL,
+
+        nextSpawnAt BIGINT NOT NULL,
+
+        updatedAt BIGINT NOT NULL
+
+    )
+
+`);
+
+
+await db.query(`
+
+    CREATE INDEX IF NOT EXISTS
+    raid_boss_spawn_cooldown_expiry_idx
+
+    ON raid_boss_spawn_cooldowns(
+        nextSpawnAt
+    )
+
+`);
+
+
+// Seed the cooldown for a raid that was already active when this migration
+// was deployed. Private challenge scopes must never affect global spawns.
+await db.query(`
+
+    INSERT INTO raid_boss_spawn_cooldowns(
+        guildID,
+        lastSpawnedAt,
+        nextSpawnAt,
+        updatedAt
+    )
+
+    SELECT
+        guildID,
+        spawnedAt,
+        spawnedAt + $1,
+        $2
+
+    FROM raid_boss_state
+
+    WHERE guildID NOT LIKE 'challenge:%'
+
+    ON CONFLICT(guildID)
+    DO UPDATE SET
+        lastSpawnedAt=EXCLUDED.lastSpawnedAt,
+        nextSpawnAt=EXCLUDED.nextSpawnAt,
+        updatedAt=EXCLUDED.updatedAt
+
+    WHERE
+        EXCLUDED.lastSpawnedAt >
+        raid_boss_spawn_cooldowns.lastSpawnedAt
+
+`, [
+    RAID_BOSS_SPAWN_COOLDOWN_MS,
+    Date.now()
+]);
 
 
 // Recent distinct chat-XP earners are used to enforce the minimum two-user
@@ -8909,6 +8982,198 @@ function normalizeRaidBossRow(row){
                 row.updatedat
             ) || 0
     };
+
+}
+
+
+function normalizeRaidBossSpawnCooldownRow(
+    row,
+    now = Date.now()
+){
+
+    const safeNow =
+        Math.max(
+            0,
+            Math.floor(Number(now) || Date.now())
+        );
+
+
+    if(!row){
+        return {
+            guildID: null,
+            lastSpawnedAt: 0,
+            nextSpawnAt: 0,
+            remainingMs: 0,
+            ready: true,
+            updatedAt: 0
+        };
+    }
+
+
+    const nextSpawnAt =
+        Math.max(
+            0,
+            Number(
+                row.nextSpawnAt
+                ?? row.nextspawnat
+            ) || 0
+        );
+
+
+    return {
+        guildID:
+            String(
+                row.guildID
+                ?? row.guildid
+            ),
+        lastSpawnedAt:
+            Math.max(
+                0,
+                Number(
+                    row.lastSpawnedAt
+                    ?? row.lastspawnedat
+                ) || 0
+            ),
+        nextSpawnAt,
+        remainingMs:
+            Math.max(
+                0,
+                nextSpawnAt - safeNow
+            ),
+        ready:
+            nextSpawnAt <= safeNow,
+        updatedAt:
+            Math.max(
+                0,
+                Number(
+                    row.updatedAt
+                    ?? row.updatedat
+                ) || 0
+            )
+    };
+
+}
+
+
+async function getRaidBossSpawnCooldown(
+    guildID,
+    now = Date.now()
+){
+
+    const safeNow =
+        Math.max(
+            0,
+            Math.floor(Number(now) || Date.now())
+        );
+
+    const result =
+        await db.query(`
+
+            SELECT
+                guildID AS "guildID",
+                lastSpawnedAt AS "lastSpawnedAt",
+                nextSpawnAt AS "nextSpawnAt",
+                updatedAt AS "updatedAt"
+
+            FROM raid_boss_spawn_cooldowns
+
+            WHERE guildID=$1
+
+        `, [
+            String(guildID)
+        ]);
+
+
+    const cooldown =
+        normalizeRaidBossSpawnCooldownRow(
+            result.rows[0],
+            safeNow
+        );
+
+
+    if(!cooldown.guildID){
+        cooldown.guildID =
+            String(guildID);
+    }
+
+
+    return cooldown;
+
+}
+
+
+async function recordRaidBossSpawn(
+    guildID,
+    spawnedAt,
+    cooldownMs
+){
+
+    const safeSpawnedAt =
+        Math.max(
+            0,
+            Math.floor(
+                Number(spawnedAt) || Date.now()
+            )
+        );
+
+    const safeCooldownMs =
+        Math.max(
+            1000,
+            Math.floor(
+                Number(cooldownMs)
+                || RAID_BOSS_SPAWN_COOLDOWN_MS
+            )
+        );
+
+    const nextSpawnAt =
+        safeSpawnedAt +
+        safeCooldownMs;
+
+    const updatedAt =
+        Date.now();
+
+    const result =
+        await db.query(`
+
+            INSERT INTO raid_boss_spawn_cooldowns(
+                guildID,
+                lastSpawnedAt,
+                nextSpawnAt,
+                updatedAt
+            )
+
+            VALUES($1,$2,$3,$4)
+
+            ON CONFLICT(guildID)
+            DO UPDATE SET
+                lastSpawnedAt=GREATEST(
+                    raid_boss_spawn_cooldowns.lastSpawnedAt,
+                    EXCLUDED.lastSpawnedAt
+                ),
+                nextSpawnAt=GREATEST(
+                    raid_boss_spawn_cooldowns.nextSpawnAt,
+                    EXCLUDED.nextSpawnAt
+                ),
+                updatedAt=EXCLUDED.updatedAt
+
+            RETURNING
+                guildID AS "guildID",
+                lastSpawnedAt AS "lastSpawnedAt",
+                nextSpawnAt AS "nextSpawnAt",
+                updatedAt AS "updatedAt"
+
+        `, [
+            String(guildID),
+            safeSpawnedAt,
+            nextSpawnAt,
+            updatedAt
+        ]);
+
+
+    return normalizeRaidBossSpawnCooldownRow(
+        result.rows[0],
+        updatedAt
+    );
 
 }
 
@@ -22591,6 +22856,10 @@ module.exports = {
     getChatXPLoggedSince,
 
     recordRaidBossActivity,
+
+    getRaidBossSpawnCooldown,
+
+    recordRaidBossSpawn,
 
     getRaidBossState,
 
