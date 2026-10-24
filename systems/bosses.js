@@ -6,6 +6,9 @@ const bossChallenges = require("./bossChallenges");
 const BOSS_DURATION_MS =
     60 * 60 * 1000;
 
+const RAID_BOSS_SPAWN_COOLDOWN_MS =
+    4 * 60 * 60 * 1000;
+
 const ACTIVITY_WINDOW_MS =
     10 * 60 * 1000;
 
@@ -2727,12 +2730,20 @@ async function spawnGuaranteedBoss(
                 };
             }
 
+            const spawnCooldown =
+                await database.recordRaidBossSpawn(
+                    guildID,
+                    boss.spawnedAt,
+                    RAID_BOSS_SPAWN_COOLDOWN_MS
+                );
+
             return {
                 success: true,
                 status: "spawned",
                 spawned: true,
                 boss,
                 definition,
+                spawnCooldown,
                 remainingUses:
                     consumption.remaining,
                 damage: 0,
@@ -2978,6 +2989,9 @@ async function handleChatXP(
             let spawned =
                 false;
 
+            let spawnCooldown =
+                null;
+
 
             if(
                 !boss
@@ -2985,6 +2999,25 @@ async function handleChatXP(
                 activeUsers >=
                     MINIMUM_ACTIVE_USERS
             ){
+
+                spawnCooldown =
+                    await database.getRaidBossSpawnCooldown(
+                        message.guild.id,
+                        now
+                    );
+
+
+                if(!spawnCooldown.ready){
+                    return {
+                        activeUsers,
+                        spawned: false,
+                        spawnCooldown,
+                        boss: null,
+                        damage: 0,
+                        defeated: false,
+                        events: []
+                    };
+                }
 
                 const definition =
                     rollBossDefinition(
@@ -3009,6 +3042,13 @@ async function handleChatXP(
 
                     if(boss){
                         spawned = true;
+
+                        spawnCooldown =
+                            await database.recordRaidBossSpawn(
+                                message.guild.id,
+                                boss.spawnedAt,
+                                RAID_BOSS_SPAWN_COOLDOWN_MS
+                            );
                     }
                     else{
                         boss =
@@ -3028,6 +3068,7 @@ async function handleChatXP(
                 return {
                     activeUsers,
                     spawned: false,
+                    spawnCooldown,
                     boss: null,
                     damage: 0,
                     defeated: false,
@@ -3081,7 +3122,8 @@ async function handleChatXP(
             return {
                 ...combat,
                 activeUsers,
-                spawned
+                spawned,
+                spawnCooldown
             };
 
         }
@@ -3413,6 +3455,7 @@ function getActiveAbilityStatuses(
 
 module.exports = {
     BOSS_DURATION_MS,
+    RAID_BOSS_SPAWN_COOLDOWN_MS,
     ACTIVITY_WINDOW_MS,
     MINIMUM_ACTIVE_USERS,
     ADVANTAGE_NAMES,
