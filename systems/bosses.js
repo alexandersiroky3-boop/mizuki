@@ -445,6 +445,7 @@ function addRaidChestAndShards(
     bundle,
     random = Math.random
 ){
+    bundle = require("../utils/multiLimits").normalizeRewards(bundle);
     const tier = getRaidRewardTier(definition);
     const ranges = {
         minor: topThree ? [180, 320] : [100, 220],
@@ -760,9 +761,9 @@ function getRaidRewardPreview(definition){
     if(definition?.key === "mrhacker_gauntlet"){
         return {
             top:
-                "1–2x Luck Ω • 3–4x XP Boost ထ • 15–25x Power Rune III • +6/+9 all-command repeats for 6/8 hours",
+                "1–2x Luck Ω • 3–4x XP Boost ထ • 15–25x Power Rune III • 3 total executions per command for 6/8 hours",
             rest:
-                "10–15x Luck MAX • 10–20x XP Boost MAX • 30/50/75x Power Rune II • +3 rolls for 4/6 hours"
+                "10–15x Luck MAX • 10–20x XP Boost MAX • 30/50/75x Power Rune II • 3 total rolls for 4/6 hours"
         };
     }
 
@@ -770,7 +771,7 @@ function getRaidRewardPreview(definition){
     if(definition?.key === "mrnoob_early"){
         return {
             top:
-                "10–12x Luck MAX • 5x Power Rune III • next !hug performs +3 hugs",
+                "10–12x Luck MAX • 5x Power Rune III • next !hug performs 3 total hugs",
             rest:
                 "3–5x Luck MAX • 10–20x XP Boost MAX • 5x Power Rune II • +1 roll for 2/3 hours"
         };
@@ -790,21 +791,21 @@ function getRaidRewardPreview(definition){
         },
         standard: {
             top:
-                "6–8x Luck MAX • 4–6x XP Boost MAX • 2–4x Power Rune III • +2/+3 rolls for 2/3 hours",
+                "6–8x Luck MAX • 4–6x XP Boost MAX • 2–4x Power Rune III • 3 total rolls for 2/3 hours",
             rest:
                 "2–4x Luck MAX • 3–5x XP Boost MAX • 8–12x Power Rune II"
         },
         elite: {
             top:
-                "1x Luck Ω • 1–2x XP Boost ထ • 5–8x Power Rune III • +3/+4 all-command repeats for 3/4 hours",
+                "1x Luck Ω • 1–2x XP Boost ထ • 5–8x Power Rune III • 3 total executions per command for 3/4 hours",
             rest:
                 "5–8x Luck MAX • 6–10x XP Boost MAX • 15–25x Power Rune II • +2 rolls for 2/3 hours"
         },
         apex: {
             top:
-                "1–2x Luck Ω • 2–3x XP Boost ထ • 8–12x Power Rune III • +4/+6 all-command repeats for 4/6 hours",
+                "1–2x Luck Ω • 2–3x XP Boost ထ • 8–12x Power Rune III • 3 total executions per command for 4/6 hours",
             rest:
-                "8–12x Luck MAX • 8–15x XP Boost MAX • 25/40/60x Power Rune II • +3 rolls for 3/5 hours"
+                "8–12x Luck MAX • 8–15x XP Boost MAX • 25/40/60x Power Rune II • 3 total rolls for 3/5 hours"
         }
     }[tier];
 
@@ -3319,15 +3320,7 @@ async function cleanupExpiredBosses(
                 }).catch(() => null);
 
 
-                const timer =
-                    setTimeout(() => {
-                        channel.delete(
-                            "Boss challenge battle expired"
-                        ).catch(() => null);
-                    }, 15000);
-
-
-                timer.unref?.();
+                require("../utils/channelWork").deleteWhenIdle(channel, "Boss challenge battle expired", 15000);
 
             }
 
