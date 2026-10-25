@@ -2893,7 +2893,8 @@ await db.query(`
 
     ADD COLUMN IF NOT EXISTS blessUnlocked BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS spawnBossUses INTEGER NOT NULL DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS coinflipUnlocked BOOLEAN NOT NULL DEFAULT FALSE
+    ADD COLUMN IF NOT EXISTS coinflipUnlocked BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS spawnBossCooldownUntil BIGINT NOT NULL DEFAULT 0
 
 `);
 
@@ -11096,8 +11097,11 @@ async function isCoinflipUnlocked(guildID, userID){
 
 async function consumeSpawnBossUse(
     guildID,
-    userID
+    userID,
+    now = Date.now()
 ){
+
+    const cooldownUntil = now + 12 * 60 * 60 * 1000;
 
     const result =
         await db.query(`
@@ -11105,21 +11109,31 @@ async function consumeSpawnBossUse(
             UPDATE boss_entitlements
             SET
                 spawnBossUses=spawnBossUses-1,
+                spawnBossCooldownUntil=$4,
                 updatedAt=$3
             WHERE guildID=$1
             AND userID=$2
             AND spawnBossUses>0
+            AND spawnBossCooldownUntil <= $3
             RETURNING spawnBossUses AS "spawnBossUses"
 
         `, [
             String(guildID),
             String(userID),
-            Date.now()
+            now,
+            cooldownUntil
         ]);
 
+    const cooldown = result.rowCount > 0 ? null : await db.query(`
+        SELECT spawnBossCooldownUntil AS "cooldownUntil"
+        FROM boss_entitlements WHERE guildID=$1 AND userID=$2
+    `, [String(guildID), String(userID)]);
 
     return {
         consumed: result.rowCount > 0,
+        cooldownUntil: result.rowCount > 0
+            ? cooldownUntil
+            : Number(cooldown.rows[0]?.cooldownUntil) || 0,
         remaining:
             Math.max(
                 0,
@@ -11132,6 +11146,15 @@ async function consumeSpawnBossUse(
 
 }
 
+
+// Refund only the reservation belonging to this failed spawn attempt.
+async function refundSpawnBossUse(guildID, userID, cooldownUntil){
+    await db.query(`
+        UPDATE boss_entitlements
+        SET spawnBossUses=spawnBossUses+1, spawnBossCooldownUntil=0
+        WHERE guildID=$1 AND userID=$2 AND spawnBossCooldownUntil=$3
+    `, [String(guildID), String(userID), cooldownUntil]);
+}
 
 async function addSpawnBossUses(
     guildID,
@@ -22979,6 +23002,7 @@ module.exports = {
     isCoinflipUnlocked,
 
     consumeSpawnBossUse,
+    refundSpawnBossUse,
 
     addSpawnBossUses,
 
