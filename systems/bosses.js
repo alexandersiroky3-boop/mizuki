@@ -2686,13 +2686,15 @@ async function spawnGuaranteedBoss(
             const consumption =
                 await database.consumeSpawnBossUse(
                     guildID,
-                    userID
+                    userID,
+                    now
                 );
 
             if(!consumption.consumed){
                 return {
                     success: false,
-                    status: "no-use"
+                    status: consumption.cooldownUntil > now ? "cooldown" : "no-use",
+                    cooldownUntil: consumption.cooldownUntil
                 };
             }
 
@@ -2708,16 +2710,19 @@ async function spawnGuaranteedBoss(
                     now
                 );
 
-            const boss =
-                await database.createRaidBossState(
-                    requestedBoss
-                );
+            let boss;
+            try {
+                boss = await database.createRaidBossState(requestedBoss);
+            } catch(error){
+                await database.refundSpawnBossUse(guildID, userID, consumption.cooldownUntil);
+                throw error;
+            }
 
             if(!boss){
-                await database.addSpawnBossUses(
+                await database.refundSpawnBossUse(
                     guildID,
                     userID,
-                    1
+                    consumption.cooldownUntil
                 );
 
                 return {
