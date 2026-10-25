@@ -78,7 +78,7 @@ const UPGRADE_DEFINITIONS = Object.freeze({
                 "Gain another +200% chat XP, improve critical odds and drops, add +15% burst chance, and strenghten the criticals to almost its MAX."
             ),
             upgrade(
-                freezeCost(5000000000),
+                freezeCost(20000000000),
                 "Gain another +500% chat XP, improve critical odds and drops, and strenghten the criticals to the MAX."
             )
         ])
