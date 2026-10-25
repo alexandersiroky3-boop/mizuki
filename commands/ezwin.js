@@ -29,7 +29,7 @@ const LEVEL1_TO99_EZWIN_OUTCOMES =
             key: "common",
             rarity: "COMMON",
             chancePercent: 95,
-            evolvedChancePercent: 10,
+            evolvedChancePercent: 1,
 
             normal: Object.freeze({
                 gained: Object.freeze({
@@ -58,7 +58,7 @@ const LEVEL1_TO99_EZWIN_OUTCOMES =
             key: "legendary",
             rarity: "LEGENDARY",
             chancePercent: 5,
-            evolvedChancePercent: 0.1,
+            evolvedChancePercent: 1,
 
             normal: Object.freeze({
                 gained: Object.freeze({
@@ -99,7 +99,7 @@ const LEVEL100_PLUS_EZWIN_OUTCOMES =
             key: "common",
             rarity: "COMMON",
             chancePercent: 90,
-            evolvedChancePercent: 20,
+            evolvedChancePercent: 1,
 
             normal: Object.freeze({
                 gained: Object.freeze({
@@ -128,7 +128,7 @@ const LEVEL100_PLUS_EZWIN_OUTCOMES =
             key: "legendary",
             rarity: "LEGENDARY",
             chancePercent: 10,
-            evolvedChancePercent: 0.5,
+            evolvedChancePercent: 1,
 
             normal: Object.freeze({
                 gained: Object.freeze({
@@ -291,7 +291,7 @@ function rollEZWinEvolved(
     // permanent Boost upgrades never alter Evolved chances.
     return (
         random() * 100 <
-        outcome.evolvedChancePercent
+        1
     );
 
 }
