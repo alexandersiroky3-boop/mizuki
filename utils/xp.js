@@ -590,13 +590,17 @@ function getLevelRequirement(level){
     // LEVELS 301+
     // ===================================
     //
-    // Keep the brutal post-200 growth going.
-    // Every level after 300 costs another
-    // +900,000 XP more than the previous one.
+    // Use the same linear progression as the earlier level bands.
+    // Level 300 -> 301 =   100,000,000 XP
+    // Level 350 -> 351 = 2,000,000,000 XP
+    // Level 400 -> 401 = 3,900,000,000 XP
+    // Increase: +38,000,000 XP per level, continuing past Level 400.
+    // Total XP to reach Level 400 is approximately 203.934 billion.
+    // Existing XP balances and requirements through Level 300 are unchanged.
     return Math.floor(
         100000000 +
         (safeLevel - 300) *
-        900000
+        38000000
     );
 
 
