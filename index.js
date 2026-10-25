@@ -589,6 +589,7 @@ async function dispatchPrefixCommand(
             ["!fixlevels", ["!fixlevels", fixLevelsCommand]],
             ["!ezwin", ["!ezwin", ezwinCommand]],
             ["!boss", ["!boss", bossCommand]],
+            ["!removemulticommands", ["!removemulticommands", require("./commands/removemulticommands")]],
             ["!spawnboss", ["!spawnboss", spawnBossCommand]],
             ["!roll", ["!roll", rollCommand]],
             ["!fixallusersinleaderboard", ["!fixallusersinleaderboard", fixAllUsersInLeaderboardCommand]],
@@ -616,6 +617,7 @@ async function dispatchPrefixCommand(
 
 
     const patternRoutes = [
+        ["!removemulticommands", /^!removemulticommands(?:\s|$)/i, require("./commands/removemulticommands")],
         ["!resetmonthlyrank", /^!resetmonthlyrank(?:\s|$)/i, rankCommand, "resetMonthlyRank"],
         ["!resetezwin", /^!resetezwin(?:\s|$)/i, ezwinCommand, "resetEZWin"],
         ["!setupgrade", /^!setupgrade(?:\s|$)/i, setUpgradeCommand],
