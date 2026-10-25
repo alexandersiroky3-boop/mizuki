@@ -2397,8 +2397,8 @@ function getCommandLuckOrder(profile){
 // =====================================================
 //
 // The normal rarity is always selected first. A second, independent roll
-// then decides whether that exact rarity evolves. Permanent upgrades do not
-// affect this chance; only the highest active Luck Boost tier does.
+// then decides whether that exact rarity evolves. Luck and upgrades never
+// affect the fixed 1% chance.
 const EVOLVED_XP_MULTIPLIER =
     10;
 
@@ -2407,32 +2407,10 @@ const EVOLVED_BASE_CHANCE_PERCENT =
     1;
 
 
-const EVOLVED_LUCK_BONUS_PERCENT =
-    Object.freeze({
-        tier1: 1,
-        tier2: 3,
-        tier3: 5,
-        max: 7,
-        omega: 15
-    });
+const EVOLVED_LUCK_BONUS_PERCENT = Object.freeze({tier1:0,tier2:0,tier3:0,max:0,omega:0});
 
-
-function getEvolvedChancePercent(profile){
-
-    const tier =
-        String(profile?.tier || "")
-            .toLowerCase();
-
-
-    return Math.min(
-        100,
-        EVOLVED_BASE_CHANCE_PERCENT +
-        (
-            EVOLVED_LUCK_BONUS_PERCENT[tier]
-            || 0
-        )
-    );
-
+function getEvolvedChancePercent(_profile){
+    return EVOLVED_BASE_CHANCE_PERCENT;
 }
 
 
