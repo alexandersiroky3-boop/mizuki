@@ -15,16 +15,16 @@ const boosts = require("../systems/boosts");
 // progressively smaller streak multipliers so their own XP multiplier cannot
 // make long streaks explode the economy.
 // The normal critical reward (including +100 XP per streak) still applies.
-// Final critical chance is normally capped at 95%, with two exact
-// Luck Boost Omega combinations receiving their own higher caps.
+// Critical chance is capped at 93%, or 95% with XP Infinity AND Luck Omega.
+// Rewards that boost critical probability also respect these hard caps.
 
 const CRITICAL_MOMENTUM_PER_STREAK = 4;
 const CRITICAL_MOMENTUM_CAP = 28;
 const CRITICAL_STREAK_BONUS_THRESHOLD = 20;
 const CRITICAL_STREAK_CHANCE_BONUS = 3;
-const DEFAULT_CRITICAL_CHANCE_CAP = 95;
-const OMEGA_MAX_CRITICAL_CHANCE_CAP = 98;
-const OMEGA_INFINITY_CRITICAL_CHANCE_CAP = 99;
+const DEFAULT_CRITICAL_CHANCE_CAP = 93;
+const OMEGA_MAX_CRITICAL_CHANCE_CAP = 93;
+const OMEGA_INFINITY_CRITICAL_CHANCE_CAP = 95;
 const MAX_CRITICAL_EXTRA_XP = 250000;
 const LONG_CRITICAL_STREAK_THRESHOLD = 20;
 const LONG_CRITICAL_STREAK_GROWTH_PER_CRITICAL = 0.05;
@@ -71,8 +71,8 @@ const LONG_CRITICAL_CAP_XP_BY_CHAT_LEVEL =
         1500000,
         1500000,
         5000000,
-        7000000,
-        12500000
+        5000000,
+        7000000
     ]);
 
 
@@ -262,6 +262,7 @@ function getBalancedChatXP(reward, chatXPMultiplier){
 
     return Math.min(
         boostedTotal,
+        LONG_CRITICAL_CAP_XP_BY_CHAT_LEVEL[Math.min(8, Math.max(0, Number(reward.chattingUpgradeLevel) || 0))],
         boostedNormal + getCriticalExtraXPCap(reward.criticalStreak)
     );
 }
@@ -941,30 +942,20 @@ function getXPAmount(
 
 
     const criticalRoll =
-        !forcedCriticalFailure
-        &&
-        !forcedCritical
-            ? Math.random() * 100
-            : null;
+        Math.random() * 100;
 
     const critical =
         !forcedCriticalFailure
         &&
         (
-            forcedCritical
-            ||
-            criticalRoll <
-                criticalChance
+            criticalRoll < (forcedCritical ? criticalChanceCap : criticalChance)
         );
 
     const criticalWithoutLuck =
         !forcedCriticalFailure
         &&
         (
-            forcedCritical
-            ||
-            criticalRoll <
-                criticalChanceWithoutLuck
+            criticalRoll < (forcedCritical ? DEFAULT_CRITICAL_CHANCE_CAP : criticalChanceWithoutLuck)
         );
 
 
