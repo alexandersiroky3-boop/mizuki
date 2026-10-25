@@ -5,6 +5,7 @@ const upgrades = require("./utils/upgrades");
 const economyLimits = require("./utils/economyLimits");
 
 const boostSell = require("./utils/boostSell");
+const {normalizeRewards} = require("./utils/multiLimits");
 
 
 
@@ -1235,7 +1236,23 @@ function createTravelingMerchantDeals(
     const regularTemplates = [];
 
 
-    for(const template of TRAVELING_MERCHANT_DEAL_TEMPLATES){
+    const omegaDeal = {
+        id: "omega_combined_exchange_v2", name: "Omega Combined Exchange", appearanceChance: 0.02,
+        stockOptions: [1],
+        variants: [125000000,250000000,500000000,1000000000].flatMap((xp, index) =>
+            [1,2,3].map(amount => ({
+                cost: merchantSide({xp, boosts: [
+                    merchantBoost("luck", "max", [75,100,125,200][index]),
+                    merchantBoost("xp", "infinity", [3,5,10,20][index])
+                ]}),
+                reward: merchantSide({boosts: [merchantBoost("luck", "omega", amount)]})
+            }))
+        )
+    };
+    const templates = TRAVELING_MERCHANT_DEAL_TEMPLATES.filter(template =>
+        !template.variants.some(variant => variant.reward?.boosts?.some(boost => boost.boostType === "luck" && boost.tier === "omega"))
+    );
+    for(const template of [omegaDeal, ...templates]){
 
         if(template.appearanceChance == null){
             regularTemplates.push(template);
@@ -4553,6 +4570,7 @@ async function initDatabase() {
 
 
             await createTables();
+            await installMultiLimits();
 
 
             console.log(
@@ -5820,7 +5838,7 @@ function rollWeeklyLeaderboardRewards(){
     const firstLuckIII = leaderboardChoice([6, 12, 15]);
     const firstChat = leaderboardChoice([1.5, 1.75, 2]);
     const firstChatTime = leaderboardChoice([12, 18]) * LEADERBOARD_HOUR_MS;
-    const firstExtraRolls = leaderboardChoice([3, 6, 9]);
+    const firstExtraRolls = 2;
     const firstRollTime = leaderboardChoice([8, 12]) * LEADERBOARD_HOUR_MS;
 
     const secondXP = leaderboardChoice([75000000, 100000000, 125000000]);
@@ -5869,11 +5887,6 @@ function rollWeeklyLeaderboardRewards(){
                 "chat_xp_multiplier",
                 `**${secondChat}x chat XP** for **${leaderboardHours(secondChatTime)} hours**`,
                 {multiplier: secondChat, durationMs: secondChatTime}
-            ),
-            leaderboardReward(
-                "next_roll_burst",
-                "Your next `!roll` rolls **50 times**",
-                {rollCount: 50, amount: 1}
             ),
             leaderboardReward(
                 "next_hug_triple",
@@ -5928,11 +5941,6 @@ function rollMonthlyNormalLeaderboardRewards(){
         "2": [
             leaderboardBoost("luck", "omega", secondOmega, "👁️‍🗨️ Luck Boost Ω"),
             leaderboardBoost("xp", "infinity", secondInfinity, "🧿 XP Boost ထ"),
-            leaderboardReward(
-                "next_roll_burst",
-                "Your next `!roll` rolls **200 times**",
-                {rollCount: 200, amount: 1}
-            ),
             leaderboardReward(
                 "guaranteed_roll_minimum",
                 "Your next `!roll` is guaranteed to be **at least 5,000,000 XP**",
@@ -6048,7 +6056,7 @@ function normalizeLeaderboardCycleRow(row){
         cycleStart: Number(row.cyclestart ?? row.cycleStart),
         cycleEnd: Number(row.cycleend ?? row.cycleEnd),
         rewardMode: String(row.rewardmode ?? row.rewardMode ?? "normal"),
-        rewards: parseLeaderboardJSON(row.rewards, {}),
+        rewards: normalizeRewards(parseLeaderboardJSON(row.rewards, {})),
         updatedAt: Number(row.updatedat ?? row.updatedAt ?? 0)
     };
 }
@@ -6279,6 +6287,7 @@ async function applyLeaderboardReward(client, guildID, userID, reward, now){
     }
 
     if(type === "next_roll_burst"){
+        return; // Retired, including previously saved leaderboard prizes.
         const columns = {50: "nextRollBurst50", 200: "nextRollBurst200"};
         const column = columns[Number(reward.rollCount)];
         if(column){
@@ -7244,14 +7253,14 @@ async function performMythicSteal(
                 UPDATE users
 
                 SET xp = GREATEST(
-                    0::INTEGER,
+                    0::BIGINT,
                     xp -
                         CASE
-                            WHEN xp < $4::INTEGER
-                                THEN $5::INTEGER
-                            WHEN xp < $6::INTEGER
-                                THEN $7::INTEGER
-                            ELSE $3::INTEGER
+                            WHEN xp < $4::BIGINT
+                                THEN $5::BIGINT
+                            WHEN xp < $6::BIGINT
+                                THEN $7::BIGINT
+                            ELSE $3::BIGINT
                         END
                 )
 
@@ -7456,8 +7465,8 @@ async function performMythicKissReward(
                 SET xp = xp +
                     CASE
                         WHEN userID=$2
-                            THEN $4::INTEGER
-                        ELSE $5::INTEGER
+                            THEN $4::BIGINT
+                        ELSE $5::BIGINT
                     END
 
                 WHERE guildID=$1
@@ -7468,8 +7477,8 @@ async function performMythicKissReward(
                     userID,
                     CASE
                         WHEN userID=$2
-                            THEN $4::INTEGER
-                        ELSE $5::INTEGER
+                            THEN $4::BIGINT
+                        ELSE $5::BIGINT
                     END AS awarded
 
             )
@@ -7747,17 +7756,17 @@ async function performLegendaryHugReward(
                         userID,
                         (
                             CASE
-                                WHEN xp >= $8::INTEGER
-                                    THEN $6::INTEGER
-                                ELSE $7::INTEGER
+                                WHEN xp >= $8::BIGINT
+                                    THEN $6::BIGINT
+                                ELSE $7::BIGINT
                             END
                             +
                             CASE
                                 WHEN userID=$2
-                                    THEN $4::INTEGER
+                                    THEN $4::BIGINT
                                 WHEN userID=$3
-                                    THEN $5::INTEGER
-                                ELSE 0::INTEGER
+                                    THEN $5::BIGINT
+                                ELSE 0::BIGINT
                             END
                         )::BIGINT AS awarded
 
@@ -7771,24 +7780,24 @@ async function performLegendaryHugReward(
 
                 updated_users AS (
 
-                    UPDATE users AS current_user
+                    UPDATE users AS reward_user
 
                     SET xp =
-                        current_user.xp +
+                        reward_user.xp +
                         reward_plan.awarded
 
                     FROM reward_plan
 
                     WHERE
-                        current_user.guildID =
+                        reward_user.guildID =
                             reward_plan.guildID
                     AND
-                        current_user.userID =
+                        reward_user.userID =
                             reward_plan.userID
 
                     RETURNING
-                        current_user.guildID,
-                        current_user.userID,
+                        reward_user.guildID,
+                        reward_user.userID,
                         reward_plan.awarded
 
                 ),
@@ -7992,10 +8001,10 @@ async function performMythicHugReward(
                     SET xp = xp +
                         CASE
                             WHEN userID=$2
-                                THEN $4::INTEGER
-                            ELSE $5::INTEGER
+                                THEN $4::BIGINT
+                            ELSE $5::BIGINT
                         END
-                        + $6::INTEGER
+                        + $6::BIGINT
 
                     WHERE guildID=$1
                     AND userID IN ($2,$3)
@@ -8005,10 +8014,10 @@ async function performMythicHugReward(
                         userID,
                         CASE
                             WHEN userID=$2
-                                THEN $4::INTEGER
-                            ELSE $5::INTEGER
+                                THEN $4::BIGINT
+                            ELSE $5::BIGINT
                         END
-                        + $6::INTEGER AS awarded
+                        + $6::BIGINT AS awarded
 
                 ),
 
@@ -8510,9 +8519,9 @@ async function performEZWin(
                     0::INTEGER,
                     xp -
                         CASE
-                            WHEN xp >= $5::INTEGER
-                                THEN $3::INTEGER
-                            ELSE $4::INTEGER
+                            WHEN xp >= $5::BIGINT
+                                THEN $3::BIGINT
+                            ELSE $4::BIGINT
                         END
                 )
 
@@ -9693,6 +9702,7 @@ async function applyBossRewardBundle(
     bundle,
     now = Date.now()
 ){
+    bundle = normalizeRewards(bundle);
 
     const normalizedGuildID =
         String(guildID);
@@ -9917,7 +9927,7 @@ async function applyBossRewardBundle(
                 socialRepeatUntil=CASE
                     WHEN $6
                         THEN GREATEST(socialRepeatUntil,$3)+$5
-                    ELSE GREATEST(socialRepeatUntil,$3+$5)
+                    ELSE GREATEST(socialRepeatUntil,$3)+$5
                 END,
                 socialRepeatIncludeTroll=CASE
                     WHEN socialRepeatUntil>$3
@@ -9932,7 +9942,7 @@ async function applyBossRewardBundle(
                 multiRollUntil=CASE
                     WHEN $6
                         THEN GREATEST(multiRollUntil,$3)+$5
-                    ELSE GREATEST(multiRollUntil,$3+$5)
+                    ELSE GREATEST(multiRollUntil,$3)+$5
                 END,
                 rollWindowEndsAt=0,
                 rollWindowUses=0
@@ -15257,7 +15267,10 @@ async function getTravelingMerchant(){
                     merchantState.refreshed
                 ),
             deals:
-                dealRows.map(row => ({
+                dealRows.filter(row => {
+                    const deal = parseTravelingMerchantDeal(row.deal);
+                    return deal?.id === "omega_combined_exchange_v2" || !deal?.reward?.boosts?.some(boost => boost.boostType === "luck" && boost.tier === "omega");
+                }).map(row => ({
                     ...(
                         parseTravelingMerchantDeal(
                             row.deal
@@ -15478,6 +15491,10 @@ async function purchaseTravelingMerchantDeal(
 
         }
 
+        if(deal.id !== "omega_combined_exchange_v2" && deal.reward.boosts?.some(boost => boost.boostType === "luck" && boost.tier === "omega")){
+            await client.query("COMMIT");
+            return {success: false, status: "merchant-refreshed"};
+        }
         if([
             "chat_xp_permanent",
             "multi_roll_permanent"
@@ -17144,10 +17161,10 @@ async function claimQuestCycleRewards(
         }
 
 
-        const rewards =
+        const rewards = normalizeRewards(
             typeof row.rewards === "string"
                 ? JSON.parse(row.rewards)
-                : row.rewards;
+                : row.rewards);
 
 
         await client.query(`
@@ -17191,6 +17208,7 @@ async function claimQuestCycleRewards(
 
 
         for(const reward of rewards){
+            if(reward.type === "next_roll_burst") continue;
 
             if(reward.type === "xp"){
 
@@ -18407,7 +18425,7 @@ async function getQuestSocialCommandRepeatCount(
 
     return Math.max(
         1,
-        Math.floor(repeatCount)
+        Math.min(3, Math.floor(repeatCount))
     );
 
 }
@@ -18605,7 +18623,7 @@ async function consumeQuestSocialCommandRepeat(
 
             return Math.max(
                 1,
-                Math.floor(repeatCount)
+                Math.min(3, Math.floor(repeatCount))
             );
 
         }
@@ -19111,10 +19129,10 @@ async function useQuestRollCooldown(
 
 
         const rollCount =
-            Math.max(
+            Math.min(3, Math.max(
                 timedRollCount,
-                burst?.rollCount || 1
-            );
+                1
+            ));
 
 
         // One universal row now protects normal and Multi Rolls. A negative
@@ -22740,7 +22758,64 @@ async function setModerationPanelMessageID(guildID, messageID){
 
 
 
+async function installMultiLimits(){
+    await db.query(`
+        CREATE OR REPLACE FUNCTION enforce_multi_command_limits()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        DECLARE
+            data jsonb := to_jsonb(NEW);
+            previous jsonb;
+            field text;
+            current_ms bigint := floor(extract(epoch FROM clock_timestamp()) * 1000);
+        BEGIN
+            IF TG_OP = 'UPDATE' THEN previous := to_jsonb(OLD); END IF;
+            FOREACH field IN ARRAY ARRAY['multirollcount','socialrepeatcount',
+                'nexthugrepeatcount','nextkissrepeatcount','nextstealrepeatcount',
+                'nexttrollrepeatcount','merchanttimedrollcount'] LOOP
+                data := jsonb_set(data, ARRAY[field], to_jsonb(LEAST(3, GREATEST(1, (data->>field)::integer))));
+            END LOOP;
+            FOREACH field IN ARRAY ARRAY['nextrollburst10','nextrollburst20',
+                'nextrollburst25','nextrollburst35','nextrollburst50','nextrollburst100',
+                'nextrollburst200','nextrollrepeatuses'] LOOP
+                data := jsonb_set(data, ARRAY[field], '0'::jsonb);
+            END LOOP;
+            data := jsonb_set(data, '{merchantpermanentrollcount}', '1'::jsonb);
+            data := jsonb_set(data, '{nextrollrepeatcount}', '1'::jsonb);
+            IF TG_OP = 'UPDATE' THEN
+                FOREACH field IN ARRAY ARRAY['multirolluntil','socialrepeatuntil',
+                    'triplerolluntil','socialtripleuntil','hugtripleuntil','merchanttimedrolluntil'] LOOP
+                    IF (previous->>field)::bigint > current_ms
+                        AND (data->>field)::bigint > (previous->>field)::bigint THEN
+                        data := jsonb_set(data, ARRAY[field], to_jsonb((previous->>field)::bigint + 10800000));
+                    END IF;
+                END LOOP;
+            END IF;
+            NEW := jsonb_populate_record(NEW, data);
+            RETURN NEW;
+        END $$;
+        DROP TRIGGER IF EXISTS multi_command_limits ON quest_effects;
+        CREATE TRIGGER multi_command_limits BEFORE INSERT OR UPDATE ON quest_effects
+        FOR EACH ROW EXECUTE FUNCTION enforce_multi_command_limits();
+        UPDATE quest_effects SET multiRollCount=multiRollCount;
+    `);
+}
+
+async function removeMultiCommands(guildID){
+    const result = await db.query(`
+        UPDATE quest_effects SET multiRollCount=1, multiRollUntil=0,
+            tripleRollUntil=0, socialRepeatCount=1, socialRepeatUntil=0,
+            socialTripleUntil=0, hugTripleUntil=0, nextHugTripleUses=0,
+            nextHugRepeatUses=0, nextKissRepeatUses=0, nextStealRepeatUses=0,
+            nextTrollRepeatUses=0, nextRollRepeatUses=0,
+            merchantPermanentRollCount=1, merchantTimedRollCount=1,
+            merchantTimedRollUntil=0
+        WHERE guildID=$1
+    `, [String(guildID)]);
+    return result.rowCount;
+}
+
 module.exports = {
+    removeMultiCommands,
 
 
     SHOP_CATALOG,
