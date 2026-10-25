@@ -2196,6 +2196,23 @@ async function finishOwnedRollCooldown(
 
 
 async function execute(message, options = {}){
+    const work = require("../utils/channelWork");
+    if(options.rollAccess) return executeOwned(message, options);
+    work.begin(message.channel.id);
+    try{
+        return await executeOwned(message, options);
+    }catch(error){
+        if(Number(error?.code) === 10003){
+            console.warn(`Roll channel ${message.channel.id} was deleted during execution; do not retry already committed XP.`);
+            return;
+        }
+        throw error;
+    }finally{
+        work.end(message.channel.id);
+    }
+}
+
+async function executeOwned(message, options = {}){
 
     if(!message.guild){
         return;
@@ -2364,12 +2381,12 @@ if(
 ){
 
     const rollCount =
-        Math.max(
+        Math.min(3, Math.max(
             1,
             Number(
                 rollAccess.rollCount
             ) || 3
-        );
+        ));
 
 
     // A troll effect is a one-roll effect. Resolve it once before launching
