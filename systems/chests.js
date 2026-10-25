@@ -212,12 +212,12 @@ const GILDED_REWARDS = Object.freeze([
             return {
                 bundle: {
                     timedAllCommands: {
-                        extraCount: 6,
+                        extraCount: 2,
                         durationMs: 24 * 60 * 60 * 1000,
                         excludeCommands: ["troll"]
                     }
                 },
-                text: "**+6 multi-commands** for every supported command except `!troll` for **24 hours**"
+                text: "**3 total executions** per supported command except `!troll` for **24 hours** (duplicate active rewards add 3 hours)"
             };
         }
     }),
