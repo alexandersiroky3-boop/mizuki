@@ -1682,7 +1682,7 @@ function getDailyRewardPool(level){
     }
 
 
-    return pool;
+    return require("../utils/multiLimits").normalizeRewards(pool);
 
 }
 
@@ -1804,7 +1804,7 @@ function getWeeklyRewardPool(level){
     }
 
 
-    return pool;
+    return require("../utils/multiLimits").normalizeRewards(pool);
 
 }
 
@@ -2005,7 +2005,7 @@ function generateRewards(
         doubleRewardSet
             ? rewards.map(doubleWeeklyReward)
             : rewards
-    ).map(reward => ({
+    ).map(reward => require("../utils/multiLimits").normalizeRewards({
         ...reward,
         questUpgradeLevel: safeLevel,
         rewardRulesetVersion:
@@ -2177,7 +2177,7 @@ function normalizeCycle(row){
             normalizeJSON(row.quests) || [],
 
         rewards:
-            normalizeJSON(row.rewards) || [],
+            require("../utils/multiLimits").normalizeRewards(normalizeJSON(row.rewards) || []),
 
         rewarded:
             Boolean(row.rewarded),
@@ -3982,6 +3982,7 @@ function formatRewardDuration(durationMs){
 
 
 function formatReward(reward){
+    reward = require("../utils/multiLimits").normalizeRewards(reward);
 
     const display = text =>
         reward?.doubleRewardSet
@@ -4084,7 +4085,7 @@ function formatReward(reward){
     if(reward.type === "guaranteed_criticals"){
 
         return display(
-            `Your next **${Number(reward.amount)}** chat XP drops are guaranteed criticals in a row`
+            `Your next **${Number(reward.amount)}** chat XP drops use the maximum critical chance (93%, or 95% with XP Infinity + Luck Omega)`
         );
 
     }
@@ -4176,7 +4177,7 @@ function formatReward(reward){
     if(reward.type === "command_multi"){
 
         return display(
-            "Your next valid `!hug`, `!kiss`, `!steal`, `!roll`, and `!troll` each perform " +
+            "Your next valid `!hug`, `!kiss`, `!steal`, and `!troll` each perform " +
             `**+${Number(reward.extraUses)} extra uses**`
         );
 
