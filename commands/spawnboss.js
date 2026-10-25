@@ -29,6 +29,12 @@ async function execute(message){
     );
 
     if(!result.success){
+        if(result.status === "cooldown"){
+            return message.reply({
+                content: `⏳ You can use \`!spawnboss\` again <t:${Math.ceil(result.cooldownUntil / 1000)}:R>. The cooldown is **12 hours**. Your use was **not consumed**.`,
+                allowedMentions: {parse: [], repliedUser: false}
+            });
+        }
         if(result.status === "boss-active"){
             return message.reply({
                 content:
@@ -55,7 +61,7 @@ async function execute(message){
         content:
             `⚔️ ${message.author} used **!spawnboss** and summoned **${result.definition.name} {CANON}**!\n` +
             `Remaining uses: **${Number(result.remainingUses).toLocaleString()}**. ` +
-            "The live raid panel was sent to the raid-boss channel.",
+            "The live raid panel was sent to the raid-boss channel. Your **12-hour cooldown** has started.",
         allowedMentions: {
             users: [message.author.id],
             repliedUser: false
