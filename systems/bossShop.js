@@ -85,7 +85,7 @@ const BOSS_SHOP_CATALOG = Object.freeze([
     }),
     Object.freeze({
         key: "multi_commands",
-        name: "+3 Multi-Commands",
+        name: "3x Multi-Commands",
         emoji: "➕",
         prices: Object.freeze([30000, 60000, 75000, 99000]),
         maxStock: 5,
@@ -93,7 +93,7 @@ const BOSS_SHOP_CATALOG = Object.freeze([
             const hours = randomChoice([3, 5], random);
             return {
                 timedAllCommands: {
-                    extraCount: 3,
+                    extraCount: 2,
                     durationMs: hours * 60 * 60 * 1000,
                     stackDuration: false
                 }
@@ -103,7 +103,7 @@ const BOSS_SHOP_CATALOG = Object.freeze([
             const hours = Math.round(
                 bundle.timedAllCommands.durationMs / 3600000
             );
-            return `**+3** multi-commands for **${hours} hours** *(timer does not stack)*`;
+            return `**3 total executions** per command for **${hours} hours** *(duplicate active rewards add 3 hours)*`;
         }
     })
 ]);
