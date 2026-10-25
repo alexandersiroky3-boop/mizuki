@@ -1563,10 +1563,7 @@ async function announceAbilityEvents(message, result){
 
 
 function scheduleBattleChannelDeletion(channel, reason){
-    const timer = setTimeout(() => {
-        channel.delete(reason).catch(() => null);
-    }, 30000);
-    timer.unref?.();
+    require("../utils/channelWork").deleteWhenIdle(channel, reason);
 }
 
 
@@ -1786,10 +1783,10 @@ async function handleCombatResult(message, result){
         await message.channel.send({
             embeds: [embed],
             allowedMentions: {
-                users: [
+                users: [...new Set([
                     message.author.id,
                     ...awarded.map(entry => entry.userID)
-                ]
+                ])].slice(0, 100)
             }
         }).catch(error => {
             console.error("Could not announce raid boss defeat:", error);
