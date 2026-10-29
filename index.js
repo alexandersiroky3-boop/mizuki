@@ -9,9 +9,13 @@ const {
 
 const leveling = require("./systems/leveling");
 const boosts = require("./systems/boosts");
+const powerRunes = require("./systems/powerRunes");
+const trolls = require("./systems/trolls");
+const bosses = require("./systems/bosses");
 const database = require("./database");
 const luck =
     require("./utils/luck");
+const {getCriticalEmojis} = require("./utils/criticalEmojis");
 
 const quests =
     require("./systems/quests");
@@ -27,7 +31,15 @@ const levelCommand = require("./commands/level");
 const rankCommand = require("./commands/rank");
 const giveXPCommand = require("./commands/givexp");
 const commandsCommand = require("./commands/commands");
+const updatesCommand = require("./commands/updates");
+const afkCommand = require("./commands/afk");
+const trollCommand = require("./commands/troll");
 const boostCommand = require("./commands/showboost");
+const valuesCommand = require("./commands/values");
+const sellCommand = require("./commands/sell");
+const muteCommand = require("./commands/mute");
+const upgradesCommand = require("./commands/upgrades");
+const setUpgradeCommand = require("./commands/setupgrade");
 const shopCommand = require("./commands/shop");
 const merchantCommand =
     require("./commands/merchant");
@@ -50,11 +62,26 @@ require("./commands/fixlevels");
 const ezwinCommand =
 require("./commands/ezwin");
 
+const bossCommand =
+require("./commands/boss");
+
 const rollCommand =
 require("./commands/roll");
 
 const stealCommand =
 require("./commands/steal");
+
+const fightCommand =
+require("./commands/fight");
+
+const blessCommand =
+require("./commands/bless");
+
+const spawnBossCommand =
+require("./commands/spawnboss");
+
+const coinflipCommand =
+require("./commands/coinflip");
 
 const giveallxp =
     require("./commands/giveallxp");
@@ -82,6 +109,559 @@ const unbanCommand = require("./commands/unban");
 const kickCommand = require("./commands/kick");
 const permabanCommand = require("./commands/permaban");
 const sendStaffRulesMSGCommand = require("./commands/sendstaffrulesmsg");
+
+
+// =====================================================
+// SAFE PREFIX COMMAND ROUTER
+// =====================================================
+//
+// A command must never disappear because an unrelated AFK, troll or quest
+// hook failed first. Every known prefix command is routed in one place and
+// command failures are reported both in the log and to the user.
+
+const missingMessageHookWarnings =
+    new Set();
+
+
+const BOSS_DAMAGE_COMMANDS =
+    new Set([
+        "!roll",
+        "!kiss",
+        "!steal",
+        "!ezwin",
+        "!troll",
+        "!fight"
+    ]);
+
+
+function parseXPBalance(value){
+
+    try{
+
+        return BigInt(
+            String(value ?? 0)
+                .split(".")[0]
+        );
+
+    }
+    catch(error){
+        return 0n;
+    }
+
+}
+
+
+async function captureCommandXPBalance(
+    message
+){
+
+    const user =
+        await database.getUser(
+            message.guild.id,
+            message.author.id
+        );
+
+
+    return parseXPBalance(
+        user?.xp
+    );
+
+}
+
+
+async function processBossCommandDamage(
+    message,
+    commandLabel,
+    xpBefore,
+    commandStartedAt
+){
+
+    if(xpBefore == null){
+        return;
+    }
+
+
+    const xpAfter =
+        await captureCommandXPBalance(
+            message
+        );
+
+    const chatXPLogged =
+        await database.getChatXPLoggedSince(
+            message.guild.id,
+            message.author.id,
+            commandStartedAt
+        );
+
+    const rawDifference =
+        xpAfter -
+        xpBefore -
+        BigInt(
+            Math.max(
+                0,
+                Math.floor(
+                    Number(chatXPLogged) || 0
+                )
+            )
+        );
+
+
+    if(rawDifference <= 0n){
+        return;
+    }
+
+
+    const earnedCommandXP =
+        Number(
+            rawDifference >
+                BigInt(
+                    Number.MAX_SAFE_INTEGER
+                )
+                ? BigInt(
+                    Number.MAX_SAFE_INTEGER
+                )
+                : rawDifference
+        );
+
+    const result =
+        await bosses.handleCommandXP(
+            message,
+            commandLabel,
+            earnedCommandXP
+        );
+
+
+    await bossCommand.handleCombatResult(
+        message,
+        result
+    );
+
+}
+
+
+function warnAboutMissingMessageHook(
+    hookName
+){
+
+    if(
+        missingMessageHookWarnings.has(
+            hookName
+        )
+    ){
+        return;
+    }
+
+
+    missingMessageHookWarnings.add(
+        hookName
+    );
+
+
+    console.error(
+        `Missing message hook: ${hookName}. Commands will continue without it.`
+    );
+
+}
+
+
+async function runMessageHooksSafely(
+    message,
+    normalizedMessageContent
+){
+
+    if(
+        normalizedMessageContent !== "!afk"
+    ){
+
+        if(
+            typeof afkCommand
+                ?.removeAFKOnMessage ===
+                "function"
+        ){
+
+            try{
+
+                await afkCommand
+                    .removeAFKOnMessage(
+                        message
+                    );
+
+            }
+            catch(error){
+
+                console.error(
+                    "Automatic AFK removal failed before command routing:",
+                    error
+                );
+
+            }
+
+        }
+        else{
+
+            warnAboutMissingMessageHook(
+                "commands/afk.removeAFKOnMessage"
+            );
+
+        }
+
+    }
+
+
+    let changedUserIDs = [];
+
+
+    const isTrollRecoveryCommand =
+        String(message.author?.id) ===
+            String(trollCommand.OWNER_ID)
+        &&
+        /^!cleartroll(?:\s|$)/i.test(
+            normalizedMessageContent
+        );
+
+
+    // The owner's recovery command must run before a stuck effect can trigger
+    // from the recovery message itself.
+    if(
+        !isTrollRecoveryCommand
+        &&
+        typeof trolls
+            ?.handleMessageStart ===
+            "function"
+    ){
+
+        try{
+
+            const trollMessageResult =
+                await trolls.handleMessageStart(
+                    message
+                );
+
+
+            changedUserIDs =
+                Array.isArray(
+                    trollMessageResult
+                        ?.changedUserIDs
+                )
+                    ? trollMessageResult
+                        .changedUserIDs
+                    : [];
+
+        }
+        catch(error){
+
+            console.error(
+                "Troll message hook failed before command routing:",
+                error
+            );
+
+        }
+
+    }
+    else if(!isTrollRecoveryCommand){
+
+        warnAboutMissingMessageHook(
+            "systems/trolls.handleMessageStart"
+        );
+
+    }
+
+
+    for(
+        const changedUserID of
+        new Set(changedUserIDs)
+    ){
+
+        await leveling
+            .syncLevelAndAnnounce(
+                message.client,
+                message.guild.id,
+                changedUserID
+            )
+            .catch(error => {
+
+                console.error(
+                    "Troll level sync failed before command routing:",
+                    error
+                );
+
+            });
+
+    }
+
+}
+
+
+async function recordMessageQuestSafely(
+    message
+){
+
+    if(
+        typeof quests?.recordEvent !==
+            "function"
+    ){
+
+        warnAboutMissingMessageHook(
+            "systems/quests.recordEvent"
+        );
+
+        return;
+
+    }
+
+
+    try{
+
+        await quests.recordEvent(
+            message,
+            "messages",
+            1
+        );
+
+    }
+    catch(error){
+
+        console.error(
+            "Message quest progress failed before command routing:",
+            error
+        );
+
+    }
+
+}
+
+
+async function executePrefixCommandSafely(
+    message,
+    label,
+    commandModule,
+    methodName = "execute"
+){
+
+    const handler =
+        commandModule?.[methodName];
+
+
+    if(typeof handler !== "function"){
+
+        console.error(
+            `Command ${label} is misconfigured: ${methodName}() was not exported. Check that the correct file is in the correct folder.`
+        );
+
+
+        await message.reply({
+            content:
+                `❌ **${label} is temporarily unavailable because its command file is in the wrong location or is the wrong version.**`,
+            allowedMentions: {
+                parse: [],
+                repliedUser: false
+            }
+        }).catch(() => {});
+
+
+        return true;
+
+    }
+
+
+    const normalizedLabel =
+        String(label || "")
+            .toLowerCase();
+
+    const tracksBossDamage =
+        BOSS_DAMAGE_COMMANDS.has(
+            normalizedLabel
+        );
+
+    const commandStartedAt =
+        Date.now();
+
+    let xpBefore =
+        null;
+
+
+    if(tracksBossDamage){
+
+        try{
+
+            xpBefore =
+                await captureCommandXPBalance(
+                    message
+                );
+
+        }
+        catch(error){
+
+            // The command must still run if raid damage tracking has a
+            // temporary database problem.
+            console.error(
+                `Could not capture ${label} XP before raid damage tracking:`,
+                error
+            );
+
+        }
+
+    }
+
+
+    try{
+
+        await handler.call(
+            commandModule,
+            message
+        );
+
+
+        if(tracksBossDamage){
+
+            await processBossCommandDamage(
+                message,
+                normalizedLabel,
+                xpBefore,
+                commandStartedAt
+            ).catch(error => {
+
+                // Command rewards have already been committed. Boss tracking
+                // cannot turn a successful command into a visible failure.
+                console.error(
+                    `Could not apply ${label} XP to the raid boss:`,
+                    error
+                );
+
+            });
+
+        }
+
+    }
+    catch(error){
+
+        console.error(
+            `Command ${label} failed:`,
+            error
+        );
+
+
+        await message.reply({
+            content:
+                `❌ **${label} failed while running.** The error was recorded in the bot log.`,
+            allowedMentions: {
+                parse: [],
+                repliedUser: false
+            }
+        }).catch(() => {});
+
+    }
+
+
+    return true;
+
+}
+
+
+async function dispatchPrefixCommand(
+    message,
+    normalizedMessageContent
+){
+
+    const content =
+        String(message.content || "")
+            .trim();
+
+
+    const exactRoutes =
+        new Map([
+            ["!level", ["!level", levelCommand]],
+            ["!rank", ["!rank", rankCommand]],
+            ["!leaderboard", ["!leaderboard", rankCommand]],
+            ["!commands", ["!commands", commandsCommand]],
+            ["!updates", ["!updates", updatesCommand]],
+            ["!afk", ["!afk", afkCommand]],
+            ["!boost", ["!boost", boostCommand]],
+            ["!values", ["!values", valuesCommand]],
+            ["!sell", ["!sell", sellCommand]],
+            ["!mute", ["!mute", muteCommand]],
+            ["!upgrades", ["!upgrades", upgradesCommand]],
+            ["!quests", ["!quests", questsCommand]],
+            ["!shop", ["!shop", shopCommand]],
+            ["!sendstaffrulesmsg", ["!sendstaffrulesmsg", sendStaffRulesMSGCommand]],
+            ["!sendverifymsg", ["!sendverifymsg", sendVerifyMSGCommand]],
+            ["!ping", ["!ping", pingCommand]],
+            ["!fixlevels", ["!fixlevels", fixLevelsCommand]],
+            ["!ezwin", ["!ezwin", ezwinCommand]],
+            ["!boss", ["!boss", bossCommand]],
+            ["!resetchallenges", ["!resetchallenges", bossCommand, "resetChallenges"]],
+            ["!removemulticommands", ["!removemulticommands", require("./commands/removemulticommands")]],
+            ["!spawnboss", ["!spawnboss", spawnBossCommand]],
+            ["!roll", ["!roll", rollCommand]],
+            ["!fixallusersinleaderboard", ["!fixallusersinleaderboard", fixAllUsersInLeaderboardCommand]],
+            ["!logs", ["!logs", logsCommand]],
+            ["!resetweeklyrank", ["!resetweeklyrank", rankCommand, "resetWeeklyRank"]]
+        ]);
+
+
+    const exactRoute =
+        exactRoutes.get(
+            normalizedMessageContent
+        );
+
+
+    if(exactRoute){
+
+        return executePrefixCommandSafely(
+            message,
+            exactRoute[0],
+            exactRoute[1],
+            exactRoute[2] || "execute"
+        );
+
+    }
+
+
+    const patternRoutes = [
+        ["!removemulticommands", /^!removemulticommands(?:\s|$)/i, require("./commands/removemulticommands")],
+        ["!resetmonthlyrank", /^!resetmonthlyrank(?:\s|$)/i, rankCommand, "resetMonthlyRank"],
+        ["!resetezwin", /^!resetezwin(?:\s|$)/i, ezwinCommand, "resetEZWin"],
+        ["!setupgrade", /^!setupgrade(?:\s|$)/i, setUpgradeCommand],
+        ["!merchant", /^!merchant(?:\s|$)/i, merchantCommand],
+        ["!permaban", /^!permaban(?:\s|$)/i, permabanCommand],
+        ["!unban", /^!unban(?:\s|$)/i, unbanCommand],
+        ["!kick", /^!kick(?:\s|$)/i, kickCommand],
+        ["!ban", /^!ban(?:\s|$)/i, banCommand],
+        ["!trade", /^!trade(?:\s|$)/i, tradeCommand],
+        ["!setlevel", /^!setlevel(?:\s|$)/i, setLevelCommand],
+        ["!cleartroll", /^!cleartroll(?:\s|$)/i, trollCommand, "clearTrollEffect"],
+        ["!troll", /^!troll(?:\s|$)/i, trollCommand],
+        ["!kiss", /^!kiss(?:\s|$)/i, kissCommand],
+        ["!warn", /^!warn(?:\s|$)/i, warnCommand],
+        ["!steal", /^!steal(?:\s|$)/i, stealCommand],
+        ["!fight", /^!fight(?:\s|$)/i, fightCommand],
+        ["!bless", /^!bless(?:\s|$)/i, blessCommand],
+        ["!coinflip", /^!coinflip(?:\s|$)/i, coinflipCommand],
+        ["!giveallxp", /^!giveallxp(?:\s|$)/i, giveallxp],
+        ["!hug", /^!hug(?:\s|$)/i, hugCommand],
+        ["!givexp", /^!givexp(?:\s|$)/i, giveXPCommand]
+    ];
+
+
+    for(const route of patternRoutes){
+
+        if(route[1].test(content)){
+
+            return executePrefixCommandSafely(
+                message,
+                route[0],
+                route[2],
+                route[3] || "execute"
+            );
+
+        }
+
+    }
+
+
+    return false;
+
+}
 
 
 // =====================================================
@@ -188,15 +768,77 @@ const http = require("http");
 
 const PORT = process.env.PORT || 3000;
 
-http.createServer((request, response) => {
-    response.writeHead(200, {
-        "Content-Type": "text/plain"
+const serviceState = {
+    databaseReady: false,
+    discordReady: false,
+    shuttingDown: false
+};
+
+
+function isServiceReady(){
+
+    return (
+        serviceState.databaseReady
+        &&
+        serviceState.discordReady
+        &&
+        !serviceState.shuttingDown
+    );
+
+}
+
+
+const healthServer =
+    http.createServer((request, response) => {
+
+        const ready =
+            isServiceReady();
+
+
+        response.writeHead(
+            ready ? 200 : 503,
+            {
+                "Content-Type":
+                    "text/plain; charset=utf-8",
+                "Cache-Control":
+                    "no-store"
+            }
+        );
+
+
+        response.end(
+            ready
+                ? "Mizuki is online!"
+                : serviceState.shuttingDown
+                    ? "Mizuki is shutting down."
+                    : "Mizuki is starting up."
+        );
+
     });
 
-    response.end("Mizuki is online!");
-}).listen(PORT, () => {
-    console.log(`Health server running on port ${PORT}`);
+
+healthServer.on("error", error => {
+
+    console.error(
+        "Health server failed:",
+        error
+    );
+
+
+    process.exit(1);
+
 });
+
+
+healthServer.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+        console.log(
+            `Health server listening on port ${PORT}; waiting for PostgreSQL and Discord.`
+        );
+    }
+);
 
 
 
@@ -235,6 +877,12 @@ partials:[
 
 
 client.once("clientReady", async () => {
+
+
+    // Discord is connected. Render may now mark the service healthy once
+    // PostgreSQL is ready too; startup restore jobs can continue afterward.
+    serviceState.discordReady =
+        true;
 
 
     await resolveMainGuild();
@@ -297,6 +945,47 @@ client.once("clientReady", async () => {
     await luck.restoreLuckBoosts(client);
     await trades.restoreTrades(client);
 
+    await bosses.cleanupExpiredBosses(client)
+        .then(result =>
+            bossCommand.handleExpiredBosses(
+                client,
+                result
+            )
+        )
+        .catch(error => {
+            console.error(
+                "Initial raid boss cleanup failed:",
+                error
+            );
+        });
+
+    if(MAIN_GUILD_ID){
+        const guild = await client.guilds.fetch(MAIN_GUILD_ID).catch(() => null);
+        if(guild){
+            await guild.emojis.fetch().catch(error =>
+                console.error("Could not load critical emojis:", error));
+            await bossCommand.ensureRaidStatusMessage(
+                client,
+                MAIN_GUILD_ID,
+                {guild}
+            ).then(statusMessage => {
+                console.log(
+                    `Raid boss live-status panel ready in channel ${bossCommand.RAID_STATUS_CHANNEL_ID} (message ${statusMessage.id}).`
+                );
+            }).catch(error => {
+                console.error(
+                    "Could not initialize the dedicated raid boss status panel. " +
+                    "Check the channel ID and the bot's View Channel, Send Messages, Embed Links, and Read Message History permissions:",
+                    error
+                );
+            });
+            await guild.commands.create(trollCommand.slashCommand.toJSON())
+                .catch(error => console.error("Could not register /troll:", error));
+            await powerRunes.restorePowerRuneRoles(client, MAIN_GUILD_ID)
+                .catch(error => console.error("Power Rune role restore failed:", error));
+        }
+    }
+
     if(MAIN_GUILD_ID){
         await moderation.initialize(client, MAIN_GUILD_ID).catch(error => {
             console.error("Moderation restore failed:", error);
@@ -326,6 +1015,69 @@ client.once("clientReady", async () => {
                 );
 
             });
+
+        }
+
+    }
+
+
+    if(MAIN_GUILD_ID){
+
+        // Older rank.js versions do not export processScheduledResets().
+        // Calling a missing method throws synchronously, so attaching .catch()
+        // cannot prevent the Client error event from crashing the bot.
+        if(
+            typeof rankCommand
+                ?.processScheduledResets ===
+                "function"
+        ){
+
+            const runScheduledResetCheck =
+                async label => {
+
+                    try{
+
+                        await rankCommand
+                            .processScheduledResets(
+                                client,
+                                MAIN_GUILD_ID
+                            );
+
+                    }
+                    catch(error){
+
+                        console.error(
+                            `${label} leaderboard reset check failed:`,
+                            error
+                        );
+
+                    }
+
+                };
+
+
+            await runScheduledResetCheck(
+                "Initial"
+            );
+
+
+            setInterval(
+                () => {
+
+                    void runScheduledResetCheck(
+                        "Scheduled"
+                    );
+
+                },
+                60 * 1000
+            );
+
+        }
+        else{
+
+            console.warn(
+                "Scheduled leaderboard resets are disabled because commands/rank.js does not export processScheduledResets(). The bot will continue running normally."
+            );
 
         }
 
@@ -372,8 +1124,51 @@ setInterval(async()=>{
 
 },15000);
 
+setInterval(async () => {
+    if(!MAIN_GUILD_ID) return;
+    await powerRunes.removeExpiredPowerRuneRoles(client, MAIN_GUILD_ID)
+        .catch(error => console.error("Power Rune role cleanup failed:", error));
+}, 5000);
+
+
+setInterval(async () => {
+
+    await bosses.cleanupExpiredBosses(client)
+        .then(result =>
+            bossCommand.handleExpiredBosses(
+                client,
+                result
+            )
+        )
+        .catch(error => {
+            console.error(
+                "Raid boss expiry cleanup failed:",
+                error
+            );
+        });
+
+}, 15000);
+
 
 setInterval(async()=>{
+
+    try{
+
+        if(MAIN_GUILD_ID){
+            await database.cleanupExpiredTrollEffects(
+                MAIN_GUILD_ID
+            );
+        }
+
+    }
+    catch(error){
+
+        console.error(
+            "Troll effect cleanup failed:",
+            error
+        );
+
+    }
 
     try{
 
@@ -545,6 +1340,27 @@ client.on(
 );
 
 
+client.on("interactionCreate", async interaction => {
+    if(!interaction.isChatInputCommand() || interaction.commandName !== "troll"){
+        return;
+    }
+    if(!interaction.guild || !isMainGuild(interaction.guild.id)){
+        return interaction.reply({
+            content: "This command is only available in the main server.",
+            flags: 64
+        }).catch(() => {});
+    }
+    if(String(interaction.channelId) === "1536777096200720545"){
+        return interaction.reply({
+            content: "🚫 You cannot use commands in this channel.",
+            flags: 64
+        }).catch(() => {});
+    }
+    await trollCommand.executeInteraction(interaction).catch(error => {
+        console.error("Private /troll interaction failed:", error);
+    });
+});
+
 client.on(
     "guildMemberUpdate",
     async (oldMember, newMember) => {
@@ -554,6 +1370,44 @@ client.on(
                 newMember.guild.id
             )
         ){
+            return;
+        }
+
+
+        let bannedRoleProtection;
+
+        try{
+
+            bannedRoleProtection =
+                await moderation.handleBannedRoleProtection(
+                    oldMember,
+                    newMember
+                );
+
+        }
+        catch(error){
+
+            console.error(
+                "Banned-role protection failed:",
+                error
+            );
+
+
+            // Do not let other automatic role systems act on a member while
+            // a protected Banned-role change could not be verified/reverted.
+            return;
+
+        }
+
+
+        if(bannedRoleProtection.reverted){
+            return;
+        }
+
+
+        // A banned member is intentionally excluded from every other role
+        // repair system until !unban or automatic expiry removes Banned.
+        if(newMember.roles.cache.has(moderation.BANNED_ROLE_ID)){
             return;
         }
 
@@ -571,13 +1425,6 @@ client.on(
         });
 
 
-        // A temporarily banned member must keep only the Banned role;
-        // automatic XP/Luck boost role repair resumes after unban.
-        if(newMember.roles.cache.has(moderation.BANNED_ROLE_ID)){
-            return;
-        }
-
-
         await boosts.checkBoostRole(
             newMember
         );
@@ -587,6 +1434,19 @@ client.on(
             oldMember,
             newMember
         );
+
+
+        await powerRunes.checkPowerRuneRoles(
+            oldMember,
+            newMember
+        ).catch(error => {
+
+            console.error(
+                "Power Rune role protection failed:",
+                error
+            );
+
+        });
 
     }
 );
@@ -636,6 +1496,68 @@ client.on(
                 interaction.guildId
             )
         ){
+            return;
+        }
+
+
+        let bossHandled = false;
+
+
+        try{
+
+            bossHandled =
+                await bossCommand.handleInteraction(
+                    interaction
+                );
+
+        }
+        catch(error){
+
+            console.error(
+                "Boss interaction failed:",
+                error
+            );
+
+
+            const errorPayload = {
+                content:
+                    "❌ The boss panel could not finish displaying that action. Reopen `!boss` and check your shards/inventory before trying again.",
+                flags: 64
+            };
+
+
+            if(
+                interaction.deferred
+                || interaction.replied
+            ){
+                await interaction.followUp(
+                    errorPayload
+                ).catch(() => null);
+            }
+            else{
+                await interaction.reply(
+                    errorPayload
+                ).catch(() => null);
+            }
+
+
+            return;
+
+        }
+
+
+        if(bossHandled){
+            return;
+        }
+
+
+        const sellHandled =
+            await sellCommand.handleInteraction(
+                interaction
+            );
+
+
+        if(sellHandled){
             return;
         }
 
@@ -801,6 +1723,20 @@ async message => {
         }
 
 
+        const normalizedMessageContent =
+            message.content
+                .trim()
+                .toLowerCase();
+
+
+        // These optional systems are isolated so an outdated AFK/troll file
+        // can no longer stop every prefix command from being routed.
+        await runMessageHooksSafely(
+            message,
+            normalizedMessageContent
+        );
+
+
         // =====================================================
         // NO-COMMANDS CHAT CHANNEL
         // =====================================================
@@ -834,29 +1770,43 @@ async message => {
 
 
         if(
-            message.content
-                .trim()
-                .toLowerCase() ===
-                    "!sendverifymsg"
+            await dispatchPrefixCommand(
+                message,
+                normalizedMessageContent
+            )
         ){
+            return;
+        }
 
-            return sendVerifyMSGCommand.execute(
+
+        if(message.content === "!level"){
+
+            return levelCommand.execute(
                 message
             );
 
         }
 
 
-        await quests.recordEvent(
-            message,
-            "messages",
-            1
-        );
+        if(
+            normalizedMessageContent ===
+                "!resetweeklyrank"
+        ){
+
+            return rankCommand.resetWeeklyRank(
+                message
+            );
+
+        }
 
 
-        if(message.content === "!level"){
+        if(
+            /^!resetmonthlyrank(?:\s|$)/i.test(
+                message.content.trim()
+            )
+        ){
 
-            return levelCommand.execute(
+            return rankCommand.resetMonthlyRank(
                 message
             );
 
@@ -889,9 +1839,91 @@ if(message.content === "!commands"){
 
 }
 
+if(
+    message.content
+        .trim()
+        .toLowerCase() === "!updates"
+){
+
+    return updatesCommand.execute(
+        message
+    );
+
+}
+
+if(
+    normalizedMessageContent === "!afk"
+){
+
+    return afkCommand.execute(
+        message
+    );
+
+}
+
 if(message.content === "!boost"){
 
     return boostCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content
+        .trim()
+        .toLowerCase() === "!values"
+){
+
+    return valuesCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content
+        .trim()
+        .toLowerCase() === "!sell"
+){
+
+    return sellCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content
+        .trim()
+        .toLowerCase() === "!mute"
+){
+
+    return muteCommand.execute(
+        message
+    );
+
+}
+
+if(
+    /^!setupgrade(?:\s|$)/i.test(
+        message.content.trim()
+    )
+){
+
+    return setUpgradeCommand.execute(
+        message
+    );
+
+}
+
+if(
+    message.content
+        .trim()
+        .toLowerCase() === "!upgrades"
+){
+
+    return upgradesCommand.execute(
         message
     );
 
@@ -987,6 +2019,18 @@ if(message.content === "!ping"){
 
 }
 
+if(
+    /^!troll(?:\s|$)/i.test(
+        message.content.trim()
+    )
+){
+
+    return trollCommand.execute(
+        message
+    );
+
+}
+
 if(message.content.startsWith("!kiss")){
 
     return kissCommand.execute(
@@ -1034,6 +2078,18 @@ if(
 if(message.content.startsWith("!steal")){
 
     return stealCommand.execute(
+        message
+    );
+
+}
+
+if(
+    /^!fight(?:\s|$)/i.test(
+        message.content.trim()
+    )
+){
+
+    return fightCommand.execute(
         message
     );
 
@@ -1099,6 +2155,70 @@ if(
             return;
 
 
+const bossCombatResult =
+    await bosses.handleChatXP(
+        message,
+        result
+    ).catch(error => {
+
+        // Chat XP has already been awarded. A boss-system failure must not
+        // break criticals, quests, drops, or level-up messages afterward.
+        console.error(
+            "Raid boss chat-XP hook failed:",
+            error
+        );
+
+        return null;
+
+    });
+
+
+await bossCommand.handleCombatResult(
+    message,
+    bossCombatResult
+).catch(error => {
+
+    console.error(
+        "Raid boss announcement failed:",
+        error
+    );
+
+});
+
+
+if(Number(result.earnedXP) > 0){
+    await recordMessageQuestSafely(
+        message
+    );
+}
+
+
+await boosts.sendXPBoostDropReply(
+    message,
+    result.xpBoostDrop
+).catch(error => {
+
+    console.error(
+        "Could not send chat XP Boost drop reply:",
+        error
+    );
+
+});
+
+
+await powerRunes.sendPowerRuneDropReply(
+    message,
+    result.powerRuneDrop
+).catch(error => {
+
+    console.error(
+        "Could not send chat Power Rune drop reply:",
+        error
+    );
+
+});
+
+
 await quests.recordEvent(
     message,
     "earn_xp",
@@ -1107,6 +2227,32 @@ await quests.recordEvent(
         Number(result.earnedXP) || 0
     )
 );
+
+
+// Chat-only XP quest progress. Keep this separate from earn_xp so XP from
+// !roll, quest rewards, trades, and admin commands cannot complete it.
+await quests.recordEvent(
+    message,
+    "chat_xp",
+    Math.max(
+        0,
+        Number(result.earnedXP) || 0
+    )
+);
+
+
+const criticalMessagesMuted =
+    (
+        result.critical
+        ||
+        Number(result.lostCriticalStreak) >= 2
+    )
+        ? await database.isMessageTypeMuted(
+            message.guild.id,
+            message.author.id,
+            "critical"
+        )
+        : false;
 
 
 if(result.critical){
@@ -1129,19 +2275,26 @@ if(result.critical){
     }
 
 
-    // React to every critical message.
+    const criticalEmojis = getCriticalEmojis(
+        message.guild, result.criticalStreak
+    );
+
+    // Keep the reaction consistent at every streak tier. The extra phoenix,
+    // ice and large emojis belong in the announcement text only.
     message.react(
-        "💥"
+        criticalEmojis.reaction
     ).catch(() => {});
 
 
 
-    // Critical streaks 20+.
-    if(result.criticalStreak >= 20){
+    if(!criticalMessagesMuted){
+
+    // 50+ uses the two large custom emojis.
+    if(result.criticalStreak >= 50){
 
         message.reply(
 
-            `🧊🥶 **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!** 🥶🧊`
+            `${criticalEmojis.text} **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!**`
 
         ).catch(() => {});
 
@@ -1149,15 +2302,12 @@ if(result.critical){
 
 
 
-    // Critical streaks 2–5.
-    else if(
-        result.criticalStreak >= 2 &&
-        result.criticalStreak <= 5
-    ){
+    // Critical streaks 20-49.
+    else if(result.criticalStreak >= 20){
 
         message.reply(
 
-            `💥 **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+            `${criticalEmojis.text} **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!**`
 
         ).catch(() => {});
 
@@ -1165,14 +2315,32 @@ if(result.critical){
 
 
 
-    // Critical streaks above 5.
-    else if(result.criticalStreak > 5){
+    // Critical streaks 5–19.
+    else if(result.criticalStreak >= 5){
 
         message.reply(
 
-            `🐦‍🔥🔥 **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!** 🔥🐦‍🔥`
+            `${criticalEmojis.text} **${message.author.username} GOT ${result.criticalStreak} CRITICAL STREAKS!!**`
 
         ).catch(() => {});
+
+    }
+
+
+
+    // Critical streaks 2–4. The first critical is intentionally quiet;
+    // announcements begin only once the user reaches two in a row.
+    else if(result.criticalStreak >= 2){
+
+        message.reply(
+
+            `${criticalEmojis.text} **${message.author.username} got ${result.criticalStreak} critical streaks!**`
+
+        ).catch(() => {});
+
+    }
+
+
 
     }
 
@@ -1184,11 +2352,15 @@ if(result.critical){
 else if(result.lostCriticalStreak >= 2){
 
 
+    if(!criticalMessagesMuted){
+
     message.reply(
 
         `💔 **${message.author.username} lost their ${result.lostCriticalStreak}x critical streak!**`
 
     ).catch(() => {});
+
+    }
 
 
 }
@@ -1256,23 +2428,7 @@ let prefix = "";
 
 
 if(result.critical){
-
-    if(result.criticalStreak >= 20){
-
-        prefix = "🧊🥶 ";
-
-    }
-    else{
-
-        prefix =
-            "💥".repeat(
-                Math.min(
-                    result.criticalStreak,
-                    5
-                )
-            ) + " ";
-
-    }
+    prefix = `${getCriticalEmojis(message.guild, result.criticalStreak).text} `;
 
 }
 
@@ -1315,14 +2471,118 @@ async function startBot(){
     await database.initDatabase();
 
 
+    serviceState.databaseReady =
+        true;
+
+
+    const token =
+        String(
+            process.env.TOKEN || ""
+        ).trim();
+
+
+    if(!token){
+
+        throw new Error(
+            "TOKEN is missing. Add the Discord bot token to Render's environment variables."
+        );
+
+    }
+
+
     await client.login(
-        process.env.TOKEN
+        token
     );
 
 }
 
 
+let shutdownStarted =
+    false;
+
+
+function shutdownApplication(
+    reason,
+    exitCode = 0
+){
+
+    if(shutdownStarted){
+        return;
+    }
+
+
+    shutdownStarted =
+        true;
+
+
+    serviceState.shuttingDown =
+        true;
+
+    serviceState.discordReady =
+        false;
+
+
+    console.log(
+        `Mizuki is shutting down (${reason}).`
+    );
+
+
+    try{
+        client.destroy();
+    }
+    catch(error){
+        console.error(
+            "Discord shutdown failed:",
+            error
+        );
+    }
+
+
+    const exit = () => {
+        process.exit(exitCode);
+    };
+
+
+    healthServer.close(exit);
+
+
+    const forcedExit =
+        setTimeout(
+            exit,
+            5000
+        );
+
+
+    forcedExit.unref();
+
+}
+
+
+process.once(
+    "SIGTERM",
+    () => shutdownApplication(
+        "Render sent SIGTERM",
+        0
+    )
+);
+
+
+process.once(
+    "SIGINT",
+    () => shutdownApplication(
+        "SIGINT",
+        0
+    )
+);
+
+
 startBot().catch(error => {
+
+    serviceState.databaseReady =
+        false;
+
+    serviceState.discordReady =
+        false;
 
     console.error(
         "Mizuki could not start:"
@@ -1332,6 +2592,9 @@ startBot().catch(error => {
         error
     );
 
-    process.exitCode = 1;
+    shutdownApplication(
+        "startup failure",
+        1
+    );
 
 });
