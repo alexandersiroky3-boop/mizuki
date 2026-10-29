@@ -88,22 +88,24 @@ const BOSS_CHALLENGES =
             key: "crew",
             number: 1,
             name: "The Crew",
-            requiredLevel: 50,
+            requiredLevel: 100,
             prerequisite: null,
-            bossName: "Mizuki",
+            bossName: "Mizuki (20%)",
             stages: Object.freeze([
-                "thezdrink_early",
-                "shadow_early",
-                "gorjezz_early",
-                "mrnoob_early",
-                "mizuki_early"
+                "challenge_crew_shadow",
+                "challenge_crew_thezdrink",
+                "challenge_crew_gorjezz",
+                "challenge_crew_mrnoob",
+                "challenge_crew_beyondborder",
+                "challenge_crew_kape",
+                "challenge_crew_mizuki"
             ]),
             firstReward:
                 rewardBundle({
-                    xp: 50000000,
+                    xp: 100000000,
                     shards: 20000,
                     chests: [
-                        {tier: "boss", amount: 1}
+                        {tier: "boss", amount: 5}
                     ],
                     boosts: [
                         {
@@ -114,12 +116,12 @@ const BOSS_CHALLENGES =
                         {
                             boostType: "luck",
                             tier: "max",
-                            amount: 5
+                            amount: 15
                         },
                         {
                             boostType: "luck",
                             tier: "tier3",
-                            amount: 5
+                            amount: 30
                         }
                     ]
                 }),
@@ -148,18 +150,21 @@ const BOSS_CHALLENGES =
             key: "arrival",
             number: 2,
             name: "Mrhacker's Arrival",
-            requiredLevel: 100,
+            requiredLevel: 200,
             prerequisite: "crew",
-            bossName: "Mrhacker",
+            bossName: "Mrhacker (with gauntlet)",
             stages: Object.freeze([
-                "mizuki_broken",
-                "beyondborder_early",
-                "kape_gauntlet",
-                "mrhacker_gauntlet"
+                "challenge_arrival_kdc",
+                "challenge_arrival_thezdrink",
+                "challenge_arrival_shadow",
+                "challenge_arrival_beyondborder",
+                "challenge_arrival_kape",
+                "challenge_arrival_mizuki",
+                "challenge_arrival_mrhacker"
             ]),
             firstReward:
                 rewardBundle({
-                    xp: 500000000,
+                    xp: 2000000000,
                     shards: 500000,
                     chests: [
                         {tier: "boss", amount: 1}
@@ -180,7 +185,8 @@ const BOSS_CHALLENGES =
                             tier: "tier3",
                             amount: 25
                         }
-                    ]
+                    ],
+                    unlockFight: true,
                 }),
             repeatReward:
                 rewardBundle({
@@ -212,22 +218,21 @@ const BOSS_CHALLENGES =
             key: "conclusion",
             number: 3,
             name: "Mrhacker's Conclusion",
-            requiredLevel: 200,
+            requiredLevel: 300,
             prerequisite: "arrival",
-            bossName: "beyondborder_08386",
+            bossName: "beyondborder_08386 (with gauntlet)",
             stages: Object.freeze([
-                "kape_aftermath",
-                "thezdrink_aftermath",
-                "gorjezz_aftermath",
-                "shadow_aftermath",
-                "thezdrink_conclusion",
-                "mrhacker_conclusion",
-                "frampto",
-                "beyondborder_conclusion"
+                "challenge_conclusion_kape",
+                "challenge_conclusion_gorjezz",
+                "challenge_conclusion_shadow",
+                "challenge_conclusion_thezdrink",
+                "challenge_conclusion_mrhacker",
+                "challenge_conclusion_frampto",
+                "challenge_conclusion_beyondborder"
             ]),
             firstReward:
                 rewardBundle({
-                    xp: 2000000000,
+                    xp: 10000000000,
                     shards: 2000000,
                     chests: [
                         {tier: "boss", amount: 1}
@@ -249,7 +254,6 @@ const BOSS_CHALLENGES =
                             amount: 50
                         }
                     ],
-                    unlockFight: true,
                     freeUpgradeTokens: 1
                 }),
             repeatReward:
