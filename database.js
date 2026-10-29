@@ -4553,6 +4553,36 @@ for(const item of Object.values(SHOP_CATALOG)){
 
 
 
+async function installBossRosterMigration(){
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS boss_roster_migrations (
+            version TEXT PRIMARY KEY,
+            appliedAt BIGINT NOT NULL
+        )
+    `);
+    // One atomic migration: old stage indices refer to different enemies.
+    // Preserve completions, unlocks, rewards, balances and spawn cooldowns.
+    // Expiry lets the existing cleanup remove private channels safely.
+    await db.query(`
+        WITH applied AS (
+            INSERT INTO boss_roster_migrations(version, appliedAt)
+            VALUES('separate-rosters-20261029', $1::BIGINT)
+            ON CONFLICT DO NOTHING RETURNING version
+        ), reset_progress AS (
+            UPDATE boss_challenge_progress
+            SET stageIndex=0, active=FALSE, updatedAt=$1::BIGINT
+            WHERE EXISTS(SELECT 1 FROM applied) RETURNING userID
+        ), expire_battles AS (
+            UPDATE boss_challenge_battles
+            SET expiresAt=LEAST(expiresAt, $1::BIGINT)
+            WHERE EXISTS(SELECT 1 FROM applied) RETURNING userID
+        )
+        UPDATE raid_boss_state
+        SET expiresAt=LEAST(expiresAt, $1::BIGINT)
+        WHERE EXISTS(SELECT 1 FROM applied)
+    `, [Date.now()]);
+}
+
 async function initDatabase() {
 
     let attempt =
@@ -4572,6 +4602,7 @@ async function initDatabase() {
 
             await createTables();
             await installMultiLimits();
+            await installBossRosterMigration();
 
 
             console.log(
@@ -9863,11 +9894,14 @@ async function applyBossRewardBundle(
     const nextHugRepeat =
         bundle?.nextHugRepeat;
 
+    const guaranteedJackpots = Math.max(0, Math.floor(Number(bundle?.guaranteedJackpots) || 0));
+
 
     if(
         timedAllCommands
         || timedRoll
         || nextHugRepeat
+        || guaranteedJackpots > 0
     ){
 
         await client.query(`
@@ -9883,6 +9917,15 @@ async function applyBossRewardBundle(
 
     }
 
+
+    if(guaranteedJackpots > 0){
+        // Uses the existing 100M minimum / jackpot queue, not a multi-roll burst.
+        await client.query(`
+            UPDATE quest_effects
+            SET guaranteed100m=guaranteed100m+$3::INTEGER
+            WHERE guildID=$1 AND userID=$2
+        `, [normalizedGuildID, normalizedUserID, guaranteedJackpots]);
+    }
 
     if(timedAllCommands){
 
@@ -10973,6 +11016,79 @@ async function completeBossChallengeEnemy({
             rewardBundle
         };
 
+    }
+    catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }
+    finally{
+        client.release();
+    }
+
+}
+
+
+// Reset every player's personal boss-challenge route in one guild.
+// Keep unrelated boss entitlements and already-earned rewards intact.
+async function resetBossChallengesForGuild(guildID){
+
+    const normalizedGuildID = String(guildID);
+    const client = await db.connect();
+
+    try{
+        await client.query("BEGIN");
+
+        const battleResult = await client.query(`
+            SELECT
+                guildID AS "guildID",
+                userID AS "userID",
+                challengeKey AS "challengeKey",
+                stageIndex AS "stageIndex",
+                bossScope AS "bossScope",
+                channelID AS "channelID",
+                messageID AS "messageID",
+                spawnedAt AS "spawnedAt",
+                expiresAt AS "expiresAt"
+            FROM boss_challenge_battles
+            WHERE guildID=$1
+            FOR UPDATE
+        `, [normalizedGuildID]);
+
+        const progressResult = await client.query(`
+            DELETE FROM boss_challenge_progress
+            WHERE guildID=$1
+            RETURNING userID AS "userID", challengeKey AS "challengeKey"
+        `, [normalizedGuildID]);
+
+        await client.query(`
+            DELETE FROM boss_challenge_battles
+            WHERE guildID=$1
+        `, [normalizedGuildID]);
+
+        // !fight is unlocked by clearing Challenge #3, so remove that
+        // challenge-derived unlock while preserving other entitlements.
+        await client.query(`
+            UPDATE boss_entitlements
+            SET fightUnlocked=FALSE, updatedAt=$2
+            WHERE guildID=$1 AND fightUnlocked=TRUE
+        `, [normalizedGuildID, Date.now()]);
+
+        await client.query("COMMIT");
+
+        return {
+            progressRows: progressResult.rowCount || 0,
+            battles: battleResult.rows.map(row => ({
+                guildID: String(row.guildID ?? row.guildid ?? normalizedGuildID),
+                userID: String(row.userID ?? row.userid ?? ""),
+                challengeKey: String(row.challengeKey ?? row.challengekey ?? ""),
+                stageIndex: Math.max(0, Number(row.stageIndex ?? row.stageindex) || 0),
+                bossScope: String(row.bossScope ?? row.bossscope ?? ""),
+                channelID: String(row.channelID ?? row.channelid ?? ""),
+                messageID: row.messageID ?? row.messageid ?? null,
+                spawnedAt: Math.max(0, Number(row.spawnedAt ?? row.spawnedat) || 0),
+                expiresAt: Math.max(0, Number(row.expiresAt ?? row.expiresat) || 0)
+            }))
+        };
     }
     catch(error){
         await client.query("ROLLBACK");
@@ -22992,6 +23108,8 @@ module.exports = {
     expireBossChallengeBattles,
 
     completeBossChallengeEnemy,
+
+    resetBossChallengesForGuild,
 
     isFightUnlocked,
 
