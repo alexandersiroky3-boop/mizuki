@@ -4,375 +4,21 @@ const bossChallenges = require("./bossChallenges");
 
 
 const BOSS_DURATION_MS =
-    60 * 60 * 1000;
+    60 * 60 * 2 * 1000;
 
 const RAID_BOSS_SPAWN_COOLDOWN_MS =
     4 * 60 * 60 * 1000;
 
 const ACTIVITY_WINDOW_MS =
-    10 * 60 * 1000;
+    10 * 60 * 2 * 1000;
 
 const MINIMUM_ACTIVE_USERS =
     2;
 
 
-const ADVANTAGE_NAMES =
-    Object.freeze({
-        chatting_immunity:
-            "Chatting Immunity",
-        critical_immunity:
-            "Critical Immunity",
-        regeneration:
-            "Regeneration",
-        commands_immunity:
-            "Commands Immunity",
-        commands_immortality:
-            "Commands Immortality",
-        rolling_immunity:
-            "Rolling Immunity",
-        degeneration:
-            "Degeneration",
-        power:
-            "Power",
-        durability:
-            "Durability",
-        xp_immortality:
-            "XP Immortality",
-        fury:
-            "Fury",
-        precision:
-            "Precision"
-    });
-
-
-function advantage(
-    key,
-    mastered = false
-){
-
-    return Object.freeze({
-        key,
-        name:
-            ADVANTAGE_NAMES[key],
-        mastered:
-            Boolean(mastered)
-    });
-
-}
-
-
-const RAID_BOSSES =
-    Object.freeze([
-        Object.freeze({
-            key: "mrhacker_gauntlet",
-            name: "Mrhacker (with gauntlet)",
-            act: "Mrhacker's act",
-            overall: 12135928,
-            hp: 78125009,
-            chancePercent: 0.3,
-            advantages: Object.freeze([
-                advantage("xp_immortality"),
-                advantage("chatting_immunity", true),
-                advantage("critical_immunity", true),
-                advantage("rolling_immunity", true),
-                advantage("degeneration"),
-                advantage("power", true),
-                advantage("durability", true),
-                advantage("precision")
-            ]),
-            info:
-                "Extremely powerful and tanky noob. Fulfilled his destiny by snapping with Kape's gauntlet, making him one of the strongest noobs in history."
-        }),
-        Object.freeze({
-            key: "mrnoob_early",
-            name: "Mrnoob",
-            act: "Early act",
-            overall: 1502169,
-            hp: 12125009,
-            chancePercent: 0.75,
-            advantages: Object.freeze([
-                advantage("power"),
-                advantage("chatting_immunity"),
-                advantage("rolling_immunity")
-            ]),
-            info:
-                "A strong noob with undeniable potential."
-        }),
-        Object.freeze({
-            key: "mizuki_broken",
-            name: "Mizuki (broken)",
-            act: "Mrhacker's act",
-            overall: 4857021,
-            hp: 26679325,
-            chancePercent: 0.9,
-            advantages: Object.freeze([
-                advantage("chatting_immunity"),
-                advantage("critical_immunity"),
-                advantage("commands_immortality", true),
-                advantage("regeneration", true),
-                advantage("power"),
-                advantage("fury")
-            ]),
-            info:
-                "Broken Kape's bot who's now running under her own commands and will. Her powers were greatly boosted by Mrhacker."
-        }),
-        Object.freeze({
-            key: "mizuki_early",
-            name: "Mizuki",
-            act: "Early act",
-            overall: 2709993,
-            hp: 18148715,
-            chancePercent: 2,
-            advantages: Object.freeze([
-                advantage("critical_immunity"),
-                advantage("commands_immortality"),
-                advantage("power")
-            ]),
-            info:
-                "Kape's bot whose sole purpose is to entertain beings and act as a peaceful human being. A bot holding part of Kape's power, making her truly strong."
-        }),
-        Object.freeze({
-            key: "kape_gauntlet",
-            name: "Kape (with gauntlet)",
-            act: "Early act",
-            overall: 10992514,
-            hp: 121423890,
-            chancePercent: 0.5,
-            advantages: Object.freeze([
-                advantage("chatting_immunity", true),
-                advantage("critical_immunity", true),
-                advantage("commands_immortality", true),
-                advantage("regeneration", true),
-                advantage("degeneration"),
-                advantage("durability", true),
-                advantage("fury", true)
-            ]),
-            info:
-                "The third chosen administrator with unfathomable power. Extremely powerful and tanky—an administrator who can do almost anything with the world."
-        }),
-        Object.freeze({
-            key: "kape_aftermath",
-            name: "Kape",
-            act: "Aftermath of Mrhacker's act",
-            overall: 3156290,
-            hp: 56045845,
-            chancePercent: 1,
-            advantages: Object.freeze([
-                advantage("critical_immunity"),
-                advantage("rolling_immunity"),
-                advantage("durability", true),
-                advantage("fury")
-            ]),
-            info:
-                "The failed administrator who lost his admin powers, making him touchable like a human—but still a powerful and tanky being."
-        }),
-        Object.freeze({
-            key: "thezdrink_aftermath",
-            name: "thezdrink",
-            act: "Aftermath of Mrhacker's act",
-            overall: 1148223,
-            hp: 10364352,
-            chancePercent: 1,
-            advantages: Object.freeze([
-                advantage("power"),
-                advantage("durability"),
-                advantage("fury")
-            ]),
-            info:
-                "One of the core crew members. He thinks he failed to stop Mrhacker, so his anger made him tankier than before. Thezdrink swore revenge."
-        }),
-        Object.freeze({
-            key: "thezdrink_early",
-            name: "thezdrink",
-            act: "Early act",
-            overall: 1473879,
-            hp: 8538040,
-            chancePercent: 3,
-            advantages: Object.freeze([
-                advantage("rolling_immunity"),
-                advantage("power"),
-                advantage("durability")
-            ]),
-            info:
-                "One of the core crew members, driven toward greater power. He is strong and calculating."
-        }),
-        Object.freeze({
-            key: "gorjezz_aftermath",
-            name: "gorjezz",
-            act: "Aftermath of Mrhacker's act",
-            overall: 3235195,
-            hp: 4405123,
-            chancePercent: 1,
-            advantages: Object.freeze([
-                advantage("commands_immunity"),
-                advantage("power"),
-                advantage("durability"),
-                advantage("precision")
-            ]),
-            info:
-                "One of the core crew members. She's angry at Mrhacker after what he did; 0.000001% of her power has been unleashed."
-        }),
-        Object.freeze({
-            key: "gorjezz_early",
-            name: "gorjezz",
-            act: "Early act",
-            overall: 4824913,
-            hp: 2825013,
-            chancePercent: 5,
-            advantages: Object.freeze([
-                advantage("commands_immunity"),
-                advantage("power"),
-                advantage("durability", true),
-                advantage("precision")
-            ]),
-            info:
-                "One of the core crew members. She's angry at Mrhacker after what he did; 0.000001% of her power has been unleashed."
-        }),
-        Object.freeze({
-            key: "beyondborder_aftermath",
-            name: "beyondborder_08386",
-            act: "Aftermath of Mrhacker's act",
-            overall: 5790148,
-            hp: 128903120,
-            chancePercent: 0.2,
-            advantages: Object.freeze([
-                advantage("precision", true)
-            ]),
-            info:
-                "One of the core crew members. He swore that Mrhacker will be killed for the consequences of what Mrhacker did."
-        }),
-        Object.freeze({
-            key: "beyondborder_early",
-            name: "beyondborder_08386",
-            act: "Early act",
-            overall: 8923067,
-            hp: 253189724,
-            chancePercent: 0.4,
-            advantages: Object.freeze([
-                advantage("precision")
-            ]),
-            info:
-                "One of the core crew members—cold and calculating, with extremely strong endurance."
-        }),
-        Object.freeze({
-            key: "shadow_aftermath",
-            name: "shadow067972",
-            act: "Aftermath of Mrhacker's act",
-            overall: 746914,
-            hp: 954003,
-            chancePercent: 2.5,
-            advantages: Object.freeze([
-                advantage("power")
-            ]),
-            info:
-                "One of the core crew members. He always liked Mrhacker, but after what happened, he senses Mrhacker did something both right and wrong. Maybe Mrhacker was right all along."
-        }),
-        Object.freeze({
-            key: "shadow_early",
-            name: "shadow067972",
-            act: "Early act",
-            overall: 1092326,
-            hp: 1442992,
-            chancePercent: 1,
-            advantages: Object.freeze([
-                advantage("power")
-            ]),
-            info:
-                "One of the core crew members—a strong one, with undisputed potential waiting to be unlocked."
-        })
-    ]);
-
-
-// These three opponents belong only to Challenge #3. They are deliberately
-// excluded from RAID_BOSSES so normal chat can never spawn them globally.
-const CHALLENGE_ONLY_BOSSES =
-    Object.freeze([
-        Object.freeze({
-            key: "mrhacker_conclusion",
-            name: "Mrhacker (with gauntlet)",
-            act: "Mrhacker's Conclusion Act",
-            overall: 25754023,
-            hp: 489103754,
-            chancePercent: 0,
-            challengeOnly: true,
-            advantages: Object.freeze([
-                advantage("chatting_immunity", true),
-                advantage("critical_immunity", true),
-                advantage("rolling_immunity", true),
-                advantage("regeneration"),
-                advantage("degeneration"),
-                advantage("power", true),
-                advantage("durability", true),
-                advantage("xp_immortality"),
-                advantage("precision", true)
-            ]),
-            info:
-                "Mrhacker at the conclusion of his act, wielding the completed overheated gauntlet while the crew makes its final stand."
-        }),
-        Object.freeze({
-            key: "thezdrink_conclusion",
-            name: "thezdrink",
-            act: "Mrhacker's Conclusion Act",
-            overall: 8954004,
-            hp: 92458085,
-            chancePercent: 0,
-            challengeOnly: true,
-            advantages: Object.freeze([
-                advantage("fury", true),
-                advantage("power"),
-                advantage("durability", true),
-                advantage("precision", true)
-            ]),
-            info:
-                "A furious conclusion-act version of thezdrink. He overcame his limits and will do whatever he must to stop and kill Mrhacker."
-        }),
-        Object.freeze({
-            key: "frampto",
-            name: "Frampto",
-            act: "Mrhacker's Conclusion Act",
-            overall: 29592842,
-            hp: 780289492,
-            chancePercent: 0,
-            challengeOnly: true,
-            advantages: Object.freeze([
-                advantage("commands_immortality", true),
-                advantage("chatting_immunity", true),
-                advantage("critical_immunity", true),
-                advantage("power", true),
-                advantage("degeneration"),
-                advantage("precision", true)
-            ]),
-            info:
-                "The Great Leader's right-hand man and second chosen administrator. Frampto was sent to end the multiversal threat himself."
-        }),
-        Object.freeze({
-            key: "beyondborder_conclusion",
-            name: "beyondborder_08386",
-            act: "Mrhacker's Conclusion Act",
-            overall: 30394029,
-            hp: 1000000000,
-            chancePercent: 0,
-            challengeOnly: true,
-            advantages: Object.freeze([
-                advantage("critical_immunity", true),
-                advantage("xp_immortality", true),
-                advantage("precision", true)
-            ]),
-            info:
-                "The final survivor of the conclusion, carrying every Infinity Stone and the will to finish the battle regardless of the cost."
-        })
-    ]);
-
-
-const RAID_BOSS_BY_KEY =
-    new Map(
-        [
-            ...RAID_BOSSES,
-            ...CHALLENGE_ONLY_BOSSES
-        ].map(
-            boss => [boss.key, boss]
-        )
-    );
+const {ADVANTAGE_NAMES, RAID_BOSSES, CHALLENGE_BOSSES, RAID_REWARDS} = require("./bossRoster");
+const CHALLENGE_ONLY_BOSSES = CHALLENGE_BOSSES;
+const BOSS_BY_KEY = new Map([...RAID_BOSSES, ...CHALLENGE_BOSSES].map(boss => [boss.key, boss]));
 
 
 const HOUR_MS =
@@ -427,388 +73,47 @@ function rewardBoost(
 }
 
 
-function randomRewardInteger(
-    minimum,
-    maximum,
-    random = Math.random
-){
-    return Math.floor(
-        Math.max(0, Math.min(0.999999999, Number(random()) || 0))
-        * (maximum - minimum + 1)
-    ) + minimum;
+function getRaidRewardTier(definition){
+    // Kept for callers displaying a broad tier. Rewards are now boss-specific.
+    return definition?.category === "raid" ? "apex" : "challenge";
 }
 
-
-function addRaidChestAndShards(
-    definition,
-    topThree,
-    bundle,
-    random = Math.random
-){
-    bundle = require("../utils/multiLimits").normalizeRewards(bundle);
-    const tier = getRaidRewardTier(definition);
-    const ranges = {
-        minor: topThree ? [180, 320] : [100, 220],
-        standard: topThree ? [300, 500] : [180, 350],
-        elite: topThree ? [500, 750] : [300, 550],
-        apex: topThree ? [700, 1000] : [450, 750]
-    }[tier];
-
+function rollRaidRewardBundle(definition, topThree, random = Math.random){
+    const config = RAID_REWARDS[definition?.key]?.[topThree ? "top" : "rest"];
+    if(!config) throw new Error("No raid rewards configured for " + definition?.key);
     return {
-        ...bundle,
-        shards: randomRewardInteger(ranges[0], ranges[1], random),
-        chests: [
-            ...(
-                Array.isArray(bundle?.chests)
-                    ? bundle.chests
-                    : []
-            ),
-            {tier: "boss", amount: 1}
-        ]
+        shards: config.shards,
+        chests: [{tier: "boss", amount: 1}],
+        boosts: (config.boosts || []).map(([type, tier, amounts]) =>
+            rewardBoost(type, tier, pickRewardOption(amounts, random))),
+        freeUpgradeTokens: config.freeUpgradeTokens || 0,
+        guaranteedJackpots: config.guaranteedJackpots || 0,
+        ...(config.multiHours ? {
+            timedAllCommands: {
+                extraCount: 2, // 3 TOTAL executions, never four.
+                durationMs: pickRewardOption(config.multiHours, random) * HOUR_MS
+            }
+        } : {})
     };
 }
 
-
-function getRaidRewardTier(definition){
-
-    const overall =
-        Math.max(
-            0,
-            Number(definition?.overall) || 0
-        );
-
-
-    if(overall > 6000000){
-        return "apex";
-    }
-
-    if(overall > 3000000){
-        return "elite";
-    }
-
-    if(overall > 1200000){
-        return "standard";
-    }
-
-
-    return "minor";
-
-}
-
-
-function rollRaidRewardBundle(
-    definition,
-    topThree,
-    random = Math.random
-){
-
-    if(definition.key === "mrhacker_gauntlet"){
-
-        if(topThree){
-            return addRaidChestAndShards(definition, topThree, {
-                boosts: [
-                    rewardBoost(
-                        "luck",
-                        "omega",
-                        pickRewardOption([1, 2], random)
-                    ),
-                    rewardBoost(
-                        "xp",
-                        "infinity",
-                        pickRewardOption([3, 4], random)
-                    ),
-                    rewardBoost(
-                        "rune",
-                        "tier3",
-                        pickRewardOption([15, 25], random)
-                    )
-                ],
-                timedAllCommands: {
-                    extraCount:
-                        pickRewardOption([6, 9], random),
-                    durationMs:
-                        pickRewardOption([6, 8], random) * HOUR_MS
-                }
-            }, random);
-        }
-
-
-        return addRaidChestAndShards(definition, topThree, {
-            boosts: [
-                rewardBoost(
-                    "luck",
-                    "max",
-                    pickRewardOption([10, 15], random)
-                ),
-                rewardBoost(
-                    "xp",
-                    "max",
-                    pickRewardOption([10, 20], random)
-                ),
-                rewardBoost(
-                    "rune",
-                    "tier2",
-                    pickRewardOption([30, 50, 75], random)
-                )
-            ],
-            timedRoll: {
-                extraCount: 3,
-                durationMs:
-                    pickRewardOption([4, 6], random) * HOUR_MS
-            }
-        }, random);
-
-    }
-
-
-    if(definition.key === "mrnoob_early"){
-
-        if(topThree){
-            return addRaidChestAndShards(definition, topThree, {
-                boosts: [
-                    rewardBoost(
-                        "luck",
-                        "max",
-                        pickRewardOption([10, 12], random)
-                    ),
-                    rewardBoost(
-                        "rune",
-                        "tier3",
-                        5
-                    )
-                ],
-                nextHugRepeat: {
-                    extraCount: 3,
-                    uses: 1
-                }
-            }, random);
-        }
-
-
-        return addRaidChestAndShards(definition, topThree, {
-            boosts: [
-                rewardBoost(
-                    "luck",
-                    "max",
-                    pickRewardOption([3, 5], random)
-                ),
-                rewardBoost(
-                    "xp",
-                    "max",
-                    pickRewardOption([10, 20], random)
-                ),
-                rewardBoost(
-                    "rune",
-                    "tier2",
-                    5
-                )
-            ],
-            timedRoll: {
-                extraCount: 1,
-                durationMs:
-                    pickRewardOption([2, 3], random) * HOUR_MS
-            }
-        }, random);
-
-    }
-
-
-    const tier =
-        getRaidRewardTier(definition);
-
-
-    const configurations = {
-        minor: {
-            top: {
-                luckMax: [3, 5],
-                xpMax: [2, 4],
-                runeThree: [1, 2]
-            },
-            rest: {
-                luckThree: [4, 6],
-                xpTwo: [5, 8],
-                runeTwo: [3, 5]
-            }
-        },
-        standard: {
-            top: {
-                luckMax: [6, 8],
-                xpMax: [4, 6],
-                runeThree: [2, 4],
-                rollExtra: [2, 3],
-                hours: [2, 3]
-            },
-            rest: {
-                luckMax: [2, 4],
-                xpMax: [3, 5],
-                runeTwo: [8, 12]
-            }
-        },
-        elite: {
-            top: {
-                omega: [1],
-                infinity: [1, 2],
-                runeThree: [5, 8],
-                commandExtra: [3, 4],
-                hours: [3, 4]
-            },
-            rest: {
-                luckMax: [5, 8],
-                xpMax: [6, 10],
-                runeTwo: [15, 25],
-                rollExtra: [2],
-                hours: [2, 3]
-            }
-        },
-        apex: {
-            top: {
-                omega: [1, 2],
-                infinity: [2, 3],
-                runeThree: [8, 12],
-                commandExtra: [4, 6],
-                hours: [4, 6]
-            },
-            rest: {
-                luckMax: [8, 12],
-                xpMax: [8, 15],
-                runeTwo: [25, 40, 60],
-                rollExtra: [3],
-                hours: [3, 5]
-            }
-        }
-    }[tier];
-
-    const selected =
-        topThree
-            ? configurations.top
-            : configurations.rest;
-
-    const boosts = [];
-
-
-    for(const [field, type, boostTier] of [
-        ["luckThree", "luck", "tier3"],
-        ["luckMax", "luck", "max"],
-        ["omega", "luck", "omega"],
-        ["xpTwo", "xp", "tier2"],
-        ["xpMax", "xp", "max"],
-        ["infinity", "xp", "infinity"],
-        ["runeTwo", "rune", "tier2"],
-        ["runeThree", "rune", "tier3"]
-    ]){
-
-        if(selected[field]){
-            boosts.push(
-                rewardBoost(
-                    type,
-                    boostTier,
-                    pickRewardOption(
-                        selected[field],
-                        random
-                    )
-                )
-            );
-        }
-
-    }
-
-
-    const bundle = {boosts};
-
-
-    if(selected.commandExtra){
-        bundle.timedAllCommands = {
-            extraCount:
-                pickRewardOption(
-                    selected.commandExtra,
-                    random
-                ),
-            durationMs:
-                pickRewardOption(
-                    selected.hours,
-                    random
-                ) * HOUR_MS
-        };
-    }
-    else if(selected.rollExtra){
-        bundle.timedRoll = {
-            extraCount:
-                pickRewardOption(
-                    selected.rollExtra,
-                    random
-                ),
-            durationMs:
-                pickRewardOption(
-                    selected.hours,
-                    random
-                ) * HOUR_MS
-        };
-    }
-
-
-    return addRaidChestAndShards(
-        definition,
-        topThree,
-        bundle,
-        random
-    );
-
-}
-
-
 function getRaidRewardPreview(definition){
-
-    if(definition?.key === "mrhacker_gauntlet"){
-        return {
-            top:
-                "1–2x Luck Ω • 3–4x XP Boost ထ • 15–25x Power Rune III • 3 total executions per command for 6/8 hours",
-            rest:
-                "10–15x Luck MAX • 10–20x XP Boost MAX • 30/50/75x Power Rune II • 3 total rolls for 4/6 hours"
-        };
-    }
-
-
-    if(definition?.key === "mrnoob_early"){
-        return {
-            top:
-                "10–12x Luck MAX • 5x Power Rune III • next !hug performs 3 total hugs",
-            rest:
-                "3–5x Luck MAX • 10–20x XP Boost MAX • 5x Power Rune II • +1 roll for 2/3 hours"
-        };
-    }
-
-
-    const tier =
-        getRaidRewardTier(definition);
-
-
-    return {
-        minor: {
-            top:
-                "3–5x Luck MAX • 2–4x XP Boost MAX • 1–2x Power Rune III",
-            rest:
-                "4–6x Luck III • 5–8x XP Boost II • 3–5x Power Rune II"
-        },
-        standard: {
-            top:
-                "6–8x Luck MAX • 4–6x XP Boost MAX • 2–4x Power Rune III • 3 total rolls for 2/3 hours",
-            rest:
-                "2–4x Luck MAX • 3–5x XP Boost MAX • 8–12x Power Rune II"
-        },
-        elite: {
-            top:
-                "1x Luck Ω • 1–2x XP Boost ထ • 5–8x Power Rune III • 3 total executions per command for 3/4 hours",
-            rest:
-                "5–8x Luck MAX • 6–10x XP Boost MAX • 15–25x Power Rune II • +2 rolls for 2/3 hours"
-        },
-        apex: {
-            top:
-                "1–2x Luck Ω • 2–3x XP Boost ထ • 8–12x Power Rune III • 3 total executions per command for 4/6 hours",
-            rest:
-                "8–12x Luck MAX • 8–15x XP Boost MAX • 25/40/60x Power Rune II • 3 total rolls for 3/5 hours"
-        }
-    }[tier];
-
+    const rewards = RAID_REWARDS[definition?.key];
+    if(!rewards) return {top: "No raid rewards", rest: "No raid rewards"};
+    const labels = {
+        "luck:omega": "Luck Ω", "luck:max": "Luck MAX", "luck:tier3": "Luck III",
+        "xp:infinity": "XP Boost ထ", "xp:max": "XP Boost MAX", "rune:tier3": "Power Rune III"
+    };
+    const format = config => [
+        ...(config.boosts || []).map(([type, tier, values]) =>
+            values.join("/") + "x " + labels[type + ":" + tier]),
+        ...(config.guaranteedJackpots ? ["1 guaranteed jackpot roll"] : []),
+        ...(config.multiHours ? ["3 total executions per command for " + config.multiHours.join("/") + " hours"] : []),
+        ...(config.freeUpgradeTokens ? ["1 free upgrade"] : []),
+        "1 Boss Chest",
+        config.shards.toLocaleString("en-US") + " shards"
+    ].join(" • ");
+    return {top: format(rewards.top), rest: format(rewards.rest)};
 }
 
 
@@ -821,10 +126,14 @@ function formatRaidRewardBundle(bundle){
 
     const extras = [];
 
+    if(bundle?.guaranteedJackpots){
+        extras.push(`${bundle.guaranteedJackpots} guaranteed jackpot roll`);
+    }
+
 
     if(bundle?.timedAllCommands){
         extras.push(
-            `+${bundle.timedAllCommands.extraCount} all-command repeats for ${Math.round(bundle.timedAllCommands.durationMs / HOUR_MS)}h`
+            `${1 + bundle.timedAllCommands.extraCount} total executions per command for ${Math.round(bundle.timedAllCommands.durationMs / HOUR_MS)}h`
         );
     }
 
@@ -863,6 +172,8 @@ async function distributeRaidBossRewards(
     if(!definition || spawnedAt <= 0){
         return [];
     }
+
+    if(definition.category !== "raid") return [];
 
 
     const contributions =
@@ -966,7 +277,7 @@ function getBossDefinition(bossOrKey){
             : bossOrKey?.bossKey;
 
 
-    return RAID_BOSS_BY_KEY.get(
+    return BOSS_BY_KEY.get(
         String(key || "")
     ) || null;
 
@@ -1133,21 +444,24 @@ function getRegenerationPerSecond(
 
     const fixedHealing =
         regeneration.mastered
-            ? 25000
-            : 20000;
+            ? 1500
+            : 1000;
 
     const overallRate =
         regeneration.mastered
-            ? 0.0125
-            : 0.01;
+            ? 0.0003
+            : 0.0002;
 
 
     return Math.max(
         1,
         Math.floor(
-            fixedHealing +
-            boss.overall *
-                overallRate
+            Math.min(
+                fixedHealing + boss.overall * overallRate,
+                // Per-activation limit: 0.5% / 1% of BASE HP.
+                definition.hp * (regeneration.mastered ? 0.01 : 0.005)
+                    / (regeneration.mastered ? 20 : 15)
+            )
         )
     );
 
@@ -1626,7 +940,7 @@ async function createChallengeBossState(
         );
 
 
-    if(!definition){
+    if(!definition || definition.category !== "challenge"){
         throw new Error(
             `Unknown challenge boss: ${bossKey}`
         );
@@ -2123,31 +1437,15 @@ async function applyDamageLocked(
 
 
     if(degeneration){
-
-        baseDamage =
-            Math.max(
-                0,
-                Math.floor(
-                    Number(
-                        attack.xpWithoutLuck
-                    ) || 0
-                )
-            );
-
-        isCritical =
-            Boolean(
-                attack.criticalWithoutLuck
-            );
-
-
-        if(degeneration.mastered){
-            baseDamage =
-                Math.floor(
-                    baseDamage *
-                    0.85
-                );
-        }
-
+        // Retain XP boosts and 75% (mastered: 65%) of luck-derived damage.
+        // Never increase a hit when its neutral estimate is larger.
+        const neutralDamage = attack.xpWithoutLuck == null
+            ? baseDamage
+            : Math.max(0, Number(attack.xpWithoutLuck) || 0);
+        const luckBonus = Math.max(0, baseDamage - neutralDamage);
+        baseDamage = Math.max(0, Math.floor(
+            baseDamage - luckBonus * (degeneration.mastered ? 0.35 : 0.25)
+        ));
     }
 
 
@@ -2309,22 +1607,26 @@ async function applyDamageLocked(
         ||
         attack.source === "roll";
 
-    const commandsImmortality =
-        isCommand
-            ? getAdvantage(
-                definition,
-                "commands_immortality"
-            )
-            : null;
+    // Immortality blocks only its own damage source. If both chat defenses
+    // apply, use the strongest once rather than double-healing a critical.
+    const sourceImmortality = (isCommand
+        ? [getAdvantage(definition, "commands_immortality")]
+        : attack.source === "chat"
+            ? [
+                getAdvantage(definition, "chatting_immortality"),
+                isCritical ? getAdvantage(definition, "critical_immortality") : null
+            ]
+            : []
+    ).filter(Boolean).sort((a, b) => Number(b.mastered) - Number(a.mastered))[0];
 
 
-    if(commandsImmortality){
+    if(sourceImmortality){
 
         let healed =
             0;
 
 
-        if(commandsImmortality.mastered){
+        if(sourceImmortality.mastered){
 
             const oldHP =
                 boss.currentHP;
@@ -2370,9 +1672,9 @@ async function applyDamageLocked(
             dodged: false,
             defeated: false,
             events: [{
-                type: "commands_immortality",
+                type: sourceImmortality.key,
                 mastered:
-                    commandsImmortality.mastered
+                    sourceImmortality.mastered
             }]
         };
 
@@ -2392,14 +1694,14 @@ async function applyDamageLocked(
                     definition,
                     "chatting_immunity"
                 ),
-                0.5,
-                0.6
+                0.25,
+                0.35
             );
 
     }
 
 
-    if(isCritical){
+    if(attack.source === "chat" && isCritical){
 
         damageMultiplier *=
             1 -
@@ -2408,8 +1710,8 @@ async function applyDamageLocked(
                     definition,
                     "critical_immunity"
                 ),
-                0.7,
-                0.8
+                0.35,
+                0.45
             );
 
     }
@@ -2572,11 +1874,11 @@ async function applyDamageLocked(
 
         stateData.regenerationActiveUntil =
             now +
-            60 * 1000;
+            (regeneration.mastered ? 20 : 15) * 1000;
 
         stateData.regenerationCooldownUntil =
             now +
-            5 * 60 * 1000;
+            10 * 60 * 1000;
 
         stateData.regenerationLastTickAt =
             now;
@@ -3459,6 +2761,7 @@ module.exports = {
     ADVANTAGE_NAMES,
     RAID_BOSSES,
     CHALLENGE_ONLY_BOSSES,
+    CHALLENGE_BOSSES,
     getBossDefinition,
     getAdvantage,
     hasAdvantage,
