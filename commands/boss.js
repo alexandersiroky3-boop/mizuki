@@ -130,7 +130,7 @@ function formatAdvantages(definition){
         .map(entry =>
             `• ${entry.name}${entry.mastered ? " **(mastered)**" : ""}`
         )
-        .join("\n");
+        .join("\n") || "None";
 }
 
 
@@ -144,6 +144,8 @@ function getAdvantageRuntimeStatus(boss, advantage, now = Date.now()){
     const passive = new Set([
         "chatting_immunity",
         "critical_immunity",
+        "chatting_immortality",
+        "critical_immortality",
         "commands_immunity",
         "commands_immortality",
         "rolling_immunity",
@@ -197,7 +199,7 @@ function formatAdvantageStatuses(boss, definition, now = Date.now()){
                 advantage.mastered ? " *(mastered)*" : ""
             } — ${getAdvantageRuntimeStatus(boss, advantage, now)}`
         )
-        .join("\n");
+        .join("\n") || "None";
 }
 
 
@@ -258,7 +260,7 @@ function buildBossEmbed(guild, boss, options = {}){
                 name:
                     `${resolveGuildEmoji(guild, "boss_chest", ":boss_chest:")} Raid extras`,
                 value:
-                    "Every eligible damage contributor also receives **1 Boss Chest** and a tier-scaled reward of **hundreds of boss shards**."
+                    "The rewards above already include **exactly 1 Boss Chest** and this boss's shard reward per eligible damage contributor."
             },
             {
                 name: "Timer",
@@ -298,7 +300,7 @@ function buildNoBossEmbed(options = {}){
         .setTitle("⚔️ RAID BOSS")
         .setDescription(
             "There is **no active global raid boss** right now.\n\n"
-            + "A spawn can be rolled only after at least **2 different users** earn chat XP within **10 minutes**."
+            + "The **6 raid bosses** have a combined **1.25% chance per eligible chat-XP reward**, after the **4-hour natural-spawn cooldown** and activity from **2 users within 10 minutes**. Challenge Bosses never spawn here."
             + challengeHint
         )
         .addFields({
@@ -854,7 +856,7 @@ function buildInfoEmbeds(){
         .addFields(
             {
                 name: "Global spawning",
-                value: "At least **2 different users** must earn chat XP during the last **10 minutes**. Every new eligible chat-XP reward can then spawn one boss. Only one global raid can exist at a time."
+                value: "Only the **6 RAID BOSSES** can spawn globally; the **21 Challenge Bosses** never enter this pool. After the **4-hour natural-spawn cooldown**, at least **2 users** must earn chat XP within 10 minutes. Each eligible chat reward then rolls the listed spawn chances (1.25% combined). One raid at a time; raids last 1 hour."
             },
             {
                 name: "OVERALL",
@@ -890,19 +892,21 @@ function buildInfoEmbeds(){
         .setColor(0x57F287)
         .setTitle("🛡️ Advantages — Defenses")
         .addFields(
-            {name: "Chatting Immunity", value: "Reduces chat-XP damage by **50%**. **Mastered:** **60%**."},
-            {name: "Critical Immunity", value: "Reduces critical chat damage by **70%**. **Mastered:** **80%**."},
+            {name: "Chatting Immunity", value: "Reduces chat-XP damage by **25%**. **Mastered:** **35%**."},
+            {name: "Critical Immunity", value: "Reduces critical chat damage by **35%**. **Mastered:** **45%**."},
+            {name: "Chatting Immortality", value: "All chat XP deals **0 damage**. **Mastered:** heals 10% of incoming chat damage instead. Use commands against this boss."},
+            {name: "Critical Immortality", value: "Critical chat hits deal **0 damage**. **Mastered:** heal 10% instead. If Chatting Immortality also applies, healing happens only once."},
             {name: "Commands Immunity", value: "Reduces supported command damage by **50%**. **Mastered:** **60%**."},
-            {name: "Commands Immortality", value: "Commands deal **0 damage**. **Mastered:** they also heal **10%** of neutral command XP."},
+            {name: "Commands Immortality", value: "Commands deal **0 damage**. **Mastered:** they instead heal **10%** of incoming command damage. Use chat against this boss."},
             {name: "Rolling Immunity", value: "Reduces **!roll** damage by **30%**. **Mastered:** **40%**."},
-            {name: "Degeneration", value: "Ignores Luck Boost influence on boss damage while XP Boosts still count. **Mastered:** neutral damage is reduced another **15%**."}
+            {name: "Degeneration", value: "Removes only **25% of luck-derived bonus damage**, or **35% mastered**. Base damage and XP Boosts remain intact; it no longer cancels critical hits."}
         );
 
     const abilities = new EmbedBuilder()
         .setColor(0xED4245)
         .setTitle("🔥 Advantages — Abilities")
         .addFields(
-            {name: "Regeneration", value: "After damage, heals **20,000 + 1% OVERALL/sec** for **60 seconds**; **5-minute cooldown**. Mastered: **25,000 + 1.25%**."},
+            {name: "Regeneration", value: "After damage: **1,000 + 0.02% OVERALL/sec** for **15s**, capped at **0.5% base HP per activation**. **Mastered:** 1,500 + 0.03%/sec for **20s**, capped at **1% base HP**. Both have a **10-minute cooldown**."},
             {name: "Power", value: "At **70% / 30% HP** for 3 minutes: +30% OVERALL and +20% maximum HP/healing. Mastered: +35% / +25%."},
             {name: "Durability", value: "At **90% / 50% / 20% HP** for 3 minutes: ×1.5 maximum HP and 50% damage reduction. Mastered: ×1.6 and 60%."},
             {name: "XP Immortality", value: "At **10% HP**, incoming XP heals the boss for 30 seconds. Mastered: 35 seconds and stronger healing."},
@@ -1318,6 +1322,80 @@ async function execute(message){
     });
 
     return message.reply(buildBossPayload(message.guild, boss));
+}
+
+
+async function resetChallenges(message){
+    const OWNER_ID = "1239975819112353969";
+
+    if(!message.guild){
+        return message.reply("❌ This command can only be used in a server.");
+    }
+
+    // Hard-coded account allowlist: server permissions cannot override this.
+    if(String(message.author?.id) !== OWNER_ID){
+        return message.reply({
+            content: "⛔ You are not authorized to use this command.",
+            allowedMentions: {parse: [], repliedUser: false}
+        });
+    }
+
+    try{
+        const result = await database.resetBossChallengesForGuild(message.guild.id);
+        let deletedChannels = 0;
+        let failedChannels = 0;
+
+        for(const battle of result.battles){
+            if(battle.bossScope){
+                await database.deleteRaidBossState(
+                    battle.bossScope,
+                    battle.spawnedAt
+                ).catch(error => {
+                    console.error("Could not remove reset challenge boss state:", error);
+                });
+            }
+
+            if(!battle.channelID) continue;
+
+            const channel = await message.client.channels.fetch(battle.channelID)
+                .catch(() => null);
+            if(!channel) continue;
+
+            try{
+                await channel.delete("Boss challenges reset by the bot owner");
+                deletedChannels++;
+            }
+            catch(error){
+                failedChannels++;
+                console.error(`Could not delete reset challenge channel ${battle.channelID}:`, error);
+            }
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x7C4DFF)
+            .setTitle("🗝️ BOSS CHALLENGES RESET")
+            .setDescription(
+                `All personal boss-challenge progress has been reset for this server.\n\n` +
+                `**Progress entries cleared:** ${formatNumber(result.progressRows)}\n` +
+                `**Active battles removed:** ${formatNumber(result.battles.length)}\n` +
+                `**Private battle channels deleted:** ${formatNumber(deletedChannels)}` +
+                (failedChannels ? `\n**Channels that could not be deleted:** ${formatNumber(failedChannels)}` : "") +
+                `\n\nChallenge completions and Challenge #3's !fight unlock are reset. Other boss rewards and entitlements are preserved.`
+            )
+            .setFooter({text: `Executed by ${message.author.tag || message.author.id}`});
+
+        return message.reply({
+            embeds: [embed],
+            allowedMentions: {parse: [], repliedUser: false}
+        });
+    }
+    catch(error){
+        console.error("!resetchallenges failed:", error);
+        return message.reply({
+            content: "❌ The boss challenges could not be reset. Check the bot logs for details.",
+            allowedMentions: {parse: [], repliedUser: false}
+        }).catch(() => {});
+    }
 }
 
 
@@ -1805,6 +1883,7 @@ module.exports = {
     RAID_STATUS_PANEL_FOOTER,
     HEALTH_BAR_SEGMENTS,
     execute,
+    resetChallenges,
     handleInteraction,
     handleCombatResult,
     buildHealthBar,
