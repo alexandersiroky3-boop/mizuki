@@ -4,7 +4,7 @@ const bossChallenges = require("./bossChallenges");
 
 
 const BOSS_DURATION_MS =
-    60 * 60 * 2 * 1000;
+    150 * 60 * 1000;
 
 const RAID_BOSS_SPAWN_COOLDOWN_MS =
     4 * 60 * 60 * 1000;
@@ -425,48 +425,17 @@ function isBuffActive(
 }
 
 
-function getRegenerationPerSecond(
-    boss,
-    definition
-){
-
-    const regeneration =
-        getAdvantage(
-            definition,
-            "regeneration"
-        );
-
-
-    if(!regeneration){
-        return 0;
-    }
-
-
-    const fixedHealing =
-        regeneration.mastered
-            ? 1500
-            : 1000;
-
-    const overallRate =
-        regeneration.mastered
-            ? 0.0003
-            : 0.0002;
-
-
-    return Math.max(
-        1,
-        Math.floor(
-            Math.min(
-                fixedHealing + boss.overall * overallRate,
-                // Per-activation limit: 0.5% / 1% of BASE HP.
-                definition.hp * (regeneration.mastered ? 0.01 : 0.005)
-                    / (regeneration.mastered ? 20 : 15)
-            )
-        )
-    );
-
+// Formula terms are percentage points, not raw multipliers.
+function overallAdvantageBonus(overall){
+    const value = Math.max(0, Number(overall) || 0);
+    // Guard custom future bosses against the formula's singularity at 200M.
+    return Math.min(100, value / Math.max(1, 10000000 - value / 20));
 }
 
+function getRegenerationPerSecond(boss, definition){
+    const entry = getAdvantage(definition, "regeneration");
+    return entry ? Math.floor((entry.mastered ? 1000 : 500) + boss.maxHP / 10000) : 0;
+}
 
 function applyTimedHealing(
     boss,
@@ -577,39 +546,11 @@ function refreshTimedBossState(
     }
 
 
-    const furyAdvantage =
-        getAdvantage(
-            definition,
-            "fury"
-        );
-
-    const furyHealingRate =
-        furyAdvantage?.mastered
-            ? 0.0125
-            : 0.01;
-
-    const furyHealing =
-        furyAdvantage
-            ? applyTimedHealing(
-                boss,
-                now,
-                "furyActiveUntil",
-                "furyLastTickAt",
-                Math.max(
-                    1,
-                    Math.floor(
-                        boss.maxHP *
-                        furyHealingRate
-                    )
-                )
-            )
-            : 0;
-
-
-    if(furyHealing > 0){
-        changed = true;
-    }
-
+    const immortality = getAdvantage(definition, "xp_immortality");
+    if(immortality && applyTimedHealing(
+        boss, now, "immortalityActiveUntil", "immortalityLastTickAt",
+        Math.floor((immortality.mastered ? 300 : 100) + boss.maxHP / 50000)
+    ) > 0) changed = true;
 
     const previousMaxHP =
         Math.max(
@@ -1034,36 +975,10 @@ async function loadActiveBossLocked(
 }
 
 
-function calculatePrecisionChance(
-    boss,
-    definition
-){
-
-    const precision =
-        getAdvantage(
-            definition,
-            "precision"
-        );
-
-
-    if(!precision){
-        return 0;
-    }
-
-
-    return Math.min(
-        75,
-        (
-            precision.mastered
-                ? 20
-                : 15
-        ) +
-        boss.overall /
-            1000000
-    );
-
+function calculatePrecisionChance(boss, definition){
+    const entry = getAdvantage(definition, "precision");
+    return entry ? Math.min(100, (entry.mastered ? 10 : 5) + overallAdvantageBonus(boss.overall)) : 0;
 }
-
 
 function calculateNeutralCommandXP(
     earnedXP,
@@ -1160,246 +1075,52 @@ function getDamageReduction(
 }
 
 
-function activateThresholdAbilities(
-    boss,
-    definition,
-    healthPercent,
-    now,
-    events
-){
-
-    const stateData =
-        ensureStateData(boss);
-
-    const triggered =
-        stateData.triggered;
-
-
-    const triggerDurability =
-        threshold => {
-
-            const triggerKey =
-                `durability${threshold}`;
-
-            const durability =
-                getAdvantage(
-                    definition,
-                    "durability"
-                );
-
-
-            if(
-                !durability
-                ||
-                triggered[triggerKey]
-                ||
-                healthPercent > threshold
-            ){
-                return;
-            }
-
-
-            triggered[triggerKey] =
-                true;
-
-            activateBuff(
-                boss,
-                definition,
-                {
-                    type: "durability",
-                    triggerKey,
-                    expiresAt:
-                        now +
-                        3 * 60 * 1000,
-                    maxHPMultiplier:
-                        durability.mastered
-                            ? 1.6
-                            : 1.5,
-                    overallMultiplier: 1
-                },
-                "scale"
-            );
-
-            events.push({
-                type: "ability",
-                ability: "durability",
-                mastered:
-                    durability.mastered,
-                threshold
-            });
-
-        };
-
-
-    const triggerPower =
-        threshold => {
-
-            const triggerKey =
-                `power${threshold}`;
-
-            const power =
-                getAdvantage(
-                    definition,
-                    "power"
-                );
-
-
-            if(
-                !power
-                ||
-                triggered[triggerKey]
-                ||
-                healthPercent > threshold
-            ){
-                return;
-            }
-
-
-            triggered[triggerKey] =
-                true;
-
-            activateBuff(
-                boss,
-                definition,
-                {
-                    type: "power",
-                    triggerKey,
-                    expiresAt:
-                        now +
-                        3 * 60 * 1000,
-                    maxHPMultiplier:
-                        power.mastered
-                            ? 1.25
-                            : 1.2,
-                    overallMultiplier:
-                        power.mastered
-                            ? 1.35
-                            : 1.3,
-                    healthGainRate:
-                        power.mastered
-                            ? 0.25
-                            : 0.2
-                },
-                "power"
-            );
-
-            events.push({
-                type: "ability",
-                ability: "power",
-                mastered:
-                    power.mastered,
-                threshold
-            });
-
-        };
-
-
-    triggerDurability(90);
-    triggerPower(70);
-    triggerDurability(50);
-    triggerPower(30);
-    triggerDurability(20);
-
-
-    const immortality =
-        getAdvantage(
-            definition,
-            "xp_immortality"
-        );
-
-
-    if(
-        immortality
-        &&
-        !triggered.immortality10
-        &&
-        healthPercent <= 10
-    ){
-
-        triggered.immortality10 =
-            true;
-
-        stateData.immortalityActiveUntil =
-            now +
-            (
-                immortality.mastered
-                    ? 35
-                    : 30
-            ) * 1000;
-
-        events.push({
-            type: "ability",
-            ability: "xp_immortality",
-            mastered:
-                immortality.mastered,
-            threshold: 10
+function activateThresholdAbilities(boss, definition, healthPercent, now, events, random = Math.random){
+    const state = ensureStateData(boss);
+    const triggered = state.triggered;
+    const chance = percent => Number(random()) * 100 < percent;
+    const emit = entry => events.push({type: "ability", ability: entry.key, mastered: entry.mastered});
+    const durability = getAdvantage(definition, "durability");
+    if(durability && !isBuffActive(boss, "durability", now)
+        && (Number(state.durabilityCooldownUntil) || 0) <= now
+        && chance(durability.mastered ? 10 : 5)){
+        activateBuff(boss, definition, {
+            type: "durability", expiresAt: now + (durability.mastered ? 180 : 60) * 1000,
+            maxHPMultiplier: 1, overallMultiplier: 1
         });
-
+        state.durabilityCooldownUntil = now + (durability.mastered ? 180 : 300) * 1000;
+        emit(durability);
     }
-
-
-    const fury =
-        getAdvantage(
-            definition,
-            "fury"
-        );
-
-
-    if(
-        fury
-        &&
-        !triggered.fury5
-        &&
-        healthPercent <= 5
-    ){
-
-        triggered.fury5 =
-            true;
-
-        const furyDuration =
-            (
-                fury.mastered
-                    ? 35
-                    : 30
-            ) * 1000;
-
-        stateData.furyActiveUntil =
-            now +
-            furyDuration;
-
-        stateData.furyLastTickAt =
-            now;
-
-        activateBuff(
-            boss,
-            definition,
-            {
-                type: "fury",
-                triggerKey: "fury5",
-                expiresAt:
-                    now +
-                    furyDuration,
-                maxHPMultiplier: 1,
-                overallMultiplier:
-                    fury.mastered
-                        ? 1.4
-                        : 1.3
-            },
-            "scale"
-        );
-
-        events.push({
-            type: "ability",
-            ability: "fury",
-            mastered:
-                fury.mastered,
-            threshold: 5
-        });
-
+    const power = getAdvantage(definition, "power");
+    if(power && !triggered.powerOnce && !triggered.power70 && !triggered.power30
+        && healthPercent < 50 && chance(power.mastered ? 6 : 3)){
+        triggered.powerOnce = true;
+        activateBuff(boss, definition, {
+            type: "power", expiresAt: now + (power.mastered ? 120 : 60) * 1000,
+            maxHPMultiplier: power.mastered ? 1.15 : 1.05,
+            overallMultiplier: 1 + ((power.mastered ? 15 : 10) + overallAdvantageBonus(boss.overall)) / 100,
+            healthGainRate: ((power.mastered ? 10 : 5) + boss.maxHP / 100000000) / 100
+        }, "power");
+        emit(power);
     }
-
+    const fury = getAdvantage(definition, "fury");
+    if(fury && !triggered.furyOnce && !triggered.fury5
+        && healthPercent < 30 && chance(fury.mastered ? 6 : 3)){
+        triggered.furyOnce = true;
+        state.furyActiveUntil = now + (fury.mastered ? 120 : 60) * 1000;
+        state.furyDamageReduction = Math.min(1,
+            ((fury.mastered ? 10 : 5) + overallAdvantageBonus(boss.overall)) / 100);
+        emit(fury);
+    }
+    const immortality = getAdvantage(definition, "xp_immortality");
+    if(immortality && healthPercent < 10
+        && (Number(state.immortalityActiveUntil) || 0) <= now
+        && chance(immortality.mastered ? 30 : 20)){
+        state.immortalityActiveUntil = now + (immortality.mastered ? 60 : 30) * 1000;
+        state.immortalityLastTickAt = now;
+        emit(immortality);
+    }
 }
-
 
 async function applyDamageLocked(
     boss,
@@ -1495,7 +1216,7 @@ async function applyDamageLocked(
 
             stateData.precisionCooldownUntil =
                 now +
-                30 * 1000;
+                (precision.mastered ? 60 : 120) * 1000;
 
             await database.updateRaidBossState(
                 boss
@@ -1546,29 +1267,8 @@ async function applyDamageLocked(
         ) > now
     ){
 
-        const healingRate =
-            immortality.mastered
-                ? 0.25
-                : 0.2;
-
-        const oldHP =
-            boss.currentHP;
-
-
-        boss.currentHP =
-            Math.min(
-                boss.maxHP,
-                boss.currentHP +
-                    Math.floor(
-                        baseDamage *
-                        healingRate
-                    )
-            );
-
-        const healed =
-            boss.currentHP -
-            oldHP;
-
+        // Healing is time-based, never proportional to the blocked attack.
+        const healed = 0;
 
         await database.updateRaidBossState(
             boss
@@ -1593,7 +1293,7 @@ async function applyDamageLocked(
             dodged: false,
             defeated: false,
             events: [{
-                type: "xp_immortality_heal",
+                type: "xp_immortality_block",
                 mastered:
                     immortality.mastered
             }]
@@ -1726,8 +1426,8 @@ async function applyDamageLocked(
                     definition,
                     "commands_immunity"
                 ),
-                0.5,
-                0.6
+                0.25,
+                0.4
             );
 
     }
@@ -1764,8 +1464,8 @@ async function applyDamageLocked(
                     definition,
                     "durability"
                 ),
-                0.5,
-                0.6
+                0.25,
+                0.4
             );
 
     }
@@ -1777,23 +1477,14 @@ async function applyDamageLocked(
         ) > now
     ){
 
-        damageMultiplier *=
-            1 -
-            getDamageReduction(
-                getAdvantage(
-                    definition,
-                    "fury"
-                ),
-                0.8,
-                0.85
-            );
+        damageMultiplier *= 1 - Math.min(1, Math.max(0, Number(stateData.furyDamageReduction) || 0));
 
     }
 
 
     const finalDamage =
         Math.max(
-            1,
+            0,
             Math.floor(
                 baseDamage *
                 Math.max(
@@ -1861,7 +1552,7 @@ async function applyDamageLocked(
 
 
     if(
-        regeneration
+        actualDamage > 0 && regeneration
         &&
         Number(
             stateData.regenerationActiveUntil
@@ -1870,15 +1561,14 @@ async function applyDamageLocked(
         Number(
             stateData.regenerationCooldownUntil
         ) <= now
+        && Number(attack.random()) * 100 < (regeneration.mastered ? 20 : 15)
     ){
 
         stateData.regenerationActiveUntil =
             now +
-            (regeneration.mastered ? 20 : 15) * 1000;
+            (regeneration.mastered ? 30 : 15) * 1000;
 
-        stateData.regenerationCooldownUntil =
-            now +
-            10 * 60 * 1000;
+        stateData.regenerationCooldownUntil = stateData.regenerationActiveUntil;
 
         stateData.regenerationLastTickAt =
             now;
@@ -1902,12 +1592,13 @@ async function applyDamageLocked(
         100;
 
 
-    activateThresholdAbilities(
+    if(actualDamage > 0) activateThresholdAbilities(
         boss,
         definition,
         postDamageHealthPercent,
         now,
-        events
+        events,
+        attack.random
     );
 
 
