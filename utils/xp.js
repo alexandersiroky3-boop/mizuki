@@ -1,368 +1,43 @@
 const luck = require("./luck");
 const boosts = require("../systems/boosts");
 
-// ======================
-// CRITICAL SYSTEM
-// ======================
-//
-// Every user starts with the same BASE critical chance.
-// XP Boosts and Luck Boosts add separate exact bonuses.
-// Each consecutive critical adds +4% momentum
-// to the NEXT critical roll, up to +28%.
-// An active streak of 20+ adds another +3% chance.
-// Permanent Chatting upgrades replace the old automatic level buffs.
-// Streak rewards begin at 5 consecutive criticals. Stronger XP Boosts use
-// progressively smaller streak multipliers so their own XP multiplier cannot
-// make long streaks explode the economy.
-// The normal critical reward (including +100 XP per streak) still applies.
-// Critical chance is capped at 93%, or 95% with XP Infinity AND Luck Omega.
-// Rewards that boost critical probability also respect these hard caps.
-
+// Critical chance and XP growth are independent. No 20/50/100-hit XP milestones.
 const CRITICAL_MOMENTUM_PER_STREAK = 4;
 const CRITICAL_MOMENTUM_CAP = 28;
-const CRITICAL_STREAK_BONUS_THRESHOLD = 20;
-const CRITICAL_STREAK_CHANCE_BONUS = 3;
 const DEFAULT_CRITICAL_CHANCE_CAP = 93;
 const OMEGA_MAX_CRITICAL_CHANCE_CAP = 93;
 const OMEGA_INFINITY_CRITICAL_CHANCE_CAP = 95;
-const MAX_CRITICAL_EXTRA_XP = 250000;
-const LONG_CRITICAL_STREAK_THRESHOLD = 20;
-const LONG_CRITICAL_STREAK_GROWTH_PER_CRITICAL = 0.05;
+const CRITICAL_CAP_XP_BY_CHAT_LEVEL = Object.freeze([
+    1000000, 1500000, 1500000, 1500000, 1500000, 1500000, 5000000, 5000000, 7000000
+]);
 
-
-// Guaranteed streak-reward floors for a 20x critical streak. Normal message
-// XP is added afterward, so the final reward is slightly above each floor.
-// Chatting levels 1–5 rise gradually toward the requested 400K/700K targets,
-// levels 6–7 bridge the gap, and fully upgraded Chatting reaches 5M/11M.
-const LONG_CRITICAL_MAX_BASE_XP_BY_CHAT_LEVEL =
-    Object.freeze([
-        100000,
-        160000,
-        220000,
-        280000,
-        340000,
-        400000,
-        1250000,
-        2750000,
-        5000000
-    ]);
-
-
-const LONG_CRITICAL_INFINITY_BASE_XP_BY_CHAT_LEVEL =
-    Object.freeze([
-        300000,
-        380000,
-        460000,
-        540000,
-        620000,
-        700000,
-        2500000,
-        6000000,
-        11000000
-    ]);
-
-
-const LONG_CRITICAL_CAP_XP_BY_CHAT_LEVEL =
-    Object.freeze([
-        1000000,
-        1500000,
-        1500000,
-        1500000,
-        1500000,
-        1500000,
-        5000000,
-        5000000,
-        7000000
-    ]);
-
-
-// XP Boost I/II still benefit from the new system, but MAX and Infinity keep
-// their explicitly configured floors above.
-const LONG_CRITICAL_XP_TIER_SCALE =
-    Object.freeze({
-        none: 0.10,
-        tier1: 0.25,
-        tier2: 0.55,
-        max: 1
-    });
-
-
-function getCriticalExtraXPCap(criticalStreak){
-    const streak = Math.max(0, Math.floor(Number(criticalStreak) || 0));
-    return Math.min(MAX_CRITICAL_EXTRA_XP, 5000 + 3000 * streak);
+function getCriticalXPCap(chatLevel = 0){
+    return CRITICAL_CAP_XP_BY_CHAT_LEVEL[Math.min(8, Math.max(0, Math.floor(Number(chatLevel) || 0)))];
 }
 
-
-function getLongCriticalStreakRewardProfile(
-    xpBoostTier,
-    chattingUpgradeLevel = 0
-){
-    const chatLevel =
-        Math.max(
-            0,
-            Math.min(
-                LONG_CRITICAL_CAP_XP_BY_CHAT_LEVEL.length - 1,
-                Math.floor(
-                    Number(chattingUpgradeLevel) || 0
-                )
-            )
-        );
-
-
-    const normalizedTier =
-        String(xpBoostTier || "none")
-            .trim()
-            .toLowerCase();
-
-
-    const minimumXP =
-        normalizedTier === "infinity"
-            ? LONG_CRITICAL_INFINITY_BASE_XP_BY_CHAT_LEVEL[
-                chatLevel
-            ]
-            : Math.floor(
-                LONG_CRITICAL_MAX_BASE_XP_BY_CHAT_LEVEL[
-                    chatLevel
-                ]
-                *
-                (
-                    LONG_CRITICAL_XP_TIER_SCALE[
-                        normalizedTier
-                    ]
-                    ?? LONG_CRITICAL_XP_TIER_SCALE.none
-                )
-            );
-
-
-    return {
-        chatLevel,
-        xpBoostTier:
-            normalizedTier,
-        minimumXP,
-        maximumXP:
-            LONG_CRITICAL_CAP_XP_BY_CHAT_LEVEL[
-                chatLevel
-            ]
-    };
-}
-
-
-function getLongCriticalStreakXP(
-    reward,
-    chatXPMultiplier,
-    boostedNormalXP = 0
-){
-    const criticalStreak =
-        Math.max(
-            0,
-            Math.floor(
-                Number(reward?.criticalStreak) || 0
-            )
-        );
-
-
-    if(
-        !reward?.critical
-        || criticalStreak < LONG_CRITICAL_STREAK_THRESHOLD
-    ){
-        return null;
-    }
-
-
-    const profile =
-        getLongCriticalStreakRewardProfile(
-            reward.xpBoostTier,
-            reward.chattingUpgradeLevel
-        );
-
-
-    const permanentChatMultiplier =
-        Math.max(
-            1,
-            Number(
-                reward.upgradeChatXPMultiplier
-            ) || 1
-        );
-
-
-    // Quest/merchant chat multipliers may still improve the reward, while the
-    // permanent Chatting multiplier is already represented by the profile.
-    const temporaryChatMultiplier =
-        Math.max(
-            1,
-            (
-                Number(chatXPMultiplier) || 1
-            ) / permanentChatMultiplier
-        );
-
-
-    // Boost upgrades use a deliberately gentle 5% per-level curve instead of
-    // the general 1.2x/1.5x active-boost scale.
-    const boostUpgradeScale =
-        Math.max(
-            1,
-            Number(
-                reward.criticalStreakRewardScale
-            ) || 1
-        );
-
-
-    const streakGrowth =
-        1 +
-        (
-            criticalStreak -
-            LONG_CRITICAL_STREAK_THRESHOLD
-        ) * LONG_CRITICAL_STREAK_GROWTH_PER_CRITICAL;
-
-
-    const streakReward =
-        Math.floor(
-            profile.minimumXP *
-            streakGrowth *
-            boostUpgradeScale *
-            temporaryChatMultiplier
-        );
-
-
-    return Math.min(
-        profile.maximumXP,
-        Math.max(
-            0,
-            Math.floor(
-                Number(boostedNormalXP) || 0
-            )
-        ) + streakReward
-    );
-}
-
-
-// Before a 20x streak, retain the smaller safety cap. At 20x and above, use
-// the dedicated XP Boost/Chatting profile with its own hard maximum.
 function getBalancedChatXP(reward, chatXPMultiplier){
-    const multiplier = Math.max(1, Number(chatXPMultiplier) || 1);
-    const boostedTotal = Math.floor(Math.max(0, Number(reward.xp) || 0) * multiplier);
-    if(!reward.critical) return boostedTotal;
-    const boostedNormal = Math.floor(
-        Math.max(0, Number(reward.normalXP) || 0) * multiplier
-    );
-
-
-    const longCriticalStreakXP =
-        getLongCriticalStreakXP(
-            reward,
-            multiplier,
-            boostedNormal
-        );
-
-
-    if(longCriticalStreakXP != null){
-        return longCriticalStreakXP;
-    }
-
-
-    return Math.min(
-        boostedTotal,
-        LONG_CRITICAL_CAP_XP_BY_CHAT_LEVEL[Math.min(8, Math.max(0, Number(reward.chattingUpgradeLevel) || 0))],
-        boostedNormal + getCriticalExtraXPCap(reward.criticalStreak)
-    );
+    const total = Math.floor(Math.max(0, Number(reward.xp) || 0) * Math.max(1, Number(chatXPMultiplier) || 1));
+    return reward.critical ? Math.min(total, getCriticalXPCap(reward.chattingUpgradeLevel)) : total;
 }
 
+// Inspect Discord-provided media metadata only; never fetch arbitrary links.
+function hasChatMedia(message){
+    const isMedia = item => /^(image|video)\//i.test(item?.contentType || "")
+        || /\.(gif|png|jpe?g|webp|avif|mp4|webm|mov)(?:$|[?#])/i.test(item?.name || item?.url || "");
+    if(message?.attachments?.some?.(isMedia)) return true;
+    if(message?.embeds?.some?.(embed =>
+        ["image", "video", "gifv"].includes(embed.type) || embed.image || embed.video
+    )) return true;
+    return /https?:\/\/(?:tenor\.com\/view\/|(?:www\.)?giphy\.com\/gifs\/|[^\s<>]+\.(?:gif|png|jpe?g|webp|avif|mp4|webm|mov)(?:[?#][^\s<>]*)?(?:\s|$))/i.test(message?.content || "");
+}
 
-const CRITICAL_STREAK_REWARD_TABLE =
-    Object.freeze({
-
-        none: Object.freeze({
-            5: 5,
-            20: 20,
-            50: 50,
-            100: 100
-        }),
-
-        tier1: Object.freeze({
-            5: 4,
-            20: 17,
-            50: 45,
-            100: 80
-        }),
-
-        tier2: Object.freeze({
-            5: 2,
-            20: 10,
-            50: 20,
-            100: 40
-        }),
-
-        max: Object.freeze({
-            5: 2,
-            20: 7,
-            50: 15,
-            100: 35
-        }),
-
-        infinity: Object.freeze({
-            5: 1.8,
-            20: 3,
-            50: 10,
-            100: 20
-        })
-
-    });
-
-
-const CRITICAL_STREAK_REWARD_THRESHOLDS =
-    Object.freeze([
-        100,
-        50,
-        20,
-        5
-    ]);
-
-
-function getCriticalStreakXPMultiplier(
-    xpBoostTier,
-    criticalStreak
-){
-
-    const normalizedTier =
-        Object.prototype.hasOwnProperty.call(
-            CRITICAL_STREAK_REWARD_TABLE,
-            xpBoostTier
-        )
-            ? xpBoostTier
-            : "none";
-
-
-    const safeStreak =
-        Math.max(
-            0,
-            Math.floor(
-                Number(criticalStreak) || 0
-            )
-        );
-
-
-    const profile =
-        CRITICAL_STREAK_REWARD_TABLE[
-            normalizedTier
-        ];
-
-
-    for(
-        const threshold of
-        CRITICAL_STREAK_REWARD_THRESHOLDS
-    ){
-
-        if(safeStreak >= threshold){
-
-            return profile[threshold];
-
-        }
-
-    }
-
-
-    return 1;
-
+function applyChatMediaBonus(amount, reward, multiplier = 1){
+    const base = Math.max(0, Math.floor(Number(amount) || 0));
+    if(multiplier <= 1) return base;
+    return Math.min(
+        Math.floor(base * Math.min(2.25, Math.max(1.5, multiplier))),
+        Math.floor(getCriticalXPCap(reward.chattingUpgradeLevel) * 1.5)
+    );
 }
 
 
@@ -399,12 +74,7 @@ function buildCriticalChance(
 
 
     const streakChanceBonus =
-        Math.max(
-            0,
-            Number(currentStreak) || 0
-        ) >= CRITICAL_STREAK_BONUS_THRESHOLD
-            ? CRITICAL_STREAK_CHANCE_BONUS
-            : 0;
+        0;
 
 
     const finalChance =
@@ -771,7 +441,7 @@ function getXPAmount(
         );
 
 
-    const criticalBonus = 100;
+    const criticalBonus = 0;
 
 
     // First calculate the same normal message reward the user would receive
@@ -970,11 +640,12 @@ function getXPAmount(
 
 
     let configuredStreakXPMultiplier = 1;
+    let criticalGrowthXP = 0;
+    let criticalGrowthPercent = 0;
 
 
     // Kept in the result payload for compatibility with older logging code.
-    // Infinity now receives its own reduced streak rewards instead of having
-    // the streak reward suppressed completely.
+    // Infinity uses the same gradual streak growth as other XP boosts.
     const streakBonusSuppressedByInfinity = false;
 
 
@@ -988,30 +659,13 @@ function getXPAmount(
         criticalStreak++;
 
 
-        // Unlimited critical XP multiplier.
-        // The multiplier always matches the full consecutive streak.
-        criticalMultiplier =
-            criticalStreak;
-
-
-        earnedXP +=
-            criticalBonus *
-            criticalMultiplier;
-
-
-        configuredStreakXPMultiplier =
-            getCriticalStreakXPMultiplier(
-                activeXPBoost.tier,
-                criticalStreak
-            );
-
-
-        streakXPMultiplier =
-            configuredStreakXPMultiplier;
-
-
-        earnedXP *=
-            streakXPMultiplier;
+        criticalGrowthPercent = randomXP(15, 30);
+        const previousBase = startingStreak > 0
+            ? Math.max(0, Number(options.previousCriticalGrowthXP) || 0) : 0;
+        const initialBase = previousBase > 0 ? previousBase : earnedXP;
+        criticalGrowthXP = Math.min(7000000, Math.floor(initialBase * (1 + criticalGrowthPercent / 100)));
+        earnedXP = criticalGrowthXP;
+        criticalMultiplier = earnedXP / Math.max(1, initialBase);
 
 
     }
@@ -1165,6 +819,8 @@ function getXPAmount(
 
 
         criticalMultiplier,
+        criticalGrowthXP,
+        criticalGrowthPercent,
 
 
         streakXPMultiplier,
@@ -1327,16 +983,10 @@ module.exports = {
         boosts.BOOST_ROLES,
 
 
-    CRITICAL_STREAK_REWARD_TABLE,
-
-
-    getCriticalStreakXPMultiplier,
-
-    getCriticalExtraXPCap,
-
-    getLongCriticalStreakRewardProfile,
-
-    getLongCriticalStreakXP,
+    getCriticalXPCap,
+    randomXP,
+    hasChatMedia,
+    applyChatMediaBonus,
 
     getBalancedChatXP,
 
