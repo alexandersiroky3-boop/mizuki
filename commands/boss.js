@@ -886,7 +886,7 @@ function buildInfoEmbeds(){
             },
             {
                 name: "Challenge #3",
-                value: "The first clear permanently unlocks **!fight** and grants **1 free upgrade**, automatically used on the next successful !upgrades purchase."
+                value: "The first clear permanently unlocks **!fight**."
             }
         );
 
@@ -1757,7 +1757,7 @@ async function handleChallengeCombatResult(message, result){
                             name: "Progress",
                             value: challenge.number === 3
                                 && completion.firstClear
-                                    ? "**!fight is now permanently unlocked.** Your free-upgrade token will automatically pay for your next successful upgrade."
+                                    ? "**!fight is now permanently unlocked.**"
                                     : challenge.number < 3
                                         ? `Challenge #${challenge.number + 1} is now available if you meet its level requirement.`
                                         : "You may replay this challenge for its reduced repeat reward."
