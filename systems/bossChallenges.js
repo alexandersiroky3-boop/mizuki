@@ -19,8 +19,7 @@ function rewardBundle({
     boosts = [],
     shards = 0,
     chests = [],
-    unlockFight = false,
-    freeUpgradeTokens = 0
+    unlockFight = false
 } = {}){
 
     return Object.freeze({
@@ -69,14 +68,7 @@ function rewardBundle({
                 )
             ),
         unlockFight:
-            Boolean(unlockFight),
-        freeUpgradeTokens:
-            Math.max(
-                0,
-                Math.floor(
-                    Number(freeUpgradeTokens) || 0
-                )
-            )
+            Boolean(unlockFight)
     });
 
 }
@@ -254,7 +246,6 @@ const BOSS_CHALLENGES =
                             amount: 50
                         }
                     ],
-                    freeUpgradeTokens: 1
                 }),
             repeatReward:
                 rewardBundle({
@@ -359,11 +350,6 @@ function formatRewardBundle(bundle){
     }
 
 
-    if(Number(bundle?.freeUpgradeTokens) > 0){
-        parts.push(
-            `**${Number(bundle.freeUpgradeTokens)} free upgrade**`
-        );
-    }
 
 
     if(Number(bundle?.shards) > 0){
