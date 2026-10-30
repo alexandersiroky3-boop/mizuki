@@ -86,7 +86,6 @@ function rollRaidRewardBundle(definition, topThree, random = Math.random){
         chests: [{tier: "boss", amount: 1}],
         boosts: (config.boosts || []).map(([type, tier, amounts]) =>
             rewardBoost(type, tier, pickRewardOption(amounts, random))),
-        freeUpgradeTokens: config.freeUpgradeTokens || 0,
         guaranteedJackpots: config.guaranteedJackpots || 0,
         ...(config.multiHours ? {
             timedAllCommands: {
@@ -109,7 +108,6 @@ function getRaidRewardPreview(definition){
             values.join("/") + "x " + labels[type + ":" + tier]),
         ...(config.guaranteedJackpots ? ["1 guaranteed jackpot roll"] : []),
         ...(config.multiHours ? ["3 total executions per command for " + config.multiHours.join("/") + " hours"] : []),
-        ...(config.freeUpgradeTokens ? ["1 free upgrade"] : []),
         "1 Boss Chest",
         config.shards.toLocaleString("en-US") + " shards"
     ].join(" • ");
