@@ -1,5 +1,5 @@
 const CHALLENGE_BATTLE_DURATION_MS =
-    5 * 60 * 1000;
+    20 * 60 * 1000;
 
 
 const REWARD_LABELS =
