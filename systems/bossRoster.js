@@ -138,11 +138,11 @@ const RAID_REWARDS = {
         rest: {shards: 8000, boosts: [["xp", "infinity", [1, 2]], ["rune", "tier3", [1, 2, 3]]]}
     },
     raid_mizuki_fp: {
-        top: {shards: 50000, multiHours: [12, 18], freeUpgradeTokens: 1},
+        top: {shards: 50000, multiHours: [12, 18]},
         rest: {shards: 5000, multiHours: [12, 18]}
     },
     raid_mizuki_broken_fp: {
-        top: {shards: 75000, boosts: [["luck", "tier3", [100]]], multiHours: [12, 18], freeUpgradeTokens: 1},
+        top: {shards: 75000, boosts: [["luck", "tier3", [100]]], multiHours: [12, 18]},
         rest: {shards: 7500, multiHours: [12, 18]}
     },
     raid_gorjezz_one_percent: {
