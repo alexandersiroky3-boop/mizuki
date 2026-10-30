@@ -4930,47 +4930,6 @@ async function purchaseUserUpgrade(
 
         await client.query(`
 
-            INSERT INTO boss_entitlements(
-                guildID,userID,fightUnlocked,
-                freeUpgradeTokens,updatedAt
-            )
-            VALUES($1,$2,FALSE,0,$3)
-            ON CONFLICT DO NOTHING
-
-        `, [
-            String(guildID),
-            String(userID),
-            Date.now()
-        ]);
-
-
-        const entitlementResult =
-            await client.query(`
-
-                SELECT freeUpgradeTokens AS "freeUpgradeTokens"
-
-                FROM boss_entitlements
-
-                WHERE guildID=$1
-                AND userID=$2
-
-                FOR UPDATE
-
-            `, [
-                String(guildID),
-                String(userID)
-            ]);
-
-
-        const useFreeUpgrade =
-            Number(
-                entitlementResult.rows[0]?.freeUpgradeTokens
-                ?? entitlementResult.rows[0]?.freeupgradetokens
-            ) > 0;
-
-
-        await client.query(`
-
             INSERT INTO user_upgrades(
                 guildID,
                 userID,
@@ -5055,8 +5014,7 @@ async function purchaseUserUpgrade(
 
 
         if(
-            !useFreeUpgrade
-            && balance < nextUpgrade.cost.xp
+            balance < nextUpgrade.cost.xp
         ){
 
             await client.query("COMMIT");
@@ -5078,11 +5036,7 @@ async function purchaseUserUpgrade(
 
 
         const boostCosts =
-            (
-                useFreeUpgrade
-                    ? []
-                    : [...nextUpgrade.cost.boosts]
-            )
+            [...nextUpgrade.cost.boosts]
                 .sort(
                     (first, second) =>
                         `${first.boostType}:${first.tier}`
@@ -5149,8 +5103,7 @@ async function purchaseUserUpgrade(
 
 
         if(
-            !useFreeUpgrade
-            && nextUpgrade.cost.xp > 0
+            nextUpgrade.cost.xp > 0
         ){
 
             await client.query(`
@@ -5171,24 +5124,6 @@ async function purchaseUserUpgrade(
         }
 
 
-        if(useFreeUpgrade){
-
-            await client.query(`
-
-                UPDATE boss_entitlements
-                SET
-                    freeUpgradeTokens=
-                        GREATEST(0,freeUpgradeTokens-1),
-                    updatedAt=$3
-                WHERE guildID=$1 AND userID=$2
-
-            `, [
-                String(guildID),
-                String(userID),
-                Date.now()
-            ]);
-
-        }
 
 
         for(const boostCost of boostCosts){
@@ -5258,9 +5193,7 @@ async function purchaseUserUpgrade(
 
 
         const remainingBalance =
-            useFreeUpgrade
-                ? balance
-                : balance - nextUpgrade.cost.xp;
+            balance - nextUpgrade.cost.xp;
 
 
         await client.query("COMMIT");
@@ -5280,12 +5213,8 @@ async function purchaseUserUpgrade(
 
         return {
             success: true,
-            status:
-                useFreeUpgrade
-                    ? "free-upgrade"
-                    : "purchased",
-            usedFreeUpgrade:
-                useFreeUpgrade,
+            status: "purchased",
+            usedFreeUpgrade: false,
             category,
             level:
                 Number(
@@ -10041,13 +9970,8 @@ async function applyBossRewardBundle(
     const unlockFight =
         Boolean(bundle?.unlockFight);
 
-    const freeUpgradeTokens =
-        Math.max(
-            0,
-            Math.floor(
-                Number(bundle?.freeUpgradeTokens) || 0
-            )
-        );
+    // Ignore retired rewards even in old persisted/pending reward bundles.
+    const freeUpgradeTokens = 0;
 
     const unlockBless =
         Boolean(bundle?.unlockBless);
@@ -10340,14 +10264,7 @@ async function getBossChallengeSnapshot(
                 entitlement.fightUnlocked
                 ?? entitlement.fightunlocked
             ),
-        freeUpgradeTokens:
-            Math.max(
-                0,
-                Number(
-                    entitlement.freeUpgradeTokens
-                    ?? entitlement.freeupgradetokens
-                ) || 0
-            )
+        freeUpgradeTokens: 0
     };
 
 }
@@ -11084,14 +11001,7 @@ function normalizeBossEntitlements(row = {}){
                 row.fightUnlocked
                 ?? row.fightunlocked
             ),
-        freeUpgradeTokens:
-            Math.max(
-                0,
-                Number(
-                    row.freeUpgradeTokens
-                    ?? row.freeupgradetokens
-                ) || 0
-            ),
+        freeUpgradeTokens: 0,
         blessUnlocked:
             Boolean(
                 row.blessUnlocked
