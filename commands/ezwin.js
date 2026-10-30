@@ -587,9 +587,9 @@ function buildEZWinDialogue(
             : emojis.boom;
 
     const rewardEnding =
-`**${lossEmoji} Everyone lost ${lostXP.toLocaleString()} XP!**
+`**${lossEmoji} Everyone except the winner lost up to ${lostXP.toLocaleString()} XP!**
 
-**${emojis.shield} People with levels below 100 lost ${lowLevelReductionPercent}% less XP!**
+**${emojis.shield} Users at levels 0–200 lost ${lowLevelReductionPercent}% less XP! Level 201+ takes the normal loss.**
 
 **${emojis.hibiscus} ${rewardRecipient} gains ${gainedXP.toLocaleString()} XP!**${extras}`;
 
@@ -1056,11 +1056,11 @@ async function execute(message, options = {}){
 
 
     const lowLevelLossMultiplier =
-        0.10;
+        0.01;
 
     const lowLevelLoss =
         Math.max(
-            1,
+            0,
             Math.floor(
                 lostXP *
                 lowLevelLossMultiplier
@@ -1090,7 +1090,7 @@ async function execute(message, options = {}){
                 gainedXP,
                 lostXP,
                 lowLevelLoss,
-                xp.getCurrentLevelXP(100),
+                xp.getCurrentLevelXP(201),
                 trollEffect?.sourceUserID || null
             );
 
@@ -1179,7 +1179,7 @@ async function execute(message, options = {}){
             message.author,
             lostXP,
             gainedXP,
-            90,
+            99,
             usedLuckExtra,
             message.guild,
             trollEffect
