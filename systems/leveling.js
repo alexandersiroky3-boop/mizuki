@@ -164,6 +164,7 @@ const reward =
         previousCriticalStreak,
         currentLevel,
         {
+            previousCriticalGrowthXP: streakData.growthXP,
             forcedCritical:
                 guaranteedCritical.forced,
 
@@ -221,8 +222,10 @@ const chatXPMultiplier =
     blessingChatXPMultiplier;
 
 
-    const earnedXPBeforeTroll =
-        xp.getBalancedChatXP(reward, chatXPMultiplier);
+const mediaMultiplier = xp.hasChatMedia(message) ? xp.randomXP(150, 225) / 100 : 1;
+const earnedXPBeforeTroll = xp.applyChatMediaBonus(
+    xp.getBalancedChatXP(reward, chatXPMultiplier), reward, mediaMultiplier
+);
 
 
 const trollResolution =
@@ -251,9 +254,9 @@ const rewardWithoutLuck =
         : reward;
 
 const bossXPWithoutLuckBeforeTroll =
-    xp.getBalancedChatXP(
-        rewardWithoutLuck,
-        chatXPMultiplier
+    xp.applyChatMediaBonus(
+        xp.getBalancedChatXP(rewardWithoutLuck, chatXPMultiplier),
+        rewardWithoutLuck, mediaMultiplier
     );
 
 const bossTrollResolutionWithoutLuck =
@@ -294,7 +297,8 @@ if(reward.critical){
     await database.setCriticalStreak(
         guildID,
         userID,
-        reward.criticalStreak
+        reward.criticalStreak,
+        reward.criticalGrowthXP
     );
 
 }
