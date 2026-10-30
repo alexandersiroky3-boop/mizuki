@@ -1145,7 +1145,8 @@ function getRollEmojis(guild){
 
 function getRollRevealEmojiSequence(
     rolledXP,
-    guild
+    guild,
+    revealXP = rolledXP
 ){
 
     const safeXP =
@@ -1153,7 +1154,7 @@ function getRollRevealEmojiSequence(
 
 
     // The loading animation begins at exactly 25,000 XP.
-    if(safeXP < 25000){
+    if(Number(revealXP) < 25000){
         return [];
     }
 
@@ -1218,7 +1219,8 @@ function waitForRollReveal(milliseconds){
 function buildRollRevealText(
     emoji,
     dotCount = 3,
-    rollLabel = ""
+    rollLabel = "",
+    showEvolved = false
 ){
 
     const safeDotCount =
@@ -1247,7 +1249,7 @@ function buildRollRevealText(
             safeRollLabel
                 ? ` ${safeRollLabel}`
                 : ""
-        )
+        ) + (showEvolved ? " **(EVOLVED)**" : "")
     );
 
 }
@@ -1262,8 +1264,9 @@ async function playRollReveal(
 
     const emojiSequence =
         getRollRevealEmojiSequence(
-            rolledXP,
-            message.guild
+            options.rarityRolledXP ?? rolledXP,
+            message.guild,
+            rolledXP
         );
 
 
@@ -1314,6 +1317,7 @@ async function playRollReveal(
     }
 
     let revealMessage = null;
+    let elapsed = 0;
 
 
     try{
@@ -1369,7 +1373,8 @@ async function playRollReveal(
                         buildRollRevealText(
                             emoji,
                             3,
-                            rollLabel
+                            rollLabel,
+                            options.evolved && elapsed >= 2000
                         ),
                     allowedMentions: {
                         parse: []
@@ -1382,6 +1387,7 @@ async function playRollReveal(
             await waitFunction(
                 ROLL_REVEAL_FRAME_DELAY_MS
             );
+            elapsed += ROLL_REVEAL_FRAME_DELAY_MS;
 
 
             for(
@@ -1395,7 +1401,8 @@ async function playRollReveal(
                         buildRollRevealText(
                             emoji,
                             dotCount,
-                            rollLabel
+                            rollLabel,
+                            options.evolved && elapsed >= 2000
                         ),
                     allowedMentions: {
                         parse: []
@@ -1406,6 +1413,7 @@ async function playRollReveal(
                 await waitFunction(
                     ROLL_REVEAL_FRAME_DELAY_MS
                 );
+                elapsed += ROLL_REVEAL_FRAME_DELAY_MS;
 
             }
 
@@ -2842,6 +2850,8 @@ if(shouldPlayRollReveal){
         rolledXP,
         options.rollRevealWait,
         {
+            rarityRolledXP,
+            evolved,
             rollLabel:
                 rollRevealLabel,
 
