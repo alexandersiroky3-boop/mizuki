@@ -180,8 +180,10 @@ function getAdvantageRuntimeStatus(boss, advantage, now = Date.now()){
         }`;
     }
 
-    if(advantage.key === "regeneration"){
-        const cooldownUntil = Number(state.regenerationCooldownUntil) || 0;
+    if(advantage.key === "power" && (state.triggered?.powerOnce || state.triggered?.power70 || state.triggered?.power30)) return "⚫ **USED**";
+    if(advantage.key === "fury" && (state.triggered?.furyOnce || state.triggered?.fury5)) return "⚫ **USED**";
+    if(advantage.key === "regeneration" || advantage.key === "durability"){
+        const cooldownUntil = Number(state[advantage.key + "CooldownUntil"]) || 0;
         if(cooldownUntil > now){
             return `🟡 **COOLDOWN** until <t:${Math.floor(cooldownUntil / 1000)}:R>`;
         }
@@ -265,7 +267,7 @@ function buildBossEmbed(guild, boss, options = {}){
             {
                 name: "Timer",
                 value: options.expired
-                    ? "**The one-hour timer ended before the boss was defeated.**"
+                    ? "**The 2-hour-30-minute timer ended before the boss was defeated.**"
                     : options.defeated
                         ? "**Defeated by the server.**"
                     : `Despawns <t:${expiresTimestamp}:R> • <t:${expiresTimestamp}:T>`
@@ -305,7 +307,7 @@ function buildNoBossEmbed(options = {}){
         )
         .addFields({
             name: "Raid duration",
-            value: "Every spawned raid boss remains for **1 hour** unless the server defeats it first."
+            value: "Every spawned raid boss remains for **2 hours 30 minutes** unless the server defeats it first."
         })
         .setFooter({
             text:
@@ -856,15 +858,15 @@ function buildInfoEmbeds(){
         .addFields(
             {
                 name: "Global spawning",
-                value: "Only the **6 RAID BOSSES** can spawn globally; the **21 Challenge Bosses** never enter this pool. After the **4-hour natural-spawn cooldown**, at least **2 users** must earn chat XP within 10 minutes. Each eligible chat reward then rolls the listed spawn chances (1.25% combined). One raid at a time; raids last 1 hour."
+                value: "Only the **6 RAID BOSSES** can spawn globally; the **21 Challenge Bosses** never enter this pool. After the **4-hour natural-spawn cooldown**, at least **2 users** must earn chat XP within 10 minutes. Each eligible chat reward then rolls the listed spawn chances (1.25% combined). One raid at a time; raids last 2 hours 30 minutes."
             },
             {
                 name: "OVERALL",
-                value: "OVERALL is the boss's combat power. It strengthens calculations such as Regeneration and Precision, and some abilities temporarily multiply it."
+                value: "OVERALL is the boss's combat power. It strengthens calculations such as Power, Fury and Precision, and some abilities temporarily multiply it."
             },
             {
                 name: "HP",
-                value: "HP is the health that must be removed before the timer ends. Power and Durability can temporarily increase maximum HP while preserving the boss's current health percentage."
+                value: "HP is the health that must be removed before the timer ends. Power can temporarily increase maximum HP and heal the boss. Durability only reduces incoming damage."
             },
             {
                 name: "Dealing damage",
@@ -880,7 +882,7 @@ function buildInfoEmbeds(){
             },
             {
                 name: "Challenges",
-                value: "A challenge is a solo sequence. Beat each enemy in order inside a private channel within **5 minutes per enemy**. Challenge #2 requires #1; Challenge #3 requires #2. Replays give smaller repeat rewards."
+                value: "A challenge is a solo sequence. Beat each enemy in order inside a private channel within **20 minutes per enemy**. Challenge #2 requires #1; Challenge #3 requires #2. Replays give smaller repeat rewards."
             },
             {
                 name: "Challenge #3",
@@ -906,12 +908,12 @@ function buildInfoEmbeds(){
         .setColor(0xED4245)
         .setTitle("🔥 Advantages — Abilities")
         .addFields(
-            {name: "Regeneration", value: "After damage: **1,000 + 0.02% OVERALL/sec** for **15s**, capped at **0.5% base HP per activation**. **Mastered:** 1,500 + 0.03%/sec for **20s**, capped at **1% base HP**. Both have a **10-minute cooldown**."},
-            {name: "Power", value: "At **70% / 30% HP** for 3 minutes: +30% OVERALL and +20% maximum HP/healing. Mastered: +35% / +25%."},
-            {name: "Durability", value: "At **90% / 50% / 20% HP** for 3 minutes: ×1.5 maximum HP and 50% damage reduction. Mastered: ×1.6 and 60%."},
-            {name: "XP Immortality", value: "At **10% HP**, incoming XP heals the boss for 30 seconds. Mastered: 35 seconds and stronger healing."},
-            {name: "Fury", value: "At **5% HP**, sharply reduces damage, raises OVERALL, and regenerates for 30 seconds. Mastered improves every value."},
-            {name: "Precision", value: "Can dodge a full hit. Chance is **15% + OVERALL ÷ 1,000,000**, capped at 75%; successful dodge has a 30-second cooldown. Mastered starts at 20%."}
+            {name: "Regeneration", value: "After taking damage: **15% / 20%** chance, lasts **15 / 30 seconds**. Heals **500 / 1,000 + MAX HP ÷ 10,000 per second**. Can retry once the effect ends."},
+            {name: "Power", value: "Below **50% HP**: **3% / 6%** chance after damage, **once per fight**, lasts **60 / 120 seconds**. OVERALL: **+(10 / 15 + S)%**. Heals **(5 / 10 + MAX HP ÷ 100,000,000)%** of max HP and raises max HP **5% / 15%** temporarily."},
+            {name: "Durability", value: "After damage: **5% / 10%** chance. Reduces all XP damage by **25% / 40%** for **1 / 3 minutes**. Cooldown: **5 / 3 minutes from activation**. Does not increase HP."},
+            {name: "XP Immortality", value: "Below **10% HP**: **20% / 30%** chance after damage, lasts **30 / 60 seconds**. Incoming XP deals **0 damage**; heals **100 / 300 + MAX HP ÷ 50,000 per second**, independently of incoming damage. Can retry after expiry."},
+            {name: "Fury", value: "Below **30% HP**: **3% / 6%** chance after damage, **once per fight**, lasts **60 / 120 seconds**. Reduces damage by **(5 / 10 + S)%**. No OVERALL boost or regeneration."},
+            {name: "Precision", value: "Dodges the incoming hit with **(5 / 10 + S)%** chance. Successful dodge cooldown: **2 / 1 minutes**. S = **OVERALL ÷ (10,000,000 − OVERALL ÷ 20)**. All pairs are normal / mastered; chances and reductions cannot exceed 100%."}
         );
 
     return [overview, defenses, abilities];
@@ -953,7 +955,7 @@ function buildChallengeListPayload(
         .setTitle("🗝️ BOSS CHALLENGES")
         .setDescription(
             `Your level: **${snapshot.level.toLocaleString()}**\n`
-            + "Fight every enemy in order. Each private battle lasts **5 minutes**. First clears give the full reward; repeats give a smaller farming reward."
+            + "Fight every enemy in order. Each private battle lasts **20 minutes**. First clears give the full reward; repeats give a smaller farming reward."
         );
 
     for(const challenge of bossChallenges.BOSS_CHALLENGES){
@@ -1093,7 +1095,7 @@ function buildChallengeDetailPayload(guild, challenge, snapshot, notice = null){
                 name: "Current battle",
                 value: battle
                     ? `<#${battle.channelID}> • ends <t:${Math.floor(battle.expiresAt / 1000)}:R>`
-                    : "No enemy room is open. Press Fight to create your private five-minute battle."
+                    : "No enemy room is open. Press Fight to create your private 20-minute battle."
             }
         );
 
@@ -1262,7 +1264,7 @@ async function createChallengeBattle(interaction, challenge){
         }
 
         const combatMessage = await channel.send({
-            content: `<@${interaction.user.id}>, your five-minute fight has begun. Only XP earned in this channel damages this enemy.`,
+            content: `<@${interaction.user.id}>, your 20-minute fight has begun. Only XP earned in this channel damages this enemy.`,
             embeds: [buildChallengeCombatEmbed(
                 interaction.guild,
                 boss,
@@ -1586,7 +1588,7 @@ async function handleInteraction(interaction){
             );
             if(creation.success){
                 await interaction.followUp({
-                    content: `⚔️ Enter <#${creation.channel.id}> and defeat **${bosses.getBossDefinition(creation.boss).name}** within five minutes.`,
+                    content: `⚔️ Enter <#${creation.channel.id}> and defeat **${bosses.getBossDefinition(creation.boss).name}** within 20 minutes.`,
                     flags: 64,
                     allowedMentions: {parse: []}
                 });
@@ -1616,8 +1618,8 @@ function getAbilityNarrative(definition, event, userID){
     return {
         regeneration: `*${bossName}, slightly bloodied, steadies their breathing as the wounds begin closing in front of ${mention}.*`,
         power: `*${bossName} keeps watching ${mention}, then screams as a violent surge of power raises their OVERALL and HP!*`,
-        durability: `*${bossName}'s body hardens under the pressure. Their durability expands their health and smothers the incoming damage!*`,
-        xp_immortality: `*${bossName} refuses to fall. A strange aura turns incoming XP into healing!*`,
+        durability: `*${bossName}'s body hardens under the pressure. Their durability smothers the incoming damage!*`,
+        xp_immortality: `*${bossName} refuses to fall. A strange aura blocks incoming XP while their wounds slowly heal!*`,
         fury: `*${bossName}, heavily injured, erupts in fury and unleashes everything left!*`
     }[event.ability] || null;
 }
