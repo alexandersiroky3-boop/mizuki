@@ -2533,7 +2533,8 @@ await db.query(`
     ALTER TABLE users
 
     ADD COLUMN IF NOT EXISTS
-    currentCriticalStreak INTEGER DEFAULT 0
+    currentCriticalStreak INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS criticalGrowthXP BIGINT NOT NULL DEFAULT 0
 
 `);
 
@@ -2783,7 +2784,7 @@ await db.query(`
 
 
 // Personal boss challenges keep their route progress after restarts. Only one
-// private five-minute fight can be active for a user at a time.
+// private challenge fight can be active for a user at a time.
 await db.query(`
 
     CREATE TABLE IF NOT EXISTS boss_challenge_progress (
@@ -2982,7 +2983,7 @@ await db.query(`
 
         criticalStreak INTEGER DEFAULT 0,
 
-        criticalMultiplier INTEGER DEFAULT 1,
+        criticalMultiplier NUMERIC DEFAULT 1,
 
         source TEXT DEFAULT 'message',
 
@@ -2992,6 +2993,20 @@ await db.query(`
 
 `);
 
+
+// Critical growth now uses fractional multipliers (1.15–1.30).
+await db.query(`
+    DO $$ BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = 'xp_logs'
+              AND column_name = 'criticalmultiplier' AND data_type = 'integer'
+        ) THEN
+            ALTER TABLE xp_logs ALTER COLUMN criticalMultiplier TYPE NUMERIC
+                USING criticalMultiplier::NUMERIC;
+        END IF;
+    END $$;
+`);
 
 // Positive XP earned after this update is recorded here so the bot can build
 // exact weekly and monthly cycles. Spending or losing XP does not erase XP
@@ -7176,62 +7191,10 @@ async function performMythicSteal(
             )
         );
 
-    const protectionConfig =
-        protection
-        &&
-        typeof protection === "object"
-            ? protection
-            : null;
-
-    const safeLevel1To99Amount =
-        protectionConfig
-            ? Math.min(
-                safeAmount,
-                Math.max(
-                    0,
-                    Math.floor(
-                        Number(
-                            protectionConfig.level1To99Amount
-                        ) || 0
-                    )
-                )
-            )
-            : safeAmount;
-
-    const safeLevel100To199Amount =
-        protectionConfig
-            ? Math.min(
-                safeAmount,
-                Math.max(
-                    0,
-                    Math.floor(
-                        Number(
-                            protectionConfig.level100To199Amount
-                        ) || 0
-                    )
-                )
-            )
-            : safeAmount;
-
-    const safeLevel100XPThreshold =
-        Math.max(
-            1,
-            Math.floor(
-                Number(
-                    protectionConfig?.level100XPThreshold
-                ) || 2450250
-            )
-        );
-
-    const safeLevel200XPThreshold =
-        Math.max(
-            safeLevel100XPThreshold + 1,
-            Math.floor(
-                Number(
-                    protectionConfig?.level200XPThreshold
-                ) || Number.MAX_SAFE_INTEGER
-            )
-        );
+    // Protect victims through level 200, independent of the actor's level.
+    // XP classification stays correct even if the stored level is stale.
+    const protectedLoss = Math.floor(safeAmount * 0.01);
+    const level201XP = require("./utils/xp").getCurrentLevelXP(201);
 
 
     if(safeAmount <= 0){
@@ -7273,10 +7236,10 @@ async function performMythicSteal(
         // One atomic UPDATE prevents chat XP earned during the Mythic steal
         // from being overwritten by an old per-user balance snapshot. Each
         // victim is classified by their XP before the UPDATE so protected
-        // Level 1-99 and Level 100-199 users cannot be dropped by the full
+        // Level 0-200 users cannot be dropped by the full
         // server-wide Mythic amount.
         //
-        // Explicit INTEGER casts are required because PostgreSQL otherwise
+        // Explicit BIGINT casts are required because PostgreSQL otherwise
         // resolves CASE branches made only from parameters as TEXT, producing
         // an invalid `integer - text` expression.
         const drainedUsers =
@@ -7290,8 +7253,6 @@ async function performMythicSteal(
                         CASE
                             WHEN xp < $4::BIGINT
                                 THEN $5::BIGINT
-                            WHEN xp < $6::BIGINT
-                                THEN $7::BIGINT
                             ELSE $3::BIGINT
                         END
                 )
@@ -7306,10 +7267,8 @@ async function performMythicSteal(
                 normalizedGuildID,
                 normalizedThiefUserID,
                 safeAmount,
-                safeLevel100XPThreshold,
-                safeLevel1To99Amount,
-                safeLevel200XPThreshold,
-                safeLevel100To199Amount
+                level201XP,
+                protectedLoss
             ]);
 
 
@@ -8468,22 +8427,9 @@ async function performEZWin(
             )
         );
 
-    const safeLevel1To99Loss =
-        Math.max(
-            0,
-            Math.floor(
-                Number(level1To99Loss) || 0
-            )
-        );
-
-    const safeLevel100XPThreshold =
-        Math.max(
-            1,
-            Math.floor(
-                Number(level100XPThreshold) ||
-                2450250
-            )
-        );
+    // Legacy parameter names retained for callers; protection now covers 0–200.
+    const safeLevel1To99Loss = Math.floor(safeLevel100PlusLoss * 0.01);
+    const safeLevel100XPThreshold = require("./utils/xp").getCurrentLevelXP(201);
 
     const timestamp =
         Date.now();
@@ -8705,6 +8651,7 @@ async function getCriticalStreak(
 
             SELECT
                 currentCriticalStreak,
+                criticalGrowthXP,
                 bestCriticalStreak
 
             FROM users
@@ -8724,6 +8671,7 @@ async function getCriticalStreak(
 
     return {
 
+        growthXP: Number(user?.criticalgrowthxp) || 0,
         current:
             Number(
                 user?.currentcriticalstreak || 0
@@ -8743,7 +8691,8 @@ async function getCriticalStreak(
 async function setCriticalStreak(
     guildID,
     userID,
-    streak
+    streak,
+    growthXP = 0
 ){
 
     await createUser(
@@ -8759,6 +8708,7 @@ async function setCriticalStreak(
         SET
 
             currentCriticalStreak=$3,
+            criticalGrowthXP=$4::BIGINT,
 
             bestCriticalStreak=
                 GREATEST(
@@ -8772,7 +8722,8 @@ async function setCriticalStreak(
     `, [
         guildID,
         userID,
-        streak
+        streak,
+        Math.min(7000000, Math.max(0, Math.floor(Number(growthXP) || 0)))
     ]);
 
 }
@@ -8794,7 +8745,7 @@ async function resetCriticalStreak(
 
         UPDATE users
 
-        SET currentCriticalStreak=0
+        SET currentCriticalStreak=0, criticalGrowthXP=0
 
         WHERE guildID=$1
         AND userID=$2
