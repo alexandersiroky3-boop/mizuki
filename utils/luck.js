@@ -2416,14 +2416,14 @@ function getCommandLuckOrder(profile){
 // =====================================================
 //
 // The normal rarity is always selected first. A second, independent roll
-// then decides whether that exact rarity evolves. Luck and upgrades never
-// affect the fixed 1% chance.
+// then decides whether that exact rarity evolves. Social commands use 5%,
+// unaffected by luck. !roll explicitly passes its upgrade level for 1%/3%.
 const EVOLVED_XP_MULTIPLIER =
     10;
 
 
 const EVOLVED_BASE_CHANCE_PERCENT =
-    1;
+    5;
 
 
 const EVOLVED_LUCK_BONUS_PERCENT = Object.freeze({tier1:0,tier2:0,tier3:0,max:0,omega:0});
@@ -2436,11 +2436,13 @@ function getEvolvedChancePercent(_profile){
 function rollEvolvedCommandRarity(
     profile,
     random = Math.random,
-    rollingUpgradeLevel = 0
+    rollingUpgradeLevel = null
 ){
 
     const chancePercent =
-        Number(rollingUpgradeLevel) >= 8 ? 3 : getEvolvedChancePercent(profile);
+        rollingUpgradeLevel === null
+            ? getEvolvedChancePercent(profile)
+            : (Number(rollingUpgradeLevel) >= 8 ? 3 : 1);
 
 
     const position =
