@@ -18,11 +18,7 @@ async function execute(message){
         );
 
 
-    const totalXP =
-        Math.max(
-            0,
-            Number(user.xp) || 0
-        );
+    const totalXP = Number(user.xp) || 0;
 
 
     // Always calculate the real level from total XP instead
@@ -37,7 +33,7 @@ async function execute(message){
 
 
     const storedLevel =
-        Number(user.level) || 1;
+        Number(user.level) ?? 1;
 
 
     if(currentLevel !== storedLevel){
