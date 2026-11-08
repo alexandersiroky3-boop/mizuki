@@ -261,8 +261,7 @@ function buildPowerRuneInventoryLines(inventory){
 
         return (
             `• <@&${profile.roleID}> — **x${amount.toLocaleString()}** — ` +
-            `**${profile.xp.toLocaleString()} XP each** — ` +
-            `**${profile.chance}%** per XP-earning chat message`
+            `**${profile.xp.toLocaleString()} XP each**`
         );
 
     });
