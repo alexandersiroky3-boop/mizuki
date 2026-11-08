@@ -2603,7 +2603,9 @@ let rolledXP =
     luckResult.rolledXP;
 
 
-const guaranteedRoll =
+const adminGuaranteedRarity = await database.consumeAdminRollGuarantee(message.guild.id, userID);
+
+const guaranteedRoll = adminGuaranteedRarity ? null :
     await quests.consumeGuaranteedRoll(
         message.guild.id,
         userID
@@ -2655,7 +2657,7 @@ else if(
 // in Multi Roll. The counter is stored in PostgreSQL, so restarts do not
 // erase progress and concurrent rolls cannot lose an increment.
 const rollGuarantee =
-    await database.advanceRollGuarantee(
+    await (adminGuaranteedRarity ? database.getRollGuaranteeProgress : database.advanceRollGuarantee)(
         message.guild.id,
         userID,
         upgradeEffects.rollGuaranteeThreshold
@@ -2743,6 +2745,13 @@ if(forcedNegativeByTroll){
     rollingUpgradeDoubled = false;
 }
 
+
+// An admin test overrides the final base rarity, not animation/cooldown/XP timing.
+// Quest guarantees and milestone progress remain untouched for this one result.
+if(adminGuaranteedRarity){
+    rolledXP = require("../utils/adminRolls").rollRarity(adminGuaranteedRarity);
+    rollingUpgradeDoubled = false;
+}
 
 // The normal result—including guarantees and the Rolling upgrade—is final
 // before this independent Evolved check. Negative/troll-loss results never
@@ -3067,7 +3076,9 @@ const chestDropExtra =
         : "";
 
 
-const guaranteedRollExtra =
+const guaranteedRollExtra = adminGuaranteedRarity
+    ? "\nAdmin guarantee used: " + adminGuaranteedRarity.toUpperCase() + "."
+    :
     forcedNegativeByTroll
         ? ""
         : guaranteedRoll === "daily_25k_75k"
