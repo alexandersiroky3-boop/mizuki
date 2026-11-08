@@ -20,6 +20,19 @@ function getBalancedChatXP(reward, chatXPMultiplier){
     return reward.critical ? Math.min(total, getCriticalXPCap(reward.chattingUpgradeLevel)) : total;
 }
 
+// One independent draw per earned message. Never persist this multiplier in
+// criticalGrowthXP: even consecutive Super Crits multiply only their own XP.
+function rollSuperCritical(chattingLevel, random = Math.random){
+    return Number(chattingLevel) >= 8 && random() < 0.001;
+}
+
+function getFinalChatXP(reward, chatXPMultiplier, mediaMultiplier = 1){
+    const amount = applyChatMediaBonus(
+        getBalancedChatXP(reward, chatXPMultiplier), reward, mediaMultiplier
+    );
+    return Math.min(Number.MAX_SAFE_INTEGER, amount * (reward.superCritical ? 10 : 1));
+}
+
 // Inspect Discord-provided media metadata only; never fetch arbitrary links.
 function hasChatMedia(message){
     const isMedia = item => /^(image|video)\//i.test(item?.contentType || "")
@@ -624,18 +637,21 @@ function getXPAmount(
     const criticalRoll =
         Math.random() * 100;
 
+    const superCritical = !forcedCriticalFailure
+        && rollSuperCritical(upgradeEffects.levels?.chatting);
+
     const critical =
         !forcedCriticalFailure
         &&
         (
-            criticalRoll < (forcedCritical ? criticalChanceCap : criticalChance)
+            superCritical || criticalRoll < (forcedCritical ? criticalChanceCap : criticalChance)
         );
 
     const criticalWithoutLuck =
         !forcedCriticalFailure
         &&
         (
-            criticalRoll < (forcedCritical ? DEFAULT_CRITICAL_CHANCE_CAP : criticalChanceWithoutLuck)
+            superCritical || criticalRoll < (forcedCritical ? DEFAULT_CRITICAL_CHANCE_CAP : criticalChanceWithoutLuck)
         );
 
 
@@ -812,6 +828,7 @@ function getXPAmount(
 
 
         criticalRoll,
+        superCritical,
 
 
         criticalChanceWithoutLuck,
@@ -983,6 +1000,8 @@ function getProgress(user){
 // ======================
 
 module.exports = {
+    rollSuperCritical,
+    getFinalChatXP,
 
 
     BOOST_ROLES:
