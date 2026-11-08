@@ -2309,7 +2309,11 @@ if(result.critical){
     if(!criticalMessagesMuted){
 
     // 50+ uses the two large custom emojis.
-    if(result.criticalStreak >= 50){
+    if(result.superCritical){
+        const fire = message.guild.emojis.cache.find(emoji => emoji.name === "red_fire");
+        message.reply(`**${fire ? fire.toString() : "🔥"} ${result.criticalStreak} SUPER CRIT!**`).catch(() => {});
+    }
+    else if(result.criticalStreak >= 50){
 
         message.reply(
 
