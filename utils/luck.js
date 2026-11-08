@@ -437,14 +437,13 @@ const LUCK_ROLL_CHANCE_TABLES = {
     ],
 
     omega: [
-        { chancePercent: 28.365, type: "positive", min: 200000, max: 500000 },
-        { chancePercent: 20, type: "positive", min: 500000, max: 2000000 },
-        { chancePercent: 45, type: "positive", min: 2000000, max: 10000000 },
-        { chancePercent: 5, type: "positive", min: 10000001, max: 30000000 },
-        { chancePercent: 1, type: "positive", min: 30000001, max: 50000000 },
-        { chancePercent: 0.5, type: "positive", min: 50000001, max: 100000000 },
-        { chancePercent: 0.1, type: "positive", min: 100000001, max: 250000000 },
-        { chancePercent: 0.035, type: "positive", min: 250000001, max: 1500000000 }
+        { chancePercent: 9.99, type: "positive", min: 200000, max: 500000 },
+        { chancePercent: 70, type: "positive", min: 500001, max: 5000000 },
+        { chancePercent: 16, type: "positive", min: 5000001, max: 10000000 },
+        { chancePercent: 3, type: "positive", min: 10000001, max: 30000000 },
+        { chancePercent: 1, type: "positive", min: 30000001, max: 49999999 },
+        { chancePercent: 0.009, type: "positive", min: 100000000, max: 250000000 },
+        { chancePercent: 0.001, type: "positive", min: 250000001, max: 1500000000 }
     ]
 
 };
@@ -1927,6 +1926,24 @@ function getRollingUpgradeChanceTable(
 }
 
 
+// Omega is rarity-first: generic upgrade weights must never push it back
+// toward Epic. Jackpot has a separate bounded budget; extra luck cannot inflate it
+// without limit. Mythic bands stay below 50M so Upgrade 5's x2 cannot create
+// unintended jackpot outcomes. Evolved remains an independent payout multiplier.
+function getOmegaRollChanceTable(profile, rollingLevel = 0){
+    const rolling = Math.min(8, Math.max(0, Math.floor(Number(rollingLevel) || 0))) / 8;
+    const boost = Math.min(1, Math.max(0, ((Number(profile?.rollWeightFactor) || 1) - 1) / 2));
+    const progress = 0.6 * rolling + 0.4 * boost;
+    const legendary = 70 + 2 * progress;
+    const mythic = 20 + 6 * progress;
+    const jackpot = 0.01 * (1 + 3 * rolling) * (1 + 1.5 * boost);
+    const weights = [100 - legendary - mythic - jackpot, legendary,
+        mythic * 0.8, mythic * 0.15, mythic * 0.05, jackpot * 0.9, jackpot * 0.1];
+    return LUCK_ROLL_CHANCE_TABLES.omega.map((entry, index) => ({
+        ...entry, chancePercent: weights[index]
+    }));
+}
+
 function getResolvedRollChanceTable(
     rollChanceTable,
     profile,
@@ -1943,6 +1960,8 @@ function getResolvedRollChanceTable(
             safeProfile.tier || ""
         ).toLowerCase();
 
+
+    if(tier === "omega") return getOmegaRollChanceTable(safeProfile, rollingLevel);
 
     const exactLuckTable =
         LUCK_ROLL_CHANCE_TABLES[tier];
