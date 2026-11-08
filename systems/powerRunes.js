@@ -12,7 +12,7 @@ const POWER_RUNE_PROFILES = {
         roleID: "1551186904903450685",
         name: "Power Rune I",
         xp: 100000,
-        chance: 3,
+        chance: 2,
         order: 1
     },
 
@@ -21,7 +21,7 @@ const POWER_RUNE_PROFILES = {
         roleID: "1551190089256665168",
         name: "Power Rune II",
         xp: 1000000,
-        chance: 0.5,
+        chance: 0.75,
         order: 2
     },
 
@@ -30,7 +30,7 @@ const POWER_RUNE_PROFILES = {
         roleID: "1551190400599855165",
         name: "Power Rune III",
         xp: 10000000,
-        chance: 0.08,
+        chance: 0.25,
         order: 3
     }
 
