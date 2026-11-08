@@ -1,4 +1,4 @@
-const luck = require("./luck");a
+const luck = require("./luck");
 const boosts = require("../systems/boosts");
 
 // Critical chance and XP growth are independent. No 20/50/100-hit XP milestones.
