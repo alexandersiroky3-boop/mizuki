@@ -16,8 +16,8 @@ const CHEST_NAMES = Object.freeze({
 
 
 const ROLL_CHEST_CHANCES = Object.freeze({
-    bronze: 2,
-    gilded: 0.3
+    bronze: 3,
+    gilded: 0.5
 });
 
 
@@ -92,7 +92,7 @@ function rollRollChestDrop(random = Math.random){
 const BRONZE_REWARDS = Object.freeze([
     Object.freeze({
         key: "xp_common",
-        weight: 41,
+        weight: 42.4,
         build(random){
             const xp = randomInteger(1500000, 7500000, random);
             return {bundle: {xp}, text: `**${xp.toLocaleString()} XP**`};
@@ -152,7 +152,7 @@ const BRONZE_REWARDS = Object.freeze([
     }),
     Object.freeze({
         key: "bless_unlock",
-        weight: 0.1,
+        weight: 0.7,
         build(){
             return {
                 bundle: {unlockBless: true},
@@ -238,7 +238,7 @@ const GILDED_REWARDS = Object.freeze([
 const BOSS_REWARDS = Object.freeze([
     Object.freeze({
         key: "shards",
-        weight: 85,
+        weight: 84.5,
         build(random){
             const shards = randomInteger(100, 2500, random);
             return {
@@ -253,13 +253,13 @@ const BOSS_REWARDS = Object.freeze([
         build(){
             return {
                 bundle: {spawnBossUses: 1},
-                text: "Obtain **1 use** of `!spawnboss`"
+                text: "Obtain **1 use** of `!spawnboss` (maximum 1 held; duplicates are ignored)"
             };
         }
     }),
     Object.freeze({
         key: "coinflip",
-        weight: 0.5,
+        weight: 1,
         build(){
             return {
                 bundle: {unlockCoinflip: true},
