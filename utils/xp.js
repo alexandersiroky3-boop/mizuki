@@ -999,7 +999,8 @@ function getProgress(user){
 // EXPORTS
 // ======================
 
-module.exports = {
+// Preserve the exports object for consumers that load during a dependency cycle.
+Object.assign(module.exports, {
     rollSuperCritical,
     getFinalChatXP,
 
@@ -1038,4 +1039,4 @@ module.exports = {
     getProgress
 
 
-};
+});
