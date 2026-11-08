@@ -10,7 +10,17 @@ const XP_LOG_CHANNEL =
     "1527632057574887474";
 
 
-console.log("XP MODULE:", xp);
+// Older deployments may still have the pre-Super-Crit XP module loaded.
+// Use the same calculation rather than failing every earned chat message.
+function getFinalChatXP(reward, chatXPMultiplier, mediaMultiplier = 1){
+    if(typeof xp.getFinalChatXP === "function"){
+        return xp.getFinalChatXP(reward, chatXPMultiplier, mediaMultiplier);
+    }
+    const amount = xp.applyChatMediaBonus(
+        xp.getBalancedChatXP(reward, chatXPMultiplier), reward, mediaMultiplier
+    );
+    return Math.min(Number.MAX_SAFE_INTEGER, amount * (reward.superCritical ? 10 : 1));
+}
 
 
 
@@ -223,7 +233,7 @@ const chatXPMultiplier =
 
 
 const mediaMultiplier = xp.hasChatMedia(message) ? xp.randomXP(150, 225) / 100 : 1;
-const earnedXPBeforeTroll = xp.getFinalChatXP(reward, chatXPMultiplier, mediaMultiplier);
+const earnedXPBeforeTroll = getFinalChatXP(reward, chatXPMultiplier, mediaMultiplier);
 
 
 const trollResolution =
@@ -252,7 +262,7 @@ const rewardWithoutLuck =
         : reward;
 
 const bossXPWithoutLuckBeforeTroll =
-    xp.getFinalChatXP(rewardWithoutLuck, chatXPMultiplier, mediaMultiplier);
+    getFinalChatXP(rewardWithoutLuck, chatXPMultiplier, mediaMultiplier);
 
 const bossTrollResolutionWithoutLuck =
     trolls.resolveChatEffect(
