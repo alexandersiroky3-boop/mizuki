@@ -437,13 +437,13 @@ const LUCK_ROLL_CHANCE_TABLES = {
     ],
 
     omega: [
-        { chancePercent: 9.99, type: "positive", min: 200000, max: 500000 },
+        { chancePercent: 9.95, type: "positive", min: 200000, max: 500000 },
         { chancePercent: 70, type: "positive", min: 500001, max: 5000000 },
         { chancePercent: 16, type: "positive", min: 5000001, max: 10000000 },
         { chancePercent: 3, type: "positive", min: 10000001, max: 30000000 },
         { chancePercent: 1, type: "positive", min: 30000001, max: 49999999 },
-        { chancePercent: 0.009, type: "positive", min: 100000000, max: 250000000 },
-        { chancePercent: 0.001, type: "positive", min: 250000001, max: 1500000000 }
+        { chancePercent: 0.045, type: "positive", min: 100000000, max: 250000000 },
+        { chancePercent: 0.005, type: "positive", min: 250000001, max: 1500000000 }
     ]
 
 };
@@ -1936,7 +1936,7 @@ function getOmegaRollChanceTable(profile, rollingLevel = 0){
     const progress = 0.6 * rolling + 0.4 * boost;
     const legendary = 70 + 2 * progress;
     const mythic = 20 + 6 * progress;
-    const jackpot = 0.01 * (1 + 3 * rolling) * (1 + 1.5 * boost);
+    const jackpot = 0.05 * (1 + 3 * rolling) * (1 + 1.5 * boost);
     const weights = [100 - legendary - mythic - jackpot, legendary,
         mythic * 0.8, mythic * 0.15, mythic * 0.05, jackpot * 0.9, jackpot * 0.1];
     return LUCK_ROLL_CHANCE_TABLES.omega.map((entry, index) => ({
