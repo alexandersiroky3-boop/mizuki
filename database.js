@@ -12110,6 +12110,37 @@ async function clearCommandCooldown(
 
 }
 
+// Admin testing reset: scoped to one member in one guild. Negative roll
+// timestamps are animation locks, not cooldowns, and must never be removed.
+async function adminClearCommandCooldowns(guildID, userID, commandName = "all"){
+    const command = String(commandName).toLowerCase();
+    if(!["all", "roll", "hug", "kiss", "steal", "ezwin", "troll", "fight", "trade", "bless", "coinflip", "spawnboss"].includes(command)){
+        throw new Error("Invalid cooldown command");
+    }
+    const client = await db.connect();
+    try{
+        await client.query("BEGIN");
+        await client.query(`
+            DELETE FROM command_cooldowns
+            WHERE guildID=$1 AND userID=$2
+            AND ($3='all' OR commandName=$3)
+            AND NOT (commandName='roll' AND expiresAt<0)
+        `, [String(guildID), String(userID), command === "trade" ? "trade_request" : command]);
+        if(command === "all" || command === "spawnboss"){
+            await client.query(`
+                UPDATE boss_entitlements SET spawnBossCooldownUntil=0
+                WHERE guildID=$1 AND userID=$2
+            `, [String(guildID), String(userID)]);
+        }
+        await client.query("COMMIT");
+    }catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }finally{
+        client.release();
+    }
+}
+
 // =====================================================
 // LUCK BOOSTS
 // =====================================================
@@ -23148,6 +23179,7 @@ module.exports = {
     claimCommandCooldown,
 
     clearCommandCooldown,
+    adminClearCommandCooldowns,
 
     getLuckBoost,
 
