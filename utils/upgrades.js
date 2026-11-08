@@ -79,7 +79,7 @@ const UPGRADE_DEFINITIONS = Object.freeze({
             ),
             upgrade(
                 freezeCost(20000000000),
-                "Gain another +500% chat XP, improve critical odds and drops, and strenghten the criticals to the MAX."
+                "Gain another +500% chat XP, improve critical odds and drops, and strengthen criticals to the MAX. Unlock a fixed 0.1% Super Crit chance: 10x the completed chat XP reward for that message only (does not stack)."
             )
         ])
     }),
@@ -112,11 +112,11 @@ const UPGRADE_DEFINITIONS = Object.freeze({
                 "Make 75,000 and 200,000 XP rolls very common, triple rare-outcome weights, and improve the roll guarantee from 100 to 75 rolls."
             ),
             upgrade(
-                freezeCost(25000000000, [
-                    { boostType: "chest", tier: "bronze", amount: 1000 },
-                    { boostType: "chest", tier: "gilded", amount: 100 }
+                freezeCost(30000000000, [
+                    { boostType: "chest", tier: "bronze", amount: 100 },
+                    { boostType: "chest", tier: "gilded", amount: 10 }
                 ]),
-                "Make 1,000,000 XP rolls very common, apply the strongest rare-outcome weights, improve the guarantee to 50 rolls, and guarantee Mythic-or-higher XP at every milestone."
+                "Make 1,000,000 XP rolls very common, apply the strongest rare-outcome weights, improve the guarantee to 50 rolls, and guarantee Mythic-or-higher XP at every milestone. Increase the evolved chance for !roll only from 1% to 3%."
             )
         ])
     }),
