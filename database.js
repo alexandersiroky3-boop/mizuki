@@ -2900,6 +2900,11 @@ await db.query(`
 `);
 
 
+// One held spawn entitlement maximum. Normalize old stacks on startup.
+await db.query(`
+    UPDATE boss_entitlements SET spawnBossUses=1 WHERE spawnBossUses>1
+`);
+
 // Boss Shards are a separate permanent currency. Chest inventory itself is
 // stored in boost_inventory with boostType='chest', keeping every inventory
 // mutation under the same row-locking rules as Boosts and Power Runes.
@@ -4930,6 +4935,47 @@ async function purchaseUserUpgrade(
 
         await client.query(`
 
+            INSERT INTO boss_entitlements(
+                guildID,userID,fightUnlocked,
+                freeUpgradeTokens,updatedAt
+            )
+            VALUES($1,$2,FALSE,0,$3)
+            ON CONFLICT DO NOTHING
+
+        `, [
+            String(guildID),
+            String(userID),
+            Date.now()
+        ]);
+
+
+        const entitlementResult =
+            await client.query(`
+
+                SELECT freeUpgradeTokens AS "freeUpgradeTokens"
+
+                FROM boss_entitlements
+
+                WHERE guildID=$1
+                AND userID=$2
+
+                FOR UPDATE
+
+            `, [
+                String(guildID),
+                String(userID)
+            ]);
+
+
+        const useFreeUpgrade =
+            Number(
+                entitlementResult.rows[0]?.freeUpgradeTokens
+                ?? entitlementResult.rows[0]?.freeupgradetokens
+            ) > 0;
+
+
+        await client.query(`
+
             INSERT INTO user_upgrades(
                 guildID,
                 userID,
@@ -5014,7 +5060,8 @@ async function purchaseUserUpgrade(
 
 
         if(
-            balance < nextUpgrade.cost.xp
+            !useFreeUpgrade
+            && balance < nextUpgrade.cost.xp
         ){
 
             await client.query("COMMIT");
@@ -5036,7 +5083,11 @@ async function purchaseUserUpgrade(
 
 
         const boostCosts =
-            [...nextUpgrade.cost.boosts]
+            (
+                useFreeUpgrade
+                    ? []
+                    : [...nextUpgrade.cost.boosts]
+            )
                 .sort(
                     (first, second) =>
                         `${first.boostType}:${first.tier}`
@@ -5103,7 +5154,8 @@ async function purchaseUserUpgrade(
 
 
         if(
-            nextUpgrade.cost.xp > 0
+            !useFreeUpgrade
+            && nextUpgrade.cost.xp > 0
         ){
 
             await client.query(`
@@ -5124,6 +5176,24 @@ async function purchaseUserUpgrade(
         }
 
 
+        if(useFreeUpgrade){
+
+            await client.query(`
+
+                UPDATE boss_entitlements
+                SET
+                    freeUpgradeTokens=
+                        GREATEST(0,freeUpgradeTokens-1),
+                    updatedAt=$3
+                WHERE guildID=$1 AND userID=$2
+
+            `, [
+                String(guildID),
+                String(userID),
+                Date.now()
+            ]);
+
+        }
 
 
         for(const boostCost of boostCosts){
@@ -5193,7 +5263,9 @@ async function purchaseUserUpgrade(
 
 
         const remainingBalance =
-            balance - nextUpgrade.cost.xp;
+            useFreeUpgrade
+                ? balance
+                : balance - nextUpgrade.cost.xp;
 
 
         await client.query("COMMIT");
@@ -5213,8 +5285,12 @@ async function purchaseUserUpgrade(
 
         return {
             success: true,
-            status: "purchased",
-            usedFreeUpgrade: false,
+            status:
+                useFreeUpgrade
+                    ? "free-upgrade"
+                    : "purchased",
+            usedFreeUpgrade:
+                useFreeUpgrade,
             category,
             level:
                 Number(
@@ -9970,8 +10046,13 @@ async function applyBossRewardBundle(
     const unlockFight =
         Boolean(bundle?.unlockFight);
 
-    // Ignore retired rewards even in old persisted/pending reward bundles.
-    const freeUpgradeTokens = 0;
+    const freeUpgradeTokens =
+        Math.max(
+            0,
+            Math.floor(
+                Number(bundle?.freeUpgradeTokens) || 0
+            )
+        );
 
     const unlockBless =
         Boolean(bundle?.unlockBless);
@@ -9979,11 +10060,7 @@ async function applyBossRewardBundle(
     const unlockCoinflip =
         Boolean(bundle?.unlockCoinflip);
 
-    const spawnBossUses =
-        Math.max(
-            0,
-            Math.floor(Number(bundle?.spawnBossUses) || 0)
-        );
+    const spawnBossUses = Number(bundle?.spawnBossUses) > 0 ? 1 : 0;
 
 
     if(
@@ -10020,8 +10097,7 @@ async function applyBossRewardBundle(
                     boss_entitlements.blessUnlocked
                     OR EXCLUDED.blessUnlocked,
                 spawnBossUses=
-                    boss_entitlements.spawnBossUses
-                    + EXCLUDED.spawnBossUses,
+                    LEAST(1, GREATEST(boss_entitlements.spawnBossUses, EXCLUDED.spawnBossUses)),
                 coinflipUnlocked=
                     boss_entitlements.coinflipUnlocked
                     OR EXCLUDED.coinflipUnlocked,
@@ -10264,7 +10340,14 @@ async function getBossChallengeSnapshot(
                 entitlement.fightUnlocked
                 ?? entitlement.fightunlocked
             ),
-        freeUpgradeTokens: 0
+        freeUpgradeTokens:
+            Math.max(
+                0,
+                Number(
+                    entitlement.freeUpgradeTokens
+                    ?? entitlement.freeupgradetokens
+                ) || 0
+            )
     };
 
 }
@@ -11001,7 +11084,14 @@ function normalizeBossEntitlements(row = {}){
                 row.fightUnlocked
                 ?? row.fightunlocked
             ),
-        freeUpgradeTokens: 0,
+        freeUpgradeTokens:
+            Math.max(
+                0,
+                Number(
+                    row.freeUpgradeTokens
+                    ?? row.freeupgradetokens
+                ) || 0
+            ),
         blessUnlocked:
             Boolean(
                 row.blessUnlocked
@@ -11085,7 +11175,7 @@ async function consumeSpawnBossUse(
 
             UPDATE boss_entitlements
             SET
-                spawnBossUses=spawnBossUses-1,
+                spawnBossUses=0,
                 spawnBossCooldownUntil=$4,
                 updatedAt=$3
             WHERE guildID=$1
@@ -11128,7 +11218,7 @@ async function consumeSpawnBossUse(
 async function refundSpawnBossUse(guildID, userID, cooldownUntil){
     await db.query(`
         UPDATE boss_entitlements
-        SET spawnBossUses=spawnBossUses+1, spawnBossCooldownUntil=0
+        SET spawnBossUses=1, spawnBossCooldownUntil=0
         WHERE guildID=$1 AND userID=$2 AND spawnBossCooldownUntil=$3
     `, [String(guildID), String(userID), cooldownUntil]);
 }
@@ -11139,11 +11229,7 @@ async function addSpawnBossUses(
     amount = 1
 ){
 
-    const safeAmount =
-        Math.max(
-            1,
-            Math.floor(Number(amount) || 1)
-        );
+    const safeAmount = 1;
 
 
     const result =
@@ -11157,8 +11243,7 @@ async function addSpawnBossUses(
             ON CONFLICT(guildID,userID)
             DO UPDATE SET
                 spawnBossUses=
-                    boss_entitlements.spawnBossUses
-                    + EXCLUDED.spawnBossUses,
+                    LEAST(1, GREATEST(boss_entitlements.spawnBossUses, EXCLUDED.spawnBossUses)),
                 updatedAt=EXCLUDED.updatedAt
 
             RETURNING spawnBossUses AS "spawnBossUses"
