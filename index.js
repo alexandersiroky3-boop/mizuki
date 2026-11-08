@@ -13,6 +13,7 @@ const powerRunes = require("./systems/powerRunes");
 const trolls = require("./systems/trolls");
 const bosses = require("./systems/bosses");
 const database = require("./database");
+const adminTools = require("./commands/adminTools");
 const luck =
     require("./utils/luck");
 const {getCriticalEmojis} = require("./utils/criticalEmojis");
@@ -979,6 +980,9 @@ client.once("clientReady", async () => {
                     error
                 );
             });
+            for(const command of adminTools.slashCommands){
+                await guild.commands.create(command).catch(error => console.error("Could not register /" + command.name + ":",error));
+            }
             await guild.commands.create(trollCommand.slashCommand.toJSON())
                 .catch(error => console.error("Could not register /troll:", error));
             await powerRunes.restorePowerRuneRoles(client, MAIN_GUILD_ID)
@@ -1339,6 +1343,21 @@ client.on(
     }
 );
 
+
+client.on("interactionCreate", async interaction => {
+    if(!interaction.isChatInputCommand() || !adminTools.slashCommands.some(c=>c.name===interaction.commandName)) return;
+    if(!interaction.guildId || !isMainGuild(interaction.guildId)){
+        await interaction.reply({content:"This command is only available in the main server.",flags:64}).catch(()=>{});
+        return;
+    }
+    try{await adminTools.executeInteraction(interaction);}
+    catch(error){
+        console.error("Admin slash command failed:",error);
+        const payload={content:"❌ The command failed. Check the bot logs.",allowedMentions:{parse:[]}};
+        if(interaction.deferred || interaction.replied) await interaction.editReply(payload).catch(()=>{});
+        else await interaction.reply({...payload,flags:64}).catch(()=>{});
+    }
+});
 
 client.on("interactionCreate", async interaction => {
     if(!interaction.isChatInputCommand() || interaction.commandName !== "troll"){
