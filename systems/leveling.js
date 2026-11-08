@@ -223,9 +223,7 @@ const chatXPMultiplier =
 
 
 const mediaMultiplier = xp.hasChatMedia(message) ? xp.randomXP(150, 225) / 100 : 1;
-const earnedXPBeforeTroll = xp.applyChatMediaBonus(
-    xp.getBalancedChatXP(reward, chatXPMultiplier), reward, mediaMultiplier
-);
+const earnedXPBeforeTroll = xp.getFinalChatXP(reward, chatXPMultiplier, mediaMultiplier);
 
 
 const trollResolution =
@@ -254,10 +252,7 @@ const rewardWithoutLuck =
         : reward;
 
 const bossXPWithoutLuckBeforeTroll =
-    xp.applyChatMediaBonus(
-        xp.getBalancedChatXP(rewardWithoutLuck, chatXPMultiplier),
-        rewardWithoutLuck, mediaMultiplier
-    );
+    xp.getFinalChatXP(rewardWithoutLuck, chatXPMultiplier, mediaMultiplier);
 
 const bossTrollResolutionWithoutLuck =
     trolls.resolveChatEffect(
@@ -625,6 +620,8 @@ return {
 
     critical:
         reward.critical,
+
+    superCritical: reward.superCritical,
 
 
     forcedCritical:
