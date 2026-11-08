@@ -145,6 +145,9 @@ function getCriticalChanceCap(
 // ======================
 
 function getLevel(xp){
+    const value = Number(xp);
+    if(!Number.isFinite(value)) return 1;
+    if(value < 0) return 1 - Math.ceil(Math.sqrt(-value / 250));
 
 
     let level = 1;
@@ -167,6 +170,7 @@ function getLevel(xp){
 
 
 function getLevelRequirement(level){
+    if(Number.isFinite(Number(level)) && Number(level) < 1) return getNextLevelXP(level) - getCurrentLevelXP(level);
 
 
     const safeLevel =
@@ -279,6 +283,7 @@ function getLevelRequirement(level){
 
 
 function getCurrentLevelXP(level){
+    if(Number.isFinite(Number(level)) && Number(level) < 1) return -250 * Math.pow(1 - Math.floor(Number(level)), 2);
 
 
     const safeLevel =
@@ -345,6 +350,7 @@ function getCurrentLevelXP(level){
 
 
 function getNextLevelXP(level){
+    if(Number.isFinite(Number(level)) && Number(level) < 1) return getCurrentLevelXP(Math.floor(Number(level)) + 1);
 
 
     const safeLevel =
