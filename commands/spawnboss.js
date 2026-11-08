@@ -18,7 +18,7 @@ async function execute(message){
     if(entitlements.spawnBossUses <= 0){
         return message.reply({
             content:
-                `🔒 You do not have a \`!spawnboss\` use. A ${chests.getChestEmoji(message.guild, "boss")} **Boss Chest** can drop one, and Boss Shop uses stack.`,
+                `🔒 You do not have a \`!spawnboss\` use. A ${chests.getChestEmoji(message.guild, "boss")} **Boss Chest** can drop one, or you can buy one from the Boss Shop. You can hold at most one use.`,
             allowedMentions: {parse: [], repliedUser: false}
         });
     }
