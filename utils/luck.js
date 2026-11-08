@@ -2435,11 +2435,12 @@ function getEvolvedChancePercent(_profile){
 
 function rollEvolvedCommandRarity(
     profile,
-    random = Math.random
+    random = Math.random,
+    rollingUpgradeLevel = 0
 ){
 
     const chancePercent =
-        getEvolvedChancePercent(profile);
+        Number(rollingUpgradeLevel) >= 8 ? 3 : getEvolvedChancePercent(profile);
 
 
     const position =
