@@ -2388,7 +2388,18 @@ function getActiveAbilityStatuses(
 }
 
 
+// Serialize removal with combat/spawn work. This is a despawn, never a defeat.
+async function removeActiveRaidBoss(guildID){
+    return withGuildLock(guildID, async () => {
+        const boss = await database.getRaidBossState(guildID);
+        if(!boss) return false;
+        await database.deleteRaidBossState(guildID,boss.spawnedAt);
+        return true;
+    });
+}
+
 module.exports = {
+    removeActiveRaidBoss,
     BOSS_DURATION_MS,
     RAID_BOSS_SPAWN_COOLDOWN_MS,
     ACTIVITY_WINDOW_MS,
