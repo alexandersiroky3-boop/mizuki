@@ -240,8 +240,8 @@ function buildBossEmbed(guild, boss, options = {}){
                 inline: true
             },
             {
-                name: "Spawn chance",
-                value: `**${definition.chancePercent}%**`,
+                name: "Boss selection",
+                value: `**1 in ${bosses.RAID_BOSSES.length}** when a raid spawns`,
                 inline: true
             },
             {name: "Info", value: `*${definition.info}*`},
@@ -858,7 +858,7 @@ function buildInfoEmbeds(){
         .addFields(
             {
                 name: "Global spawning",
-                value: "Only the **6 RAID BOSSES** can spawn globally; the **21 Challenge Bosses** never enter this pool. After the **4-hour natural-spawn cooldown**, at least **2 users** must earn chat XP within 10 minutes. Each eligible chat reward then rolls the listed spawn chances (1.25% combined). One raid at a time; raids last 2 hours 30 minutes."
+                value: "Only the **6 RAID BOSSES** can spawn globally; the **21 Challenge Bosses** never enter this pool. After the **4-hour natural-spawn cooldown**, at least **2 users** must be active within the activity window. Each eligible chat reward has a **1.25%** natural spawn chance. Once triggered, all six bosses have equal selection odds, just like !spawnboss. Repeats are still possible. One raid at a time; raids last 2 hours 30 minutes."
             },
             {
                 name: "OVERALL",
@@ -886,7 +886,7 @@ function buildInfoEmbeds(){
             },
             {
                 name: "Challenge #3",
-                value: "The first clear permanently unlocks **!fight**."
+                value: "The first clear permanently unlocks **!fight** and grants **1 free upgrade**, automatically used on the next successful !upgrades purchase."
             }
         );
 
@@ -1757,7 +1757,7 @@ async function handleChallengeCombatResult(message, result){
                             name: "Progress",
                             value: challenge.number === 3
                                 && completion.firstClear
-                                    ? "**!fight is now permanently unlocked.**"
+                                    ? "**!fight is now permanently unlocked.** Your free-upgrade token will automatically pay for your next successful upgrade."
                                     : challenge.number < 3
                                         ? `Challenge #${challenge.number + 1} is now available if you meet its level requirement.`
                                         : "You may replay this challenge for its reduced repeat reward."
