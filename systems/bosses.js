@@ -86,6 +86,7 @@ function rollRaidRewardBundle(definition, topThree, random = Math.random){
         chests: [{tier: "boss", amount: 1}],
         boosts: (config.boosts || []).map(([type, tier, amounts]) =>
             rewardBoost(type, tier, pickRewardOption(amounts, random))),
+        freeUpgradeTokens: config.freeUpgradeTokens || 0,
         guaranteedJackpots: config.guaranteedJackpots || 0,
         ...(config.multiHours ? {
             timedAllCommands: {
@@ -108,6 +109,7 @@ function getRaidRewardPreview(definition){
             values.join("/") + "x " + labels[type + ":" + tier]),
         ...(config.guaranteedJackpots ? ["1 guaranteed jackpot roll"] : []),
         ...(config.multiHours ? ["3 total executions per command for " + config.multiHours.join("/") + " hours"] : []),
+        ...(config.freeUpgradeTokens ? ["1 free upgrade"] : []),
         "1 Boss Chest",
         config.shards.toLocaleString("en-US") + " shards"
     ].join(" • ");
@@ -758,73 +760,17 @@ function activateBuff(
 }
 
 
-function rollBossDefinition(
-    random = Math.random
-){
-
-    const rolledPercent =
-        Math.max(
-            0,
-            Math.min(
-                99.999999999,
-                Number(random()) * 100
-            )
-        );
-
-    let cumulativeChance =
-        0;
-
-
-    for(const definition of RAID_BOSSES){
-
-        cumulativeChance +=
-            definition.chancePercent;
-
-
-        if(rolledPercent < cumulativeChance){
-            return definition;
-        }
-
-    }
-
-
-    return null;
-
+// Preserve the overall natural spawn frequency (1.25% per eligible chat),
+// but choose uniformly from all raid bosses instead of favoring Mizuki 64%.
+function rollBossDefinition(random = Math.random){
+    const totalChance = Math.round(RAID_BOSSES.reduce((sum, boss) => sum + Math.max(0, Number(boss.chancePercent) || 0), 0) * 1e9) / 1e9;
+    if(Number(random()) * 100 >= totalChance) return null;
+    return rollGuaranteedBossDefinition(random);
 }
 
-
-function rollGuaranteedBossDefinition(
-    random = Math.random
-){
-
-    const totalWeight =
-        RAID_BOSSES.reduce(
-            (sum, definition) =>
-                sum + Math.max(
-                    0,
-                    Number(definition.chancePercent) || 0
-                ),
-            0
-        );
-
-    let cursor =
-        Math.max(
-            0,
-            Math.min(0.999999999, Number(random()) || 0)
-        ) * totalWeight;
-
-    for(const definition of RAID_BOSSES){
-        cursor -= Math.max(
-            0,
-            Number(definition.chancePercent) || 0
-        );
-        if(cursor < 0){
-            return definition;
-        }
-    }
-
-    return RAID_BOSSES[RAID_BOSSES.length - 1];
-
+function rollGuaranteedBossDefinition(random = Math.random){
+    const index = Math.floor(Math.max(0, Math.min(0.999999999, Number(random()) || 0)) * RAID_BOSSES.length);
+    return RAID_BOSSES[index];
 }
 
 
