@@ -2763,7 +2763,9 @@ const rarityRolledXP =
 const evolved =
     rolledXP > 0
     && luck.rollEvolvedCommandRarity(
-        luckResult.profile
+        luckResult.profile,
+        Math.random,
+        upgradeEffects.rollingLevel
     );
 
 
