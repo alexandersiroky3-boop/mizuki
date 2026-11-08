@@ -2527,6 +2527,14 @@ function buildTradeValueObservations(
 // =======================
 
 async function createTables(){
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS admin_roll_guarantees (
+            guildID TEXT NOT NULL, userID TEXT NOT NULL, rarity TEXT NOT NULL,
+            PRIMARY KEY(guildID,userID),
+            CHECK(rarity IN ('common','uncommon','rare','epic','legendary','mythic','jackpot'))
+        )
+    `);
+
 
 await db.query(`
 
@@ -5589,7 +5597,7 @@ WITH updated_user AS (
 
     SET
 
-    xp = GREATEST(0, xp + $3),
+    xp = CASE WHEN xp < 0 THEN xp + $3 ELSE GREATEST(0, xp + $3) END,
 
     messages = messages + 1
 
@@ -22899,7 +22907,54 @@ async function removeMultiCommands(guildID){
     return result.rowCount;
 }
 
+// Restricted command helpers. Callers must enforce the shared admin allowlist.
+async function adminSetLevel(guildID, userID, level){
+    if(!Number.isSafeInteger(level) || level < -10000 || level > 10000) throw new Error("Level must be an integer between -10000 and 10000");
+    const amount = require("./utils/xp").getCurrentLevelXP(level);
+    await db.query(`
+        INSERT INTO users(guildID,userID,xp,level) VALUES($1,$2,$3::BIGINT,$4)
+        ON CONFLICT(guildID,userID) DO UPDATE SET xp=EXCLUDED.xp, level=EXCLUDED.level
+    `,[String(guildID),String(userID),amount,level]);
+    userCache.delete(`${guildID}:${userID}`);
+}
+
+async function adminGiveBoost(guildID,userID,type,tier,amount){
+    const valid = {luck:["tier1","tier2","tier3","max","omega"],xp:["tier1","tier2","max","infinity"],rune:["tier1","tier2","tier3"],chest:["bronze","gilded","boss"]};
+    if(!valid[type]?.includes(tier) || !Number.isSafeInteger(amount) || amount<1 || amount>1000000) throw new Error("Invalid inventory grant");
+    const result = await db.query(`
+        INSERT INTO boost_inventory(guildID,userID,boostType,tier,amount) VALUES($1,$2,$3,$4,$5)
+        ON CONFLICT(guildID,userID,boostType,tier)
+        DO UPDATE SET amount=LEAST(2147483647::BIGINT,boost_inventory.amount::BIGINT+EXCLUDED.amount::BIGINT)::INTEGER
+        RETURNING amount
+    `,[String(guildID),String(userID),type,tier,amount]);
+    return Number(result.rows[0]?.amount)||0;
+}
+
+async function clearGuildBlessing(guildID){
+    return db.query("DELETE FROM guild_blessings WHERE guildID=$1",[String(guildID)]);
+}
+
+async function setAdminRollGuarantee(guildID,userID,rarity){
+    if(!Object.hasOwn(require("./utils/adminRolls").RARITY_BANDS,rarity)) throw new Error("Invalid rarity");
+    await db.query(`
+        INSERT INTO admin_roll_guarantees(guildID,userID,rarity) VALUES($1,$2,$3)
+        ON CONFLICT(guildID,userID) DO UPDATE SET rarity=EXCLUDED.rarity
+    `,[String(guildID),String(userID),rarity]);
+}
+
+async function consumeAdminRollGuarantee(guildID,userID){
+    // DELETE RETURNING makes a one-shot grant safe across concurrent multi-rolls.
+    const result = await db.query("DELETE FROM admin_roll_guarantees WHERE guildID=$1 AND userID=$2 RETURNING rarity",[String(guildID),String(userID)]);
+    return result.rows[0]?.rarity || null;
+}
+
+async function getRollGuaranteeProgress(guildID,userID,threshold=100){
+    const result = await db.query("SELECT rollGuaranteeProgress FROM users WHERE guildID=$1 AND userID=$2",[String(guildID),String(userID)]);
+    return {guaranteed:false,threshold,progress:Number(result.rows[0]?.rollguaranteeprogress)||0};
+}
+
 module.exports = {
+    adminSetLevel, adminGiveBoost, clearGuildBlessing, setAdminRollGuarantee, consumeAdminRollGuarantee, getRollGuaranteeProgress,
     removeMultiCommands,
 
 
