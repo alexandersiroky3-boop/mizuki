@@ -80,7 +80,7 @@ const BOSS_SHOP_CATALOG = Object.freeze([
             return {spawnBossUses: 1};
         },
         describe(){
-            return "**1 use** of `!spawnboss` *(uses stack)*";
+            return "**1 use** of `!spawnboss` *(maximum 1 held; duplicates are ignored)*";
         }
     }),
     Object.freeze({
