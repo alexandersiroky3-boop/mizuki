@@ -14,6 +14,7 @@ const trolls = require("./systems/trolls");
 const bosses = require("./systems/bosses");
 const database = require("./database");
 const adminTools = require("./commands/adminTools");
+const {setNonOverlappingInterval} = require("./utils/asyncWork");
 const luck =
     require("./utils/luck");
 const {getCriticalEmojis} = require("./utils/criticalEmojis");
@@ -1065,10 +1066,10 @@ client.once("clientReady", async () => {
             );
 
 
-            setInterval(
-                () => {
+            setNonOverlappingInterval(
+                async () => {
 
-                    void runScheduledResetCheck(
+                    await runScheduledResetCheck(
                         "Scheduled"
                     );
 
@@ -1089,7 +1090,7 @@ client.once("clientReady", async () => {
 
 
 
-setInterval(async()=>{
+setNonOverlappingInterval(async()=>{
 
 
     try{
@@ -1128,14 +1129,14 @@ setInterval(async()=>{
 
 },15000);
 
-setInterval(async () => {
+setNonOverlappingInterval(async () => {
     if(!MAIN_GUILD_ID) return;
     await powerRunes.removeExpiredPowerRuneRoles(client, MAIN_GUILD_ID)
         .catch(error => console.error("Power Rune role cleanup failed:", error));
 }, 5000);
 
 
-setInterval(async () => {
+setNonOverlappingInterval(async () => {
 
     await bosses.cleanupExpiredBosses(client)
         .then(result =>
@@ -1154,7 +1155,7 @@ setInterval(async () => {
 }, 15000);
 
 
-setInterval(async()=>{
+setNonOverlappingInterval(async()=>{
 
     try{
 
@@ -1193,7 +1194,7 @@ setInterval(async()=>{
 },60000);
 
 
-setInterval(async()=>{
+setNonOverlappingInterval(async()=>{
 
     try{
         await moderation.restoreExpiredBans(client);
@@ -1212,7 +1213,7 @@ setInterval(async()=>{
 
 // Backup reconciliation catches unusual/admin XP paths that
 // do not call the normal level-sync function.
-setInterval(async()=>{
+setNonOverlappingInterval(async()=>{
 
     if(!MAIN_GUILD_ID)
         return;
