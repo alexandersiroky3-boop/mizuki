@@ -116,19 +116,14 @@ async function execute(message){
 
 
 
-    const leaderboard =
-        await database.getLeaderboard(
+    const rank =
+        await database.getUserLeaderboardRank(
             message.guild.id,
-            999999
+            message.author.id
         );
 
 
 
-    const rank =
-        leaderboard.findIndex(
-            u =>
-            u.userid === message.author.id
-        ) + 1;
 
 
 
