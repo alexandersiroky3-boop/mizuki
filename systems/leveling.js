@@ -28,6 +28,7 @@ const XP_COOLDOWN = 10000;
 
 
 const cooldowns = new Map();
+let nextCooldownSweep = 0;
 
 
 
@@ -66,11 +67,20 @@ async function giveXP(message){
     // ======================
 
 
-    if(cooldowns.has(userID)){
+    const cooldownKey = `${guildID}:${userID}`;
+    const now = Date.now();
+    if(now >= nextCooldownSweep){
+        for(const [key, timestamp] of cooldowns){
+            if(now - timestamp >= XP_COOLDOWN) cooldowns.delete(key);
+        }
+        nextCooldownSweep = now + 60000;
+    }
+
+    if(cooldowns.has(cooldownKey)){
 
 
         const last =
-            cooldowns.get(userID);
+            cooldowns.get(cooldownKey);
 
 
 
@@ -89,8 +99,8 @@ async function giveXP(message){
 
 
     cooldowns.set(
-        userID,
-        Date.now()
+        cooldownKey,
+        now
     );
 
 
@@ -115,10 +125,11 @@ const upgradeEffects =
 
 
 const streakData =
-    await database.getCriticalStreak(
-        guildID,
-        userID
-    );
+    {
+        current: Number(chatUser.currentcriticalstreak) || 0,
+        best: Number(chatUser.bestcriticalstreak) || 0,
+        growthXP: Number(chatUser.criticalgrowthxp) || 0
+    };
 
 
 const previousCriticalStreak =
