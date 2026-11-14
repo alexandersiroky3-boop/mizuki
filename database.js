@@ -4740,11 +4740,13 @@ async function getUser(
     userID
 ){
 
-    const key =
-        `${guildID}:${userID}`;
-
-
-// CACHE DISABLED
+    // Keep balances fresh; existing users need only one SELECT, not an INSERT
+    // followed by SELECT on every command and earned chat message.
+    const existing = await db.query(
+        "SELECT * FROM users WHERE guildID=$1 AND userID=$2",
+        [guildID, userID]
+    );
+    if(existing.rows.length) return existing.rows[0];
 
 
 
@@ -4805,6 +4807,26 @@ async function getUser(
 // =====================================================
 // PERMANENT USER UPGRADES
 // =====================================================
+
+// Bounded pages for reconciliation; creates missing members in one write.
+// The separate SELECT also sees users created by a concurrent transaction.
+async function getUsersByIDs(guildID, userIDs){
+    const ids = [...new Set(userIDs.map(String))];
+    const rows = [];
+    for(let offset = 0; offset < ids.length; offset += 500){
+        const page = ids.slice(offset, offset + 500);
+        await db.query(`
+            INSERT INTO users(guildID,userID)
+            SELECT $1, member_id FROM unnest($2::text[]) AS member_id
+            ON CONFLICT DO NOTHING
+        `, [String(guildID), page]);
+        const result = await db.query(`
+            SELECT * FROM users WHERE guildID=$1 AND userID=ANY($2::text[])
+        `, [String(guildID), page]);
+        rows.push(...result.rows);
+    }
+    return rows;
+}
 
 async function getUserUpgradeLevels(
     guildID,
@@ -5825,6 +5847,18 @@ async function getLeaderboard(
 
     return result.rows;
 
+}
+
+// Return one rank instead of transferring up to a million full user rows.
+// Preserve the leaderboard's existing XP-descending ordering (including ties).
+async function getUserLeaderboardRank(guildID, userID){
+    const result = await db.query(`
+        SELECT position FROM (
+            SELECT userID, ROW_NUMBER() OVER (ORDER BY xp DESC) AS position
+            FROM users WHERE guildID=$1
+        ) AS ranked WHERE userID=$2
+    `, [String(guildID), String(userID)]);
+    return Number(result.rows[0]?.position) || 0;
 }
 
 
@@ -23028,6 +23062,8 @@ module.exports = {
     getUser,
 
     getUserUpgradeLevels,
+    getUsersByIDs,
+    getUserLeaderboardRank,
 
     getUserUpgradeEffects,
 
