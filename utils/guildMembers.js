@@ -5,6 +5,20 @@
 const GUILD_MEMBER_PAGE_SIZE =
     1000;
 
+// Only concurrent identical reads are shared. No stale membership cache.
+const {createSingleFlight} = require("./asyncWork");
+const memberPageFlights = new WeakMap();
+
+function readMemberPage(guild, options){
+    let flight = memberPageFlights.get(guild);
+    if(!flight){
+        flight = createSingleFlight();
+        memberPageFlights.set(guild, flight);
+    }
+    const key = `${options.limit}:${options.after || ""}:${options.cache}`;
+    return flight(key, () => guild.members.list(options));
+}
+
 
 function normalizePageSize(pageSize){
 
@@ -93,7 +107,7 @@ async function* iterateGuildMemberPages(
         // discord.js queues HTTP rate limits automatically and this does not
         // consume the Gateway opcode-8 request bucket.
         const members =
-            await guild.members.list({
+            await readMemberPage(guild, {
                 limit:
                     pageSize,
                 after:
