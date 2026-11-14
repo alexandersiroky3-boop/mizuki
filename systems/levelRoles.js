@@ -529,6 +529,13 @@ async function syncGuildLevelRoles(
                             !member.user.bot
                     );
 
+                const storedUsers = await database.getUsersByIDs(
+                    guild.id, realMembers.map(member => member.id)
+                );
+                const levels = new Map(storedUsers.map(user => [
+                    String(user.userid), xp.getLevel(Number(user.xp) || 0)
+                ]));
+
 
                 for(
                     let index = 0;
@@ -550,7 +557,8 @@ async function syncGuildLevelRoles(
                             batch.map(
                                 member =>
                                     syncMemberLevelRole(
-                                        member
+                                        member,
+                                        levels.get(member.id)
                                     )
                             )
                         );
