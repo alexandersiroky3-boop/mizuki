@@ -154,6 +154,13 @@ function getAdvantageRuntimeStatus(boss, advantage, now = Date.now()){
 
     if(passive.has(advantage.key)) return "🟢 **ACTIVE**";
 
+    if(advantage.key==='manipulation'){
+        const active=Math.max(0,...Object.values(state.manipulations||{}).map(x=>Number(x.until)||0));
+        if(active>now)return `🟢 **ACTIVE** until <t:${Math.floor(active/1000)}:R>`;
+        if(Number(state.manipulationCooldownUntil)>now)return `🟡 **COOLDOWN** until <t:${Math.floor(state.manipulationCooldownUntil/1000)}:R>`;
+        return '🟢 **READY**';
+    }
+
     if(advantage.key === "precision"){
         const cooldownUntil = Number(state.precisionCooldownUntil) || 0;
         return cooldownUntil > now
@@ -181,6 +188,7 @@ function getAdvantageRuntimeStatus(boss, advantage, now = Date.now()){
     }
 
     if(advantage.key === "power" && (state.triggered?.powerOnce || state.triggered?.power70 || state.triggered?.power30)) return "⚫ **USED**";
+    if(advantage.key==='xp_immortality' && Number(state.immortalityCooldownUntil)>now)return `🟡 **COOLDOWN** until <t:${Math.floor(state.immortalityCooldownUntil/1000)}:R>`;
     if(advantage.key === "fury" && (state.triggered?.furyOnce || state.triggered?.fury5)) return "⚫ **USED**";
     if(advantage.key === "regeneration" || advantage.key === "durability"){
         const cooldownUntil = Number(state[advantage.key + "CooldownUntil"]) || 0;
@@ -390,7 +398,7 @@ async function buildBossShopPayload(
                     .setTitle("💠 BOSS SHOP — CLOSED")
                     .setDescription(
                         `Your balance: **${formatNumber(shards)} shards**\n\n` +
-                        "The Boss Shop has a **35% chance** to appear after the server defeats a global raid boss. It remains open for **20 minutes**."
+                        "The Boss Shop opens after **every defeated raid boss** for **30 minutes**, with no restocks."
                     )
                     .setFooter({
                         text: "Three random products appear whenever the shop opens."
@@ -408,7 +416,7 @@ async function buildBossShopPayload(
             .setTitle("💠 BOSS SHOP")
             .setDescription(
                 `Your balance: **${formatNumber(shards)} shards**\n` +
-                `Shop closes <t:${Math.floor(shop.expiresAt / 1000)}:R> • stock refreshes <t:${Math.floor(shop.refreshAt / 1000)}:R>`
+                `Shop closes <t:${Math.floor(shop.expiresAt / 1000)}:R> • No restocks`
             );
 
 
@@ -878,7 +886,7 @@ function buildInfoEmbeds(){
             },
             {
                 name: "Boss Shop",
-                value: "After a global raid victory, the Boss Shop has a **35% chance** to open for **20 minutes**. It displays 3 random products, refreshes stock every **10 minutes**, and uses boss shards earned from raids and challenges."
+                value: "After every global raid victory, the Boss Shop opens for **30 minutes** with **3 random products**. There are no restocks; deals and stock change only when a new shop opens after another raid victory. Purchases use boss shards."
             },
             {
                 name: "Challenges",
@@ -911,7 +919,8 @@ function buildInfoEmbeds(){
             {name: "Regeneration", value: "After taking damage: **15% / 20%** chance, lasts **15 / 30 seconds**. Heals **500 / 1,000 + MAX HP ÷ 10,000 per second**. Can retry once the effect ends."},
             {name: "Power", value: "Below **50% HP**: **3% / 6%** chance after damage, **once per fight**, lasts **60 / 120 seconds**. OVERALL: **+(10 / 15 + S)%**. Heals **(5 / 10 + MAX HP ÷ 100,000,000)%** of max HP and raises max HP **5% / 15%** temporarily."},
             {name: "Durability", value: "After damage: **5% / 10%** chance. Reduces all XP damage by **25% / 40%** for **1 / 3 minutes**. Cooldown: **5 / 3 minutes from activation**. Does not increase HP."},
-            {name: "XP Immortality", value: "Below **10% HP**: **20% / 30%** chance after damage, lasts **30 / 60 seconds**. Incoming XP deals **0 damage**; heals **100 / 300 + MAX HP ÷ 50,000 per second**, independently of incoming damage. Can retry after expiry."},
+            {name: "XP Immortality", value: "Below **10% / 25% HP**: **50% / 75%** chance after damage. Lasts **60 / 200 seconds**. Incoming XP deals **0 damage**. Heals **25,000 / 50,000 + MAX HP ÷ 5,000 per second**. Mastered also heals incoming earned XP. Cooldown after expiry: **120 / 60 seconds**."},
+            {name: "Manipulation (reserved)", value: "**15% / 30%** chance to block a hit and control its attacker for **60 / 120 seconds**. Blocks messages/commands for XP. The boss simulates a command every 10 seconds to heal the triggering hit’s XP, without spending inventory. Cooldown after expiry: **4 / 2 minutes**. Not assigned to existing bosses."},
             {name: "Fury", value: "Below **30% HP**: **3% / 6%** chance after damage, **once per fight**, lasts **60 / 120 seconds**. Reduces damage by **(5 / 10 + S)%**. No OVERALL boost or regeneration."},
             {name: "Precision", value: "Dodges the incoming hit with **(5 / 10 + S)%** chance. Successful dodge cooldown: **2 / 1 minutes**. S = **OVERALL ÷ (10,000,000 − OVERALL ÷ 20)**. All pairs are normal / mastered; chances and reductions cannot exceed 100%."}
         );
@@ -1101,6 +1110,9 @@ function buildChallengeDetailPayload(guild, challenge, snapshot, notice = null){
 
     const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
+            .setCustomId(`raid_challenge_giveup:${snapshot.userID || snapshot.userId || 'self'}`)
+            .setLabel('Give up challenge').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
             .setCustomId(`raid_challenge_fight:${challenge.number}`)
             .setLabel(
                 battle
@@ -1156,7 +1168,7 @@ function buildChallengeCombatEmbed(guild, boss, battle, options = {}){
                 name: "Timer",
                 value: options.defeated
                     ? "Enemy defeated."
-                    : `Despawn <t:${expiresAt}:R> • <t:${expiresAt}:T>`
+                    : boss.stateData?.pendingStart ? 'Waiting for Start. You get 20 minutes once you start. Unstarted rooms close after 20 minutes.' : `Despawn <t:${expiresAt}:R> • <t:${expiresAt}:T>`
             }
         );
 
@@ -1171,7 +1183,19 @@ function buildChallengeCombatEmbed(guild, boss, battle, options = {}){
 }
 
 
-async function createChallengeBattle(interaction, challenge){
+function battleButtons(battle,pending){
+    const row=new ActionRowBuilder();
+    if(pending)row.addComponents(new ButtonBuilder().setCustomId(`raid_battle_start:${battle.userID}:${battle.spawnedAt}`).setLabel('Start').setStyle(ButtonStyle.Success));
+    row.addComponents(new ButtonBuilder().setCustomId(`raid_battle_giveup:${battle.userID}:${battle.spawnedAt}`).setLabel('Give up enemy').setStyle(ButtonStyle.Danger));
+    row.addComponents(new ButtonBuilder().setCustomId(`raid_challenge_giveup:${battle.userID}:${battle.spawnedAt}`).setLabel('Give up challenge').setStyle(ButtonStyle.Secondary));
+    return row;
+}
+
+function createChallengeBattle(interaction,challenge){
+    return bosses.withChallengeLock(interaction.guildId,interaction.user.id,()=>createChallengeBattleUnlocked(interaction,challenge));
+}
+
+async function createChallengeBattleUnlocked(interaction, challenge){
     const snapshot = await database.getBossChallengeSnapshot(
         interaction.guildId,
         interaction.user.id
@@ -1264,7 +1288,8 @@ async function createChallengeBattle(interaction, challenge){
         }
 
         const combatMessage = await channel.send({
-            content: `<@${interaction.user.id}>, your 20-minute fight has begun. Only XP earned in this channel damages this enemy.`,
+            content: `<@${interaction.user.id}>, press Start when you’re ready. Only XP earned in this channel damages this enemy.`,
+            components: [battleButtons(battle,true)],
             embeds: [buildChallengeCombatEmbed(
                 interaction.guild,
                 boss,
@@ -1404,6 +1429,24 @@ async function resetChallenges(message){
 async function handleInteraction(interaction){
     if(!interaction.isButton?.()) return false;
 
+    const control=interaction.customId.match(/^raid_(battle_start|battle_giveup|challenge_giveup):([^:]+)(?::(\d+))?$/);
+    if(control){
+        const [,kind,owner,spawn]=control;
+        if(owner!=='self'&&owner!==interaction.user.id){await interaction.reply({content:'This is not your challenge.',flags:64});return true;}
+        await interaction.deferReply({flags:64});
+        const action=kind==='battle_start'?'start':kind==='battle_giveup'?'enemy':'challenge';
+        const result=await bosses.controlChallenge(interaction.guildId,interaction.user.id,action,kind.startsWith('battle_')||spawn?interaction.channelId:null,spawn||null);
+        if(!result.success){await interaction.editReply('That battle is no longer available, or has already started.');return true;}
+        if(action==='start'){
+            await interaction.message.edit({content:`<@${interaction.user.id}>, your 20-minute fight has begun!`,embeds:[buildChallengeCombatEmbed(interaction.guild,result.boss,result.battle)],components:[battleButtons(result.battle,false)]});
+            await interaction.editReply('Fight started.');
+        }else{
+            await interaction.editReply(action==='challenge'?'You gave up the entire challenge. This run’s progress was reset; past completions and rewards are unchanged.':'You gave up this enemy. Your challenge progress is preserved; you can retry with !boss.');
+            if(result.battle){const room=await interaction.guild.channels.fetch(result.battle.channelID).catch(()=>null);if(room)require('../utils/channelWork').deleteWhenIdle(room,'Player gave up the challenge enemy',15000);}
+        }
+        return true;
+    }
+
     if(interaction.customId === INFO_BUTTON_ID){
         await interaction.reply({
             embeds: buildInfoEmbeds(),
@@ -1453,7 +1496,7 @@ async function handleInteraction(interaction){
                     "shop-closed":
                         "⏱️ The Boss Shop closed before that purchase could finish.",
                     "sold-out":
-                        "❌ That product is sold out or the stock has refreshed.",
+                        "❌ That product is sold out or belongs to an older shop opening.",
                     "not-enough-shards":
                         `❌ You need **${formatNumber(purchase.missing)} more shards** for that product.`
                 }[purchase.status]
@@ -1588,7 +1631,7 @@ async function handleInteraction(interaction){
             );
             if(creation.success){
                 await interaction.followUp({
-                    content: `⚔️ Enter <#${creation.channel.id}> and defeat **${bosses.getBossDefinition(creation.boss).name}** within 20 minutes.`,
+                    content: `⚔️ Enter <#${creation.channel.id}> and press Start. You then have 20 minutes to defeat **${bosses.getBossDefinition(creation.boss).name}**.`,
                     flags: 64,
                     allowedMentions: {parse: []}
                 });
@@ -1620,6 +1663,7 @@ function getAbilityNarrative(definition, event, userID){
         power: `*${bossName} keeps watching ${mention}, then screams as a violent surge of power raises their OVERALL and HP!*`,
         durability: `*${bossName}'s body hardens under the pressure. Their durability smothers the incoming damage!*`,
         xp_immortality: `*${bossName} refuses to fall. A strange aura blocks incoming XP while their wounds slowly heal!*`,
+        manipulation: `*${bossName} takes control of ${mention} for a moment! Their actions are blocked, while the boss simulates commands through them to heal every 10 seconds. No XP or inventory is spent on these simulated actions.*`,
         fury: `*${bossName}, heavily injured, erupts in fury and unleashes everything left!*`
     }[event.ability] || null;
 }
@@ -1855,7 +1899,7 @@ async function handleCombatResult(message, result){
             embed.addFields({
                 name: "💠 Boss Shop opened",
                 value:
-                    `Three products are available through \`!boss\` for **20 minutes**. ` +
+                    `Three products are available through \`!boss\` for **30 minutes**, with no restocks. ` +
                     `The shop closes <t:${Math.floor(shopOutcome.shop.expiresAt / 1000)}:R>.`
             });
         }
