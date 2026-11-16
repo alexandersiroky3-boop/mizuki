@@ -1,3 +1,4 @@
+const rarityEngine = require("../utils/rarity");
 const database = require("../database");
 const xp = require("../utils/xp");
 const luck = require("../utils/luck");
@@ -22,68 +23,7 @@ const COOLDOWN =
     24 * 60 * 60 * 1000; // 24 hours
 
 
-const LEVEL1_TO99_EZWIN_OUTCOMES =
-    Object.freeze({
-
-        common: Object.freeze({
-            key: "common",
-            rarity: "COMMON",
-            chancePercent: 95,
-            evolvedChancePercent: 5,
-
-            normal: Object.freeze({
-                gained: Object.freeze({
-                    min: 75000,
-                    max: 200000
-                }),
-                lost: Object.freeze({
-                    min: 20000,
-                    max: 75000
-                })
-            }),
-
-            evolved: Object.freeze({
-                gained: Object.freeze({
-                    min: 250000,
-                    max: 400000
-                }),
-                lost: Object.freeze({
-                    min: 100000,
-                    max: 250000
-                })
-            })
-        }),
-
-        legendary: Object.freeze({
-            key: "legendary",
-            rarity: "LEGENDARY",
-            chancePercent: 5,
-            evolvedChancePercent: 5,
-
-            normal: Object.freeze({
-                gained: Object.freeze({
-                    min: 200000,
-                    max: 350000
-                }),
-                lost: Object.freeze({
-                    min: 150000,
-                    max: 300000
-                })
-            }),
-
-            evolved: Object.freeze({
-                gained: Object.freeze({
-                    min: 450000,
-                    max: 750000
-                }),
-                lost: Object.freeze({
-                    min: 350000,
-                    max: 450000
-                })
-            })
-        })
-
-    });
+const LEVEL1_TO99_EZWIN_OUTCOMES = Object.fromEntries(rarityEngine.base("ezwin.level1To99").map(row => [row.key,row]));
 
 
 // Backwards-compatible export name. It now points at the full low-level
@@ -92,68 +32,7 @@ const LEVEL1_TO99_EZWIN_RANGES =
     LEVEL1_TO99_EZWIN_OUTCOMES;
 
 
-const LEVEL100_PLUS_EZWIN_OUTCOMES =
-    Object.freeze({
-
-        common: Object.freeze({
-            key: "common",
-            rarity: "COMMON",
-            chancePercent: 90,
-            evolvedChancePercent: 5,
-
-            normal: Object.freeze({
-                gained: Object.freeze({
-                    min: 750000,
-                    max: 2000000
-                }),
-                lost: Object.freeze({
-                    min: 200000,
-                    max: 750000
-                })
-            }),
-
-            evolved: Object.freeze({
-                gained: Object.freeze({
-                    min: 3000000,
-                    max: 5000000
-                }),
-                lost: Object.freeze({
-                    min: 1500000,
-                    max: 3000000
-                })
-            })
-        }),
-
-        legendary: Object.freeze({
-            key: "legendary",
-            rarity: "LEGENDARY",
-            chancePercent: 10,
-            evolvedChancePercent: 5,
-
-            normal: Object.freeze({
-                gained: Object.freeze({
-                    min: 12500000,
-                    max: 20000000
-                }),
-                lost: Object.freeze({
-                    min: 7500000,
-                    max: 12500000
-                })
-            }),
-
-            evolved: Object.freeze({
-                gained: Object.freeze({
-                    min: 20000000,
-                    max: 35000000
-                }),
-                lost: Object.freeze({
-                    min: 15000000,
-                    max: 20000000
-                })
-            })
-        })
-
-    });
+const LEVEL100_PLUS_EZWIN_OUTCOMES = Object.fromEntries(rarityEngine.base("ezwin.level100Plus").map(row => [row.key,row]));
 
 
 // Backwards-compatible name for integrations that imported the old constant.
@@ -161,109 +40,32 @@ const LEVEL100_PLUS_EZWIN_RANGES =
     LEVEL100_PLUS_EZWIN_OUTCOMES;
 
 
-const LEVEL1_TO99_BASE_LEGENDARY_CHANCE =
-    5;
+const LEVEL1_TO99_BASE_LEGENDARY_CHANCE = rarityEngine.base("ezwin.level1To99").find(r=>r.key==="legendary").chancePercent;
 
 
-const BASE_LEGENDARY_CHANCE =
-    10;
+const BASE_LEGENDARY_CHANCE = rarityEngine.base("ezwin.level100Plus").find(r=>r.key==="legendary").chancePercent;
 
 
 // These are additive percentage-point bonuses. They intentionally stay much
 // gentler than the generic command rarity weighting used by other commands.
-const EZWIN_LUCK_LEGENDARY_BONUSES =
-    Object.freeze({
-        tier1: 1,
-        tier2: 2.5,
-        tier3: 5,
-        max: 7.5,
-        omega: 15
-    });
+const EZWIN_LUCK_LEGENDARY_BONUSES = Object.fromEntries(Object.entries(require("../utils/rarityConfig").luck["ezwin.level100Plus"]).map(([tier,d])=>[tier,d.legendary*100]));
 
 
 // Low-level bonuses stay milder than the Level 100+ bonuses. Luck MAX adds
 // the requested +5 percentage points before permanent Boost scaling.
-const LEVEL1_TO99_EZWIN_LUCK_LEGENDARY_BONUSES =
-    Object.freeze({
-        tier1: 0.5,
-        tier2: 1.5,
-        tier3: 3,
-        max: 5,
-        omega: 10
-    });
+const LEVEL1_TO99_EZWIN_LUCK_LEGENDARY_BONUSES = Object.fromEntries(Object.entries(require("../utils/rarityConfig").luck["ezwin.level1To99"]).map(([tier,d])=>[tier,d.legendary*100]));
 
 
-const LEVEL1_TO99_MAX_LEGENDARY_CHANCE =
-    20;
+const LEVEL1_TO99_MAX_LEGENDARY_CHANCE = getEZWinLegendaryChance({tier:"omega",boostUpgradeLevel:4},false);
 
 
-const MAX_LEGENDARY_CHANCE =
-    35;
+const MAX_LEGENDARY_CHANCE = getEZWinLegendaryChance({tier:"omega",boostUpgradeLevel:4},true);
 
 
-function getEZWinLegendaryChance(
-    activeLuck,
-    isLevel100Plus = true
-){
-
-    const tier =
-        String(
-            activeLuck?.tier || ""
-        ).toLowerCase();
-
-    const baseBonus =
-        Number(
-            (
-                isLevel100Plus
-                    ? EZWIN_LUCK_LEGENDARY_BONUSES
-                    : LEVEL1_TO99_EZWIN_LUCK_LEGENDARY_BONUSES
-            )[tier]
-        ) || 0;
-
-    const boostUpgradeScale =
-        tier
-            ? Math.max(
-                1,
-                Number(
-                    activeLuck?.boostMultiplierScale
-                ) || 1
-            )
-            : 1;
+function getEZWinLegendaryChance(activeLuck,isLevel100Plus=true){ return rarityEngine.resolve(isLevel100Plus ? "ezwin.level100Plus" : "ezwin.level1To99",activeLuck).find(r=>r.key==="legendary").chancePercent; }
 
 
-    return Math.min(
-        isLevel100Plus
-            ? MAX_LEGENDARY_CHANCE
-            : LEVEL1_TO99_MAX_LEGENDARY_CHANCE,
-        (
-            isLevel100Plus
-                ? BASE_LEGENDARY_CHANCE
-                : LEVEL1_TO99_BASE_LEGENDARY_CHANCE
-        ) +
-            baseBonus *
-            boostUpgradeScale
-    );
-
-}
-
-
-function rollEZWinRarity(
-    activeLuck,
-    random = Math.random,
-    isLevel100Plus = true
-){
-
-    return (
-        random() * 100 <
-        getEZWinLegendaryChance(
-            activeLuck,
-            isLevel100Plus
-        )
-    )
-        ? "legendary"
-        : "common";
-
-}
+function rollEZWinRarity(activeLuck,random=Math.random,isLevel100Plus=true){ return rarityEngine.pick(rarityEngine.resolve(isLevel100Plus ? "ezwin.level100Plus" : "ezwin.level1To99",activeLuck),random).key; }
 
 
 function rollEZWinEvolved(
