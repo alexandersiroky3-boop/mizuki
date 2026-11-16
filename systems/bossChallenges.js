@@ -19,7 +19,8 @@ function rewardBundle({
     boosts = [],
     shards = 0,
     chests = [],
-    unlockFight = false
+    unlockFight = false,
+    freeUpgradeTokens = 0
 } = {}){
 
     return Object.freeze({
@@ -68,7 +69,14 @@ function rewardBundle({
                 )
             ),
         unlockFight:
-            Boolean(unlockFight)
+            Boolean(unlockFight),
+        freeUpgradeTokens:
+            Math.max(
+                0,
+                Math.floor(
+                    Number(freeUpgradeTokens) || 0
+                )
+            )
     });
 
 }
@@ -108,12 +116,12 @@ const BOSS_CHALLENGES =
                         {
                             boostType: "luck",
                             tier: "max",
-                            amount: 15
+                            amount: 6
                         },
                         {
                             boostType: "luck",
                             tier: "tier3",
-                            amount: 30
+                            amount: 12
                         }
                     ]
                 }),
@@ -133,7 +141,7 @@ const BOSS_CHALLENGES =
                         {
                             boostType: "luck",
                             tier: "tier3",
-                            amount: 2
+                            amount: 1
                         }
                     ]
                 })
@@ -165,12 +173,12 @@ const BOSS_CHALLENGES =
                         {
                             boostType: "luck",
                             tier: "omega",
-                            amount: 2
+                            amount: 1
                         },
                         {
                             boostType: "xp",
                             tier: "infinity",
-                            amount: 5
+                            amount: 1
                         },
                         {
                             boostType: "rune",
@@ -201,7 +209,7 @@ const BOSS_CHALLENGES =
                         {
                             boostType: "luck",
                             tier: "tier3",
-                            amount: 5
+                            amount: 2
                         }
                     ]
                 })
@@ -233,12 +241,12 @@ const BOSS_CHALLENGES =
                         {
                             boostType: "luck",
                             tier: "omega",
-                            amount: 5
+                            amount: 2
                         },
                         {
                             boostType: "xp",
                             tier: "infinity",
-                            amount: 20
+                            amount: 7
                         },
                         {
                             boostType: "rune",
@@ -246,6 +254,7 @@ const BOSS_CHALLENGES =
                             amount: 50
                         }
                     ],
+                    freeUpgradeTokens: 1
                 }),
             repeatReward:
                 rewardBundle({
@@ -268,7 +277,7 @@ const BOSS_CHALLENGES =
                         {
                             boostType: "luck",
                             tier: "tier3",
-                            amount: 12
+                            amount: 4
                         }
                     ]
                 })
@@ -350,6 +359,11 @@ function formatRewardBundle(bundle){
     }
 
 
+    if(Number(bundle?.freeUpgradeTokens) > 0){
+        parts.push(
+            `**${Number(bundle.freeUpgradeTokens)} free upgrade**`
+        );
+    }
 
 
     if(Number(bundle?.shards) > 0){
