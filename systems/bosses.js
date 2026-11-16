@@ -88,6 +88,7 @@ function rollRaidRewardBundle(definition, topThree, random = Math.random){
             rewardBoost(type, tier, pickRewardOption(amounts, random))),
         freeUpgradeTokens: config.freeUpgradeTokens || 0,
         guaranteedJackpots: config.guaranteedJackpots || 0,
+        counterattack: Boolean(config.counterattack),
         ...(config.multiHours ? {
             timedAllCommands: {
                 extraCount: 2, // 3 TOTAL executions, never four.
@@ -107,6 +108,7 @@ function getRaidRewardPreview(definition){
     const format = config => [
         ...(config.boosts || []).map(([type, tier, values]) =>
             values.join("/") + "x " + labels[type + ":" + tier]),
+        ...(config.counterattack ? ["1 use of !counterattack (does not stack)"] : []),
         ...(config.guaranteedJackpots ? ["1 guaranteed jackpot roll"] : []),
         ...(config.multiHours ? ["3 total executions per command for " + config.multiHours.join("/") + " hours"] : []),
         ...(config.freeUpgradeTokens ? ["1 free upgrade"] : []),
@@ -125,6 +127,7 @@ function formatRaidRewardBundle(bundle){
         );
 
     const extras = [];
+    if(bundle?.counterattack) extras.push("1 use of !counterattack (does not stack)");
 
     if(bundle?.guaranteedJackpots){
         extras.push(`${bundle.guaranteedJackpots} guaranteed jackpot roll`);
@@ -527,6 +530,14 @@ function refreshTimedBossState(
     let changed =
         false;
 
+    // Possessed commands are simulated by the boss, never sent as the user or
+    // charged to their inventory. Catch up elapsed 10-second turns after restart.
+    for(const control of Object.values(stateData.manipulations||{})){
+        const end=Math.min(now,control.until),last=control.lastTick||end;
+        const ticks=Math.max(0,Math.floor((end-last)/10000));
+        if(ticks){boss.currentHP=Math.min(boss.maxHP,boss.currentHP+ticks*control.healPerTurn);control.lastTick=last+ticks*10000;changed=true;}
+    }
+
 
     const regenerationHealing =
         applyTimedHealing(
@@ -549,7 +560,7 @@ function refreshTimedBossState(
     const immortality = getAdvantage(definition, "xp_immortality");
     if(immortality && applyTimedHealing(
         boss, now, "immortalityActiveUntil", "immortalityLastTickAt",
-        Math.floor((immortality.mastered ? 300 : 100) + boss.maxHP / 50000)
+        Math.floor((immortality.mastered ? 50000 : 25000) + boss.maxHP / 5000)
     ) > 0) changed = true;
 
     const previousMaxHP =
@@ -839,6 +850,8 @@ async function createChallengeBossState(
             now
         );
 
+    state.stateData.pendingStart = true;
+
 
     state.expiresAt =
         Math.max(
@@ -1057,10 +1070,12 @@ function activateThresholdAbilities(boss, definition, healthPercent, now, events
         emit(fury);
     }
     const immortality = getAdvantage(definition, "xp_immortality");
-    if(immortality && healthPercent < 10
+    if(immortality && healthPercent < (immortality.mastered ? 25 : 10)
         && (Number(state.immortalityActiveUntil) || 0) <= now
-        && chance(immortality.mastered ? 30 : 20)){
-        state.immortalityActiveUntil = now + (immortality.mastered ? 60 : 30) * 1000;
+        && (Number(state.immortalityCooldownUntil)||0) <= now
+        && chance(immortality.mastered ? 75 : 50)){
+        state.immortalityActiveUntil = now + (immortality.mastered ? 200 : 60) * 1000;
+        state.immortalityCooldownUntil = state.immortalityActiveUntil + (immortality.mastered ? 60 : 120) * 1000;
         state.immortalityLastTickAt = now;
         emit(immortality);
     }
@@ -1081,6 +1096,16 @@ async function applyDamageLocked(
         ensureStateData(boss);
 
     const events = [];
+
+    if(stateData.pendingStart)return {boss,definition,attemptedXP:0,damage:0,healed:0,dodged:false,defeated:false,events:[],waiting:true};
+
+    if(Number(attack.earnedXP)<0){
+        const healed=Math.min(boss.maxHP-boss.currentHP,Math.abs(Math.trunc(attack.earnedXP)));
+        boss.currentHP+=healed;
+        await database.updateRaidBossState(boss);
+        return {boss,definition,attemptedXP:attack.earnedXP,damage:0,healed,dodged:false,defeated:false,events:[]};
+    }
+
 
     let baseDamage =
         Math.max(
@@ -1129,6 +1154,66 @@ async function applyDamageLocked(
 
     }
 
+
+    const immortality =
+        getAdvantage(
+            definition,
+            "xp_immortality"
+        );
+
+
+    if(
+        immortality
+        &&
+        Number(
+            stateData.immortalityActiveUntil
+        ) > now
+    ){
+
+        const healed = immortality.mastered ? Math.min(boss.maxHP-boss.currentHP,Math.max(0,Math.floor(Number(attack.earnedXP)||0))) : 0;
+        boss.currentHP += healed;
+
+        await database.updateRaidBossState(
+            boss
+        );
+
+        await database.recordRaidBossContribution(
+            boss.guildID,
+            boss.spawnedAt,
+            attack.userID,
+            0,
+            now
+        );
+
+
+        return {
+            boss,
+            definition,
+            attemptedXP:
+                baseDamage,
+            damage: 0,
+            healed,
+            dodged: false,
+            defeated: false,
+            events: [{
+                type: "xp_immortality_block",
+                mastered:
+                    immortality.mastered
+            }]
+        };
+
+    }
+
+
+    const manipulation=getAdvantage(definition,'manipulation');
+    if(manipulation && Number(attack.earnedXP)>0 && (Number(stateData.manipulationCooldownUntil)||0)<=now && attack.random()<(manipulation.mastered?.30:.15)){
+        const duration=(manipulation.mastered?120:60)*1000;
+        stateData.manipulations ||= {};
+        stateData.manipulations[attack.userID]={until:now+duration,lastTick:now,healPerTurn:Math.max(1,Math.floor(attack.earnedXP)),taunted:false};
+        stateData.manipulationCooldownUntil=now+duration+(manipulation.mastered?120:240)*1000;
+        await database.updateRaidBossState(boss);
+        return {boss,definition,attemptedXP:attack.earnedXP,damage:0,healed:0,dodged:false,defeated:false,events:[{type:'ability',ability:'manipulation',mastered:manipulation.mastered}]};
+    }
 
     const precision =
         getAdvantage(
@@ -1192,56 +1277,6 @@ async function applyDamageLocked(
             };
 
         }
-
-    }
-
-
-    const immortality =
-        getAdvantage(
-            definition,
-            "xp_immortality"
-        );
-
-
-    if(
-        immortality
-        &&
-        Number(
-            stateData.immortalityActiveUntil
-        ) > now
-    ){
-
-        // Healing is time-based, never proportional to the blocked attack.
-        const healed = 0;
-
-        await database.updateRaidBossState(
-            boss
-        );
-
-        await database.recordRaidBossContribution(
-            boss.guildID,
-            boss.spawnedAt,
-            attack.userID,
-            0,
-            now
-        );
-
-
-        return {
-            boss,
-            definition,
-            attemptedXP:
-                baseDamage,
-            damage: 0,
-            healed,
-            dodged: false,
-            defeated: false,
-            events: [{
-                type: "xp_immortality_block",
-                mastered:
-                    immortality.mastered
-            }]
-        };
 
     }
 
@@ -2082,19 +2117,13 @@ async function handleCommandXP(
     options = {}
 ){
 
-    const safeEarnedXP =
-        Math.max(
-            0,
-            Math.floor(
-                Number(earnedXP) || 0
-            )
-        );
+    const safeEarnedXP = Math.trunc(Number(earnedXP)||0);
 
 
     if(
         !message?.guild
         ||
-        safeEarnedXP <= 0
+        safeEarnedXP === 0
     ){
         return null;
     }
@@ -2398,7 +2427,65 @@ async function removeActiveRaidBoss(guildID){
     });
 }
 
+function withChallengeLock(guildID,userID,action){return withGuildLock(`challenge:${guildID}:${userID}`,action);}
+
+async function controlChallenge(guildID,userID,action,channelID=null,spawnedAt=null){
+    const scope=`challenge:${guildID}:${userID}`;
+    return withGuildLock(scope,async()=>{
+        const battle=await database.getActiveBossChallengeBattle(guildID,userID);
+        if(channelID && (!battle || battle.channelID!==channelID || (spawnedAt!==null&&Number(battle.spawnedAt)!==Number(spawnedAt))))return {success:false,status:'stale'};
+        if(action==='start'){
+            if(!battle)return {success:false,status:'missing'};
+            const boss=await loadActiveBossLocked(scope,Date.now());
+            if(!boss)return {success:false,status:'expired'};
+            if(!boss.stateData.pendingStart)return {success:false,status:'already-started'};
+            boss.stateData.pendingStart=false;
+            const expiresAt=Date.now()+bossChallenges.CHALLENGE_BATTLE_DURATION_MS;
+            boss.expiresAt=expiresAt;
+            await database.gameQuery('UPDATE boss_challenge_battles SET expiresAt=$3 WHERE guildID=$1 AND userID=$2',[guildID,userID,expiresAt]);
+            await database.updateRaidBossState(boss);
+            return {success:true,boss,battle:{...battle,expiresAt}};
+        }
+        if(battle){await database.deleteRaidBossState(scope,battle.spawnedAt);await database.deleteBossChallengeBattle(guildID,userID);}
+        if(action==='challenge')await database.gameQuery('UPDATE boss_challenge_progress SET active=FALSE,stageIndex=0 WHERE guildID=$1 AND userID=$2 AND active=TRUE',[guildID,userID]);
+        return {success:true,battle};
+    });
+}
+
+async function manipulationState(guildID,userID,channelID){
+    if(![...RAID_BOSSES,...CHALLENGE_BOSSES].some(b=>hasAdvantage(b,'manipulation')))return null;
+    const battle=await database.getActiveBossChallengeBattle(guildID,userID,channelID);
+    const scope=battle?.bossScope||guildID;
+    return withGuildLock(scope,async()=>{
+        const boss=await loadActiveBossLocked(scope,Date.now());
+        const control=boss?.stateData?.manipulations?.[userID];
+        return control?.until>Date.now()?{boss,control}:null;
+    });
+}
+async function blockManipulatedMessage(message){
+    if(!message.guild||message.author?.bot)return false;
+    const current=await manipulationState(message.guild.id,message.author.id,message.channel.id);
+    if(!current)return false;
+    await message.delete().catch(()=>{});
+    // Once per possession, not three messages for every attempted spam message.
+    const shouldTaunt=await withGuildLock(current.boss.guildID,async()=>{
+        const boss=await loadActiveBossLocked(current.boss.guildID,Date.now());
+        const control=boss?.stateData?.manipulations?.[message.author.id];
+        if(!control||control.until<=Date.now()||control.taunted)return false;
+        control.taunted=true;await database.updateRaidBossState(boss);return true;
+    });
+    if(shouldTaunt)for(const content of ['hAHA bro thought','stop trying to prevent me from MANIPULATING you..!','!kiss, !steal, !roll, !everything... doesn’t seem to work, huh?... BECAUSE YOU’RE IN MY TERRITORY, my universe...'])await message.channel.send({content,allowedMentions:{parse:[]}}).catch(()=>{});
+    return true;
+}
+async function blockManipulatedInteraction(interaction){
+    if(!interaction.guildId || /^(raid_battle_giveup|raid_challenge_giveup|raid_challenge_list|raid_boss_info|raid_boss_challenges|tutorial_stop)/.test(interaction.customId||''))return false;
+    if(!await manipulationState(interaction.guildId,interaction.user.id,interaction.channelId))return false;
+    if(!interaction.replied&&!interaction.deferred)await interaction.reply({content:'The boss is manipulating you. Actions are blocked until the effect ends; you can still give up.',flags:64}).catch(()=>{});
+    return true;
+}
+
 module.exports = {
+    controlChallenge,withChallengeLock,blockManipulatedMessage,blockManipulatedInteraction,
     removeActiveRaidBoss,
     BOSS_DURATION_MS,
     RAID_BOSS_SPAWN_COOLDOWN_MS,
