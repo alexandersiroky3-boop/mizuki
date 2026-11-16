@@ -1,3 +1,4 @@
+const rarityEngine = require("../utils/rarity");
 const database = require("../database");
 const leveling =
     require("../systems/leveling");
@@ -38,219 +39,23 @@ function random(min, max){
 }
 
 
-const KISS_TABLES = Object.freeze({
-
-    level1To99: Object.freeze([
-        {
-            key: "common",
-            chancePercent: 75,
-            min: 2000,
-            max: 10000,
-            rarity: "COMMON"
-        },
-        {
-            key: "uncommon",
-            chancePercent: 22,
-            min: 10000,
-            max: 25000,
-            rarity: "UNCOMMON"
-        },
-        {
-            key: "rare",
-            chancePercent: 2.2,
-            min: 25000,
-            max: 75000,
-            rarity: "RARE"
-        },
-        {
-            key: "epic",
-            chancePercent: 0.75,
-            min: 75000,
-            max: 150000,
-            rarity: "EPIC"
-        },
-        {
-            key: "legendary",
-            chancePercent: 0.049,
-            min: 150000,
-            max: 300000,
-            rarity: "LEGENDARY"
-        },
-        {
-            key: "mythic",
-            chancePercent: 0.001,
-            min: 300000,
-            max: 1000000,
-            rarity: "MYTHIC"
-        }
-    ]),
-
-    level100Plus: Object.freeze([
-        {
-            key: "common",
-            chancePercent: 70,
-            min: 15000,
-            max: 75000,
-            rarity: "COMMON"
-        },
-        {
-            key: "uncommon",
-            chancePercent: 25,
-            min: 75000,
-            max: 200000,
-            rarity: "UNCOMMON"
-        },
-        {
-            key: "rare",
-            chancePercent: 4,
-            min: 200000,
-            max: 750000,
-            rarity: "RARE"
-        },
-        {
-            key: "epic",
-            chancePercent: 0.89,
-            min: 750000,
-            max: 3000000,
-            rarity: "EPIC"
-        },
-        {
-            key: "legendary",
-            chancePercent: 0.1,
-            min: 3000000,
-            max: 12500000,
-            rarity: "LEGENDARY"
-        },
-        {
-            key: "mythic",
-            chancePercent: 0.01,
-            min: 12500000,
-            max: 75000000,
-            rarity: "MYTHIC"
-        }
-    ])
-
-});
+const KISS_TABLES = {level1To99: rarityEngine.base("kiss.level1To99"),level100Plus: rarityEngine.base("kiss.level100Plus")};
 
 
 // Luck Ω uses an exact Mythic chance for Level 100+ player kisses.
 // Every permanent Boost upgrade adds 3 percentage points without changing
 // how the remaining non-Mythic rarities are weighted.
-const LEVEL100_OMEGA_KISS_MYTHIC_BASE_PERCENT =
-    9;
-
-const LEVEL100_OMEGA_KISS_MYTHIC_PER_BOOST_UPGRADE =
-    3;
-
-const MAX_BOOST_UPGRADE_LEVEL =
-    3;
 
 
-function getLevel100OmegaKissMythicChance(
-    boostUpgradeLevel = 0
-){
-
-    const safeUpgradeLevel =
-        Math.max(
-            0,
-            Math.min(
-                MAX_BOOST_UPGRADE_LEVEL,
-                Math.floor(
-                    Number(boostUpgradeLevel) || 0
-                )
-            )
-        );
 
 
-    return (
-        LEVEL100_OMEGA_KISS_MYTHIC_BASE_PERCENT
-        +
-        safeUpgradeLevel *
-        LEVEL100_OMEGA_KISS_MYTHIC_PER_BOOST_UPGRADE
-    );
-
-}
 
 
-function rollKissOutcome(
-    outcomes,
-    profile,
-    userLevel,
-    boostUpgradeLevel = 0
-){
 
-    const isLevel100PlusOmega =
-        Number(userLevel) >= 100
-        &&
-        String(profile?.tier || "")
-            .toLowerCase() === "omega";
+function getLevel100OmegaKissMythicChance(boostUpgradeLevel=0){ return rarityEngine.resolve("kiss.level100Plus",{tier:"omega",boostUpgradeLevel}).find(r=>r.key==="mythic").chancePercent; }
 
 
-    if(!isLevel100PlusOmega){
-
-        return luck.rollCommandOutcome(
-            outcomes,
-            profile
-        );
-
-    }
-
-
-    const mythicOutcome =
-        outcomes.find(
-            outcome =>
-                String(outcome?.key || "")
-                    .toLowerCase() === "mythic"
-        );
-
-
-    if(!mythicOutcome){
-
-        return luck.rollCommandOutcome(
-            outcomes,
-            profile
-        );
-
-    }
-
-
-    const mythicChancePercent =
-        getLevel100OmegaKissMythicChance(
-            boostUpgradeLevel
-        );
-
-
-    if(
-        Math.random() * 100
-        <
-        mythicChancePercent
-    ){
-
-        return mythicOutcome;
-
-    }
-
-
-    // Preserve all six rarity positions so the existing Luck Ω weighting
-    // remains identical after conditioning on a non-Mythic result.
-    const nonMythicOutcomes =
-        outcomes.map(
-            outcome =>
-                outcome === mythicOutcome
-                    ? {
-                        ...outcome,
-                        chancePercent: 0
-                    }
-                    : outcome
-        );
-
-
-    return luck.rollCommandOutcome(
-        nonMythicOutcomes,
-        profile
-    );
-
-}
+function rollKissOutcome(outcomes,profile,userLevel,boostUpgradeLevel=0){ return luck.rollCommandOutcome(outcomes,{...profile,boostUpgradeLevel}); }
 
 
 function getKissTableForLevel(level){
@@ -1425,19 +1230,7 @@ const commandLuck =
 
 
 const boostUpgradeLevel =
-    currentLevel >= 100
-    &&
-    String(commandLuck?.tier || "")
-        .toLowerCase() === "omega"
-        ? Number(
-            (
-                await database.getUserUpgradeEffects(
-                    guildID,
-                    userID
-                )
-            )?.levels?.boosts
-        ) || 0
-        : 0;
+    Number(commandLuck?.boostUpgradeLevel) || 0;
 
 
 const outcome =
@@ -1561,6 +1354,8 @@ else{
 
 }
 
+
+await require("../systems/counterattacks").record(guildID,userID,target.id,"kiss",kissRewards.kisserReward,kissRewards.targetReward);
 
 if(outcome.key === "mythic"){
     await quests.recordEvent(
