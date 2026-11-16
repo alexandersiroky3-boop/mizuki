@@ -12,6 +12,7 @@ const ADVANTAGE_NAMES = Object.freeze({
     power: "Power",
     durability: "Durability",
     xp_immortality: "XP Immortality",
+    manipulation: "Manipulation",
     fury: "Fury",
     precision: "Precision"
 });
@@ -138,11 +139,11 @@ const RAID_REWARDS = {
         rest: {shards: 8000, boosts: [["xp", "infinity", [1, 2]], ["rune", "tier3", [1, 2, 3]]]}
     },
     raid_mizuki_fp: {
-        top: {shards: 50000, multiHours: [12, 18]},
+        top: {shards: 50000, multiHours: [12, 18], freeUpgradeTokens: 1},
         rest: {shards: 5000, multiHours: [12, 18]}
     },
     raid_mizuki_broken_fp: {
-        top: {shards: 75000, boosts: [["luck", "tier3", [100]]], multiHours: [12, 18]},
+        top: {shards: 75000, boosts: [["luck", "tier3", [15, 20, 25]]], multiHours: [12, 18], freeUpgradeTokens: 1},
         rest: {shards: 7500, multiHours: [12, 18]}
     },
     raid_gorjezz_one_percent: {
@@ -150,8 +151,8 @@ const RAID_REWARDS = {
         rest: {shards: 100000}
     },
     raid_frampto_fp: {
-        top: {shards: 125000, boosts: [["luck", "max", [20, 25, 30]], ["xp", "max", [25, 30, 35]]]},
-        rest: {shards: 12500, boosts: [["luck", "max", [5, 10]], ["xp", "max", [7, 11]]]}
+        top: {shards: 200000, counterattack: true, boosts: [["luck", "max", [15, 30, 35]], ["xp", "max", [15, 30, 35]]]},
+        rest: {shards: 12500, boosts: [["luck", "max", [3, 5]], ["xp", "max", [7, 11]]]}
     }
 };
 
