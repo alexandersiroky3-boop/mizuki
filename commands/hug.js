@@ -1,3 +1,4 @@
+const rarityEngine = require("../utils/rarity");
 const database = require("../database");
 const leveling = require("../systems/leveling");
 const luck = require("../utils/luck");
@@ -26,99 +27,7 @@ function random(min, max){
 }
 
 
-const HUG_TABLES = Object.freeze({
-
-    level1To99: Object.freeze([
-        {
-            key: "common",
-            chancePercent: 75.574,
-            min: 20000,
-            max: 75000,
-            rarity: "COMMON"
-        },
-        {
-            key: "uncommon",
-            chancePercent: 22,
-            min: 75000,
-            max: 150000,
-            rarity: "UNCOMMON"
-        },
-        {
-            key: "rare",
-            chancePercent: 2,
-            min: 150000,
-            max: 225000,
-            rarity: "RARE"
-        },
-        {
-            key: "epic",
-            chancePercent: 0.35,
-            min: 225000,
-            max: 450000,
-            rarity: "EPIC"
-        },
-        {
-            key: "legendary",
-            chancePercent: 0.075,
-            min: 450000,
-            max: 750000,
-            rarity: "LEGENDARY"
-        },
-        {
-            key: "mythic",
-            chancePercent: 0.001,
-            min: 750000,
-            max: 1500000,
-            rarity: "MYTHIC"
-        }
-    ]),
-
-    level100Plus: Object.freeze([
-        {
-            key: "common",
-            chancePercent: 65,
-            min: 50000,
-            max: 200000,
-            rarity: "COMMON"
-        },
-        {
-            key: "uncommon",
-            chancePercent: 30,
-            min: 200000,
-            max: 1000000,
-            rarity: "UNCOMMON"
-        },
-        {
-            key: "rare",
-            chancePercent: 4,
-            min: 1000000,
-            max: 2500000,
-            rarity: "RARE"
-        },
-        {
-            key: "epic",
-            chancePercent: 0.89,
-            min: 2500000,
-            max: 7500000,
-            rarity: "EPIC"
-        },
-        {
-            key: "legendary",
-            chancePercent: 0.1,
-            min: 7500000,
-            max: 20000000,
-            rarity: "LEGENDARY"
-        },
-        {
-            key: "mythic",
-            chancePercent: 0.01,
-            min: 20000000,
-            max: 100000000,
-            rarity: "MYTHIC"
-        }
-    ])
-
-});
+const HUG_TABLES = {level1To99: rarityEngine.base("hug.level1To99"),level100Plus: rarityEngine.base("hug.level100Plus")};
 
 
 // Keep the old export names for any tests or integrations that import them.
@@ -140,26 +49,7 @@ function getHugTableForLevel(level){
 
 // Hugging Mizuki keeps its existing separate success/failure interaction.
 // These ranges deliberately do not use the player-to-player rarity tables.
-const HUG_BOT_REWARD_TABLES = Object.freeze({
-
-    level1To99: Object.freeze([
-        { chancePercent: 65, min: 1000, max: 5000 },
-        { chancePercent: 20, min: 5000, max: 15000 },
-        { chancePercent: 10, min: 15000, max: 35000 },
-        { chancePercent: 3.9, min: 35000, max: 60000 },
-        { chancePercent: 1, min: 60000, max: 85000 },
-        { chancePercent: 0.1, min: 100000, max: 100000 }
-    ]),
-
-    level100Plus: Object.freeze([
-        { chancePercent: 65, min: 50000, max: 100000 },
-        { chancePercent: 20, min: 100000, max: 250000 },
-        { chancePercent: 10, min: 250000, max: 500000 },
-        { chancePercent: 4, min: 500000, max: 1500000 },
-        { chancePercent: 1, min: 1500000, max: 5000000 }
-    ])
-
-});
+const HUG_BOT_REWARD_TABLES = {level1To99: rarityEngine.base("hugBot.level1To99"),level100Plus: rarityEngine.base("hugBot.level100Plus")};
 
 
 function getCustomEmoji(
@@ -1293,6 +1183,7 @@ await syncAndTrackLevel(
     }
 
 
+    await require("../systems/counterattacks").record(guildID,userID,target.id,"hug",authorTotalReward,targetTotalReward);
     await quests.recordEvent(
         message,
         "earn_xp",
