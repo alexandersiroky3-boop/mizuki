@@ -23,7 +23,7 @@ function getBalancedChatXP(reward, chatXPMultiplier){
 // One independent draw per earned message. Never persist this multiplier in
 // criticalGrowthXP: even consecutive Super Crits multiply only their own XP.
 function rollSuperCritical(chattingLevel, random = Math.random){
-    return Number(chattingLevel) >= 8 && random() < 0.001;
+    return Number(chattingLevel) >= 8 && random() < 0.03;
 }
 
 function getFinalChatXP(reward, chatXPMultiplier, mediaMultiplier = 1){
