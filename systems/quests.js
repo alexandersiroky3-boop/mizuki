@@ -51,7 +51,7 @@ const QUEST_RULESET_VERSION =
 // cycles from older builds are rerolled once so users see the new economy
 // immediately without losing any quest progress.
 const WEEKLY_REWARD_RULESET_VERSION =
-    4;
+    5;
 
 
 const HOUR =
@@ -1597,7 +1597,7 @@ function getDailyRewardPool(level){
             boostType: "luck",
             tier: "max",
             amount: choiceByLevel(
-                [[3, 5, 6], [5, 8, 10], [8, 12, 16], [20, 30, 40]],
+                [[2, 3, 4], [3, 4, 5], [4, 5, 7], [5, 8, 10]],
                 safeLevel
             )
         },
@@ -1606,7 +1606,7 @@ function getDailyRewardPool(level){
             boostType: "luck",
             tier: "tier3",
             amount: choiceByLevel(
-                [[6, 8, 10], [10, 15, 20], [20, 30, 40], [60, 80, 100]],
+                [[3, 4, 5], [4, 5, 7], [5, 8, 10], [8, 10, 15]],
                 safeLevel
             )
         },
@@ -1651,7 +1651,7 @@ function getDailyRewardPool(level){
             boostType: "xp",
             tier: "max",
             amount: choiceByLevel(
-                [[5, 8, 12], [8, 12, 16], [12, 18, 24], [30, 45, 60]],
+                [[2, 3, 4], [3, 4, 5], [4, 6, 8], [6, 8, 10]],
                 safeLevel
             )
         }
@@ -1750,7 +1750,7 @@ function getWeeklyRewardPool(level){
             boostType: "luck",
             tier: "max",
             amount: choiceByLevel(
-                [[15, 20, 30], [20, 30, 40], [35, 45, 60], [80, 120, 160]],
+                [[5, 7, 10], [8, 10, 12], [12, 15, 20], [20, 25, 30]],
                 safeLevel
             )
         },
@@ -1759,7 +1759,7 @@ function getWeeklyRewardPool(level){
             boostType: "luck",
             tier: "tier3",
             amount: choiceByLevel(
-                [[30, 35, 45], [40, 50, 60], [60, 80, 100], [150, 200, 250]],
+                [[8, 10, 15], [10, 15, 20], [15, 20, 25], [20, 25, 30]],
                 safeLevel
             )
         },
@@ -1972,7 +1972,10 @@ function generateRewards(
             : getWeeklyRewardPool(safeLevel);
 
 
+    const jackpotReward = cycleType === "weekly" && Math.random() < 0.15
+        ? {type:"guaranteed_jackpot", amount:1, levelBand} : null;
     const rewards = [
+        ...(jackpotReward ? [jackpotReward] : []),
         {
             type: "xp",
             amount: randomChoice(
@@ -1981,10 +1984,10 @@ function generateRewards(
             levelBand
         },
         ...(specialReward ? [specialReward] : []),
-        ...shuffle(extraPool)
+        ...shuffle(extraPool.filter(reward => reward.type !== "guaranteed_jackpot"))
             .slice(
                 0,
-                totalCount - 1 - (specialReward ? 1 : 0)
+                totalCount - 1 - (specialReward ? 1 : 0) - (jackpotReward ? 1 : 0)
             )
             .map(reward => ({
                 ...reward,
