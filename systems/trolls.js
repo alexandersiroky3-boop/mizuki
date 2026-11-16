@@ -1,3 +1,4 @@
+const rarityEngine = require("../utils/rarity");
 const database = require("../database");
 
 
@@ -80,114 +81,10 @@ function getTrollLuckOrder(profile){
 }
 
 
-function getLuckWeightedTrollRarities(profile){
-
-    const order =
-        getTrollLuckOrder(profile);
+function getLuckWeightedTrollRarities(profile){ return rarityEngine.resolve("troll",profile); }
 
 
-    if(order <= 0){
-        return null;
-    }
-
-
-    const luckRating =
-        Math.max(
-            1,
-            Number(
-                profile?.commandMultiplier ??
-                profile?.multiplier
-            ) || 1
-        );
-
-
-    // Ordered from the worst result to the best so stronger Luck pushes
-    // probability away from a backfire/common troll and toward rare/legendary.
-    const outcomes = [
-        {rarity: "failed", chancePercent: 24.5},
-        {rarity: "common", chancePercent: 60},
-        {rarity: "rare", chancePercent: 14.5},
-        {rarity: "legendary", chancePercent: 1}
-    ];
-
-
-    const lastIndex =
-        outcomes.length - 1;
-
-
-    return outcomes.map((outcome, index) => ({
-        rarity: outcome.rarity,
-        weight:
-            outcome.chancePercent *
-            Math.pow(
-                luckRating,
-                (index / lastIndex) * 2
-            )
-    }));
-
-}
-
-
-function rollTrollRarity(
-    random = Math.random,
-    luckProfile = null
-){
-
-    const weighted =
-        getLuckWeightedTrollRarities(
-            luckProfile
-        );
-
-
-    if(weighted){
-
-        const totalWeight =
-            weighted.reduce(
-                (sum, outcome) =>
-                    sum + outcome.weight,
-                0
-            );
-
-
-        let roll =
-            random() * totalWeight;
-
-
-        for(const outcome of weighted){
-
-            roll -= outcome.weight;
-
-
-            if(roll <= 0){
-                return outcome.rarity;
-            }
-
-        }
-
-
-        return weighted[
-            weighted.length - 1
-        ].rarity;
-
-    }
-
-    const roll = random();
-
-    if(roll < 0.60){
-        return "common";
-    }
-
-    if(roll < 0.745){
-        return "rare";
-    }
-
-    if(roll < 0.755){
-        return "legendary";
-    }
-
-    return "failed";
-
-}
+function rollTrollRarity(random=Math.random,luckProfile=null){ return rarityEngine.pick(getLuckWeightedTrollRarities(luckProfile),random).key; }
 
 
 function getLevelRange(level, below100, level100Plus){
@@ -232,8 +129,8 @@ function createEffectDefinition(
             () => {
                 const [min, max] = getLevelRange(
                     level,
-                    [10000, 25000],
-                    [25000, 100000]
+                    require('../utils/rarityConfig').trollXP.messageMog.level1To99,
+                    require('../utils/rarityConfig').trollXP.messageMog.level100Plus
                 );
                 return {
                     effectType: EFFECTS.MESSAGE_MOG,
@@ -267,8 +164,8 @@ function createEffectDefinition(
             () => {
                 const [min, max] = getLevelRange(
                     level,
-                    [25000, 50000],
-                    [50000, 150000]
+                    require('../utils/rarityConfig').trollXP.messageFart.level1To99,
+                    require('../utils/rarityConfig').trollXP.messageFart.level100Plus
                 );
                 return {
                     effectType: EFFECTS.MESSAGE_FART,
@@ -309,8 +206,8 @@ function createEffectDefinition(
             () => {
                 const [min, max] = getLevelRange(
                     level,
-                    [25000, 50000],
-                    [100000, 250000]
+                    require('../utils/rarityConfig').trollXP.immediateTransfer.level1To99,
+                    require('../utils/rarityConfig').trollXP.immediateTransfer.level100Plus
                 );
                 return {
                     effectType: EFFECTS.IMMEDIATE_TRANSFER,
@@ -328,8 +225,8 @@ function createEffectDefinition(
             () => {
                 const [min, max] = getLevelRange(
                     level,
-                    [50000, 125000],
-                    [250000, 400000]
+                    require('../utils/rarityConfig').trollXP.immediateLoss.level1To99,
+                    require('../utils/rarityConfig').trollXP.immediateLoss.level100Plus
                 );
                 return {
                     effectType: EFFECTS.IMMEDIATE_LOSS,
