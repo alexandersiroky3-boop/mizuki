@@ -79,7 +79,7 @@ const UPGRADE_DEFINITIONS = Object.freeze({
             ),
             upgrade(
                 freezeCost(20000000000),
-                "Gain another +500% chat XP, improve critical odds and drops, and strengthen criticals to the MAX. Unlock a fixed 0.1% Super Crit chance: 10x the completed chat XP reward for that message only (does not stack)."
+                "Gain another +500% chat XP, improve critical odds and drops, and strengthen criticals to the MAX. Unlock a fixed 3% Super Crit chance: 10x the completed chat XP reward for that message only (does not stack)."
             )
         ])
     }),
