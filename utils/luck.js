@@ -1,3 +1,4 @@
+const rarityEngine = require("../utils/rarity");
 // utils/luck.js
 
 const database =
@@ -377,76 +378,7 @@ const COMMAND_LUCK_DROP_PERCENT = {
 // percentages honest instead of running a second hidden "Mega Roll" lottery.
 // Permanent Rolling upgrades and Boost upgrades are applied to normalized
 // copies later; these source tables are never mutated.
-const LUCK_ROLL_CHANCE_TABLES = {
-
-    tier2: [
-        { chancePercent: 4, type: "neutral", min: -100, max: 100 },
-        { chancePercent: 0.75, type: "negative", min: -5000, max: -101 },
-        { chancePercent: 20, type: "positive", min: 100, max: 5000 },
-        { chancePercent: 0.15, type: "negative", min: -10000, max: -5000 },
-        { chancePercent: 50, type: "positive", min: 5000, max: 25000 },
-        { chancePercent: 20, type: "positive", min: 25000, max: 75000 },
-        { chancePercent: 3, type: "positive", min: 75000, max: 200000 },
-        { chancePercent: 1.5, type: "positive", min: 200000, max: 500000 },
-        { chancePercent: 0.4, type: "positive", min: 500000, max: 2000000 },
-        { chancePercent: 0.05, type: "negative", min: -100000, max: -10000 },
-        { chancePercent: 0.1495, type: "positive", min: 2000000, max: 10000000 },
-        { chancePercent: 0.00035, type: "positive", min: 10000001, max: 30000000 },
-        { chancePercent: 0.0001, type: "positive", min: 30000001, max: 50000000 },
-        { chancePercent: 0.00004, type: "positive", min: 50000001, max: 100000000 },
-        { chancePercent: 0.000009, type: "positive", min: 100000001, max: 250000000 },
-        { chancePercent: 0.000001, type: "positive", min: 250000001, max: 1500000000 }
-    ],
-
-    tier3: [
-        { chancePercent: 1.5, type: "neutral", min: -100, max: 100 },
-        { chancePercent: 0.25, type: "negative", min: -5000, max: -101 },
-        { chancePercent: 20, type: "positive", min: 100, max: 5000 },
-        { chancePercent: 0.05, type: "negative", min: -10000, max: -5000 },
-        { chancePercent: 25, type: "positive", min: 5000, max: 25000 },
-        { chancePercent: 40, type: "positive", min: 25000, max: 75000 },
-        { chancePercent: 10, type: "positive", min: 75000, max: 200000 },
-        { chancePercent: 2.5, type: "positive", min: 200000, max: 500000 },
-        { chancePercent: 0.5, type: "positive", min: 500000, max: 2000000 },
-        { chancePercent: 0.01, type: "negative", min: -100000, max: -10000 },
-        { chancePercent: 0.185, type: "positive", min: 2000000, max: 10000000 },
-        { chancePercent: 0.0035, type: "positive", min: 10000001, max: 30000000 },
-        { chancePercent: 0.001, type: "positive", min: 30000001, max: 50000000 },
-        { chancePercent: 0.0004, type: "positive", min: 50000001, max: 100000000 },
-        { chancePercent: 0.00009, type: "positive", min: 100000001, max: 250000000 },
-        { chancePercent: 0.00001, type: "positive", min: 250000001, max: 1500000000 }
-    ],
-
-    max: [
-        { chancePercent: 0.25, type: "neutral", min: -100, max: 100 },
-        { chancePercent: 0.04, type: "negative", min: -5000, max: -101 },
-        { chancePercent: 2, type: "positive", min: 100, max: 5000 },
-        { chancePercent: 0.01, type: "negative", min: -10000, max: -5000 },
-        { chancePercent: 24, type: "positive", min: 5000, max: 25000 },
-        { chancePercent: 20, type: "positive", min: 25000, max: 75000 },
-        { chancePercent: 45, type: "positive", min: 75000, max: 200000 },
-        { chancePercent: 7, type: "positive", min: 200000, max: 500000 },
-        { chancePercent: 0.75, type: "positive", min: 500000, max: 2000000 },
-        { chancePercent: 0.002, type: "negative", min: -100000, max: -10000 },
-        { chancePercent: 0.923, type: "positive", min: 2000000, max: 10000000 },
-        { chancePercent: 0.0175, type: "positive", min: 10000001, max: 30000000 },
-        { chancePercent: 0.005, type: "positive", min: 30000001, max: 50000000 },
-        { chancePercent: 0.002, type: "positive", min: 50000001, max: 100000000 },
-        { chancePercent: 0.00045, type: "positive", min: 100000001, max: 250000000 },
-        { chancePercent: 0.00005, type: "positive", min: 250000001, max: 1500000000 }
-    ],
-
-    omega: [
-        { chancePercent: 9.95, type: "positive", min: 200000, max: 500000 },
-        { chancePercent: 70, type: "positive", min: 500001, max: 5000000 },
-        { chancePercent: 16, type: "positive", min: 5000001, max: 10000000 },
-        { chancePercent: 3, type: "positive", min: 10000001, max: 30000000 },
-        { chancePercent: 1, type: "positive", min: 30000001, max: 49999999 },
-        { chancePercent: 0.045, type: "positive", min: 100000000, max: 250000000 },
-        { chancePercent: 0.005, type: "positive", min: 250000001, max: 1500000000 }
-    ]
-
-};
+const LUCK_ROLL_CHANCE_TABLES = Object.fromEntries(["tier1","tier2","tier3","max","omega"].map(tier=>[tier,rarityEngine.resolve("roll",{tier})]));
 
 
 const LUCK_MEGA_ROLL_MIN_XP =
@@ -899,8 +831,10 @@ async function applyTrollLuckModifiers(
         multiplier:
             combinedBaseMultiplier *
             boostMultiplierScale,
+        boostUpgradeLevel: Number(upgradeEffects.levels?.boosts) || 0,
         criticalChanceBonus: combinedCriticalBonus,
         boostMultiplierScale,
+        boostUpgradeLevel: Number(upgradeEffects.levels?.boosts) || 0,
         expiresAt: Math.max(
             ...profiles.map(profile =>
                 Number(profile.expiresAt) || 0
@@ -1166,6 +1100,7 @@ async function attachLeaderboardRollLuck(
 
     return {
         ...blessedProfile,
+        commandLuckScale: Number((await require("../systems/playerFeatures").get(member.guild.id,member.id)).luckPenaltyUntil)>Date.now()?0.5:1,
         leaderboardRollLuckMultiplier
     };
 
@@ -1306,8 +1241,10 @@ async function getActiveLuckBoost(
         multiplier:
             profile.multiplier *
             boostMultiplierScale,
+        boostUpgradeLevel: Number(upgradeEffects.levels?.boosts) || 0,
 
         boostMultiplierScale,
+        boostUpgradeLevel: Number(upgradeEffects.levels?.boosts) || 0,
 
         expiresAt
 
@@ -1830,168 +1767,19 @@ function getWeightedChanceTable(
 }
 
 
-const ROLLING_UPGRADE_WEIGHT_FACTORS = {
-    neutral: [1, 0.96, 0.88, 0.82, 0.70, 0.58, 0.42, 0.25, 0.10],
-    negative: [1, 0.77, 0.66, 0.44, 0.27, 0.21, 0.14, 0.07, 0.02],
-    common: [1, 1.18, 1.40, 1.58, 2.10, 2.35, 2.70, 3, 3.50],
-    fiveThousand: [1, 1.25, 2.10, 3.15, 4.25, 7.40, 8.50, 10, 14],
-    // Keep each higher reward band's step-up at least as strong as the band
-    // below it. Normalization can otherwise make an upgrade hurt jackpot odds.
-    twentyFiveThousand: [1, 1.30, 2.20, 3.35, 4.55, 8, 9.50, 16, 25],
-    seventyFiveThousand: [1, 1.32, 2.25, 3.42, 4.65, 8.15, 9.75, 100, 160],
-    twoHundredThousand: [1, 1.34, 2.28, 3.48, 4.75, 8.35, 10.10, 250, 400],
-    million: [1, 1.35, 2.30, 3.55, 4.85, 8.60, 10.60, 31.80, 3000],
-    rare: [1, 1.37, 2.34, 3.62, 4.95, 8.85, 12, 36, 180],
-    mega: [1, 1.40, 2.40, 3.80, 5.20, 9.25, 12.75, 38.25, 220],
-    ultra: [1, 1.45, 2.50, 4, 5.50, 9.90, 14.90, 44.70, 260]
-};
+const ROLLING_UPGRADE_WEIGHT_FACTORS = {};
 
 
-function getRollingUpgradeChanceTable(
-    baseTable,
-    rollingLevel
-){
-
-    if(
-        !Array.isArray(baseTable)
-        ||
-        baseTable.length === 0
-    ){
-
-        throw new Error(
-            "getRollingUpgradeChanceTable received an empty chance table."
-        );
-
-    }
-
-
-    const level =
-        Math.max(
-            0,
-            Math.min(
-                8,
-                Math.floor(
-                    Number(rollingLevel) || 0
-                )
-            )
-        );
-
-
-    return normalizeChanceTable(
-        baseTable.map(outcome => {
-            let group = "neutral";
-
-            if(outcome.type === "negative"){
-                group = "negative";
-            }
-            else if(outcome.type === "positive"){
-                if(Number(outcome.min) >= 50000001){
-                    group = "ultra";
-                }
-                else if(Number(outcome.min) >= 10000001){
-                    group = "mega";
-                }
-                else if(Number(outcome.min) >= 2000000){
-                    group = "rare";
-                }
-                else if(Number(outcome.min) >= 500000){
-                    group = "million";
-                }
-                else if(Number(outcome.min) >= 200000){
-                    group = "twoHundredThousand";
-                }
-                else if(Number(outcome.min) >= 75000){
-                    group = "seventyFiveThousand";
-                }
-                else if(Number(outcome.min) >= 25000){
-                    group = "twentyFiveThousand";
-                }
-                else if(Number(outcome.min) >= 5000){
-                    group = "fiveThousand";
-                }
-                else{
-                    group = "common";
-                }
-            }
-
-            return {
-                ...outcome,
-                chancePercent:
-                    Number(outcome.chancePercent) *
-                    ROLLING_UPGRADE_WEIGHT_FACTORS[group][level]
-            };
-        })
-    );
-
-}
+function getRollingUpgradeChanceTable(_baseTable,rollingLevel){ return rarityEngine.resolve("roll",null,{rollingLevel}); }
 
 
 // Omega is rarity-first: generic upgrade weights must never push it back
 // toward Epic. Jackpot has a separate bounded budget; extra luck cannot inflate it
 // without limit. Mythic bands stay below 50M so Upgrade 5's x2 cannot create
 // unintended jackpot outcomes. Evolved remains an independent payout multiplier.
-function getOmegaRollChanceTable(profile, rollingLevel = 0){
-    const rolling = Math.min(8, Math.max(0, Math.floor(Number(rollingLevel) || 0))) / 8;
-    const boost = Math.min(1, Math.max(0, ((Number(profile?.rollWeightFactor) || 1) - 1) / 2));
-    const progress = 0.6 * rolling + 0.4 * boost;
-    const legendary = 70 + 2 * progress;
-    const mythic = 20 + 6 * progress;
-    const jackpot = 0.05 * (1 + 3 * rolling) * (1 + 1.5 * boost);
-    const weights = [100 - legendary - mythic - jackpot, legendary,
-        mythic * 0.8, mythic * 0.15, mythic * 0.05, jackpot * 0.9, jackpot * 0.1];
-    return LUCK_ROLL_CHANCE_TABLES.omega.map((entry, index) => ({
-        ...entry, chancePercent: weights[index]
-    }));
-}
-
-function getResolvedRollChanceTable(
-    rollChanceTable,
-    profile,
-    rollingLevel = 0
-){
-
-    const safeProfile =
-        profile ||
-        getNoLuckProfile();
 
 
-    const tier =
-        String(
-            safeProfile.tier || ""
-        ).toLowerCase();
-
-
-    if(tier === "omega") return getOmegaRollChanceTable(safeProfile, rollingLevel);
-
-    const exactLuckTable =
-        LUCK_ROLL_CHANCE_TABLES[tier];
-
-
-    const upgradedTable =
-        getRollingUpgradeChanceTable(
-            exactLuckTable || rollChanceTable,
-            rollingLevel
-        );
-
-
-    // Tier II/III/MAX/Ω source tables already contain the exact Luck odds.
-    // Setting order to 0 prevents those tiers from being applied twice, while
-    // rollWeightFactor still lets permanent Boost upgrades improve the table.
-    const weightingProfile =
-        exactLuckTable
-            ? {
-                ...safeProfile,
-                order: 0
-            }
-            : safeProfile;
-
-
-    return getWeightedChanceTable(
-        upgradedTable,
-        weightingProfile
-    );
-
-}
+function getResolvedRollChanceTable(rollChanceTable,profile,rollingLevel=0){ return rarityEngine.resolve("roll",profile,{rollingLevel}); }
 
 
 function getChanceAtOrAbove(
@@ -2016,109 +1804,17 @@ function getLuckMegaRollChance(
     rollingLevel = 0
 ){
 
-    const tier =
-        String(
-            profile?.tier || ""
-        ).toLowerCase();
-
-
-    const sourceTable =
-        rollChanceTable ||
-        LUCK_ROLL_CHANCE_TABLES[tier];
-
-
-    if(
-        !Array.isArray(sourceTable)
-        ||
-        sourceTable.length === 0
-    ){
-
-        return 0;
-
-    }
-
-
-    return getChanceAtOrAbove(
-        getResolvedRollChanceTable(
-            sourceTable,
-            profile,
-            rollingLevel
-        ),
-        LUCK_MEGA_ROLL_MIN_XP
-    );
+    return (1-rarityEngine.negativeChance(profile,rollingLevel))*rarityEngine.resolve('roll',profile,{rollingLevel})
+        .find(row=>row.key==='jackpot').chancePercent;
 
 }
 
 
 
-async function rollWithLuck(
-    member,
-    rollChanceTable,
-    _levelTableName = "base",
-    preparedProfile = null,
-    rollingLevel = 0
-){
-
-    if(
-        !Array.isArray(rollChanceTable)
-        ||
-        rollChanceTable.length === 0
-    ){
-
-        throw new Error(
-            "rollWithLuck received an empty roll chance table."
-        );
-
-    }
-
-
-    const profile =
-        preparedProfile
-        ||
-        getRollLuckProfile(
-            await getActiveLuckBoost(
-                member
-            ),
-            1
-        );
-
-
-    const resolvedChanceTable =
-        getResolvedRollChanceTable(
-            rollChanceTable,
-            profile,
-            rollingLevel
-        );
-
-
-    const rolledXP =
-        rollFromExactPercentTable(
-            resolvedChanceTable
-        );
-
-
-    const megaRollChancePercent =
-        getChanceAtOrAbove(
-            resolvedChanceTable,
-            LUCK_MEGA_ROLL_MIN_XP
-        );
-
-
-    return {
-
-        rolledXP,
-
-        profile,
-
-        megaRoll:
-            rolledXP >=
-            LUCK_MEGA_ROLL_MIN_XP,
-
-        megaRollChancePercent:
-            megaRollChancePercent
-
-    };
-
+async function rollWithLuck(member,rollChanceTable,_levelTableName="base",preparedProfile=null,rollingLevel=0){
+ const profile=preparedProfile || getRollLuckProfile(await getActiveLuckBoost(member),1);
+ const result=rarityEngine.roll(profile,rollingLevel);
+ return {...result,profile,megaRoll:result.rolledXP>0&&result.rarityKey==='jackpot',megaRollChancePercent:(1-rarityEngine.negativeChance(profile,rollingLevel))*rarityEngine.resolve('roll',profile,{rollingLevel}).find(r=>r.key==='jackpot').chancePercent};
 }
 
 
@@ -2151,12 +1847,7 @@ function rollGuaranteedMinimumWithLuck(
     }
 
 
-    const sourceTable =
-        getResolvedRollChanceTable(
-            rollChanceTable,
-            profile,
-            rollingLevel
-        );
+    const sourceTable = rarityEngine.guarantee();
 
 
     const eligibleTable =
@@ -2209,68 +1900,7 @@ function rollGuaranteedMinimumWithLuck(
 // user's permanent Rolling and Boost upgrades. Active Luck adds a gentle
 // high-range bias instead of replacing the guarantee table with a normal
 // Luck table (which could reintroduce low or negative results).
-function rollGuaranteedChanceTableWithLuck(
-    guaranteeChanceTable,
-    profile = null,
-    rollingLevel = 0
-){
-
-    if(
-        !Array.isArray(guaranteeChanceTable)
-        ||
-        guaranteeChanceTable.length === 0
-    ){
-
-        throw new Error(
-            "rollGuaranteedChanceTableWithLuck received an empty chance table."
-        );
-
-    }
-
-
-    const safeProfile =
-        profile || getNoLuckProfile();
-
-
-    const activeLuckScale =
-        1 +
-        getCommandLuckOrder(
-            safeProfile
-        ) * 0.15;
-
-
-    const guaranteeProfile = {
-        ...safeProfile,
-
-        rollWeightFactor:
-            Math.max(
-                1,
-                Number(
-                    safeProfile.rollWeightFactor
-                ) || 1
-            ) * activeLuckScale
-    };
-
-
-    const upgradedTable =
-        getRollingUpgradeChanceTable(
-            guaranteeChanceTable,
-            rollingLevel
-        );
-
-
-    const resolvedTable =
-        getWeightedChanceTable(
-            upgradedTable,
-            guaranteeProfile
-        );
-
-
-    return rollFromExactPercentTable(
-        resolvedTable
-    );
-
-}
+function rollGuaranteedChanceTableWithLuck(table,_profile=null,_rollingLevel=0){ return rollFromExactPercentTable(table); }
 
 
 // ==============================
@@ -2422,8 +2052,7 @@ const EVOLVED_XP_MULTIPLIER =
     10;
 
 
-const EVOLVED_BASE_CHANCE_PERCENT =
-    5;
+const EVOLVED_BASE_CHANCE_PERCENT = rarityEngine.evolvedChance() * 100;
 
 
 const EVOLVED_LUCK_BONUS_PERCENT = Object.freeze({tier1:0,tier2:0,tier3:0,max:0,omega:0});
@@ -2433,34 +2062,7 @@ function getEvolvedChancePercent(_profile){
 }
 
 
-function rollEvolvedCommandRarity(
-    profile,
-    random = Math.random,
-    rollingUpgradeLevel = null
-){
-
-    const chancePercent =
-        rollingUpgradeLevel === null
-            ? getEvolvedChancePercent(profile)
-            : (Number(rollingUpgradeLevel) >= 8 ? 3 : 1);
-
-
-    const position =
-        Math.max(
-            0,
-            Math.min(
-                0.999999999999,
-                Number(random()) || 0
-            )
-        );
-
-
-    return (
-        position * 100 <
-        chancePercent
-    );
-
-}
+function rollEvolvedCommandRarity(_profile,random=Math.random,rollingUpgradeLevel=null){ return random() < rarityEngine.evolvedChance(rollingUpgradeLevel); }
 
 
 function applyEvolvedXP(
@@ -2522,118 +2124,7 @@ function buildEvolvedRarityMarker(
 }
 
 
-function rollCommandOutcome(
-    outcomes,
-    profile
-){
-
-    if(
-        !Array.isArray(outcomes)
-        ||
-        outcomes.length === 0
-    ){
-
-        throw new Error(
-            "rollCommandOutcome requires at least one outcome."
-        );
-
-    }
-
-
-    const order =
-        getCommandLuckOrder(profile);
-
-
-    const luckRating =
-        order > 0
-            ? Math.max(
-                1,
-                Number(
-                    profile?.commandMultiplier ??
-                    profile?.multiplier
-                ) || 1
-            )
-            : 1;
-
-
-    const lastIndex =
-        Math.max(
-            1,
-            outcomes.length - 1
-        );
-
-
-    const weighted =
-        outcomes.map(
-            (outcome, index) => {
-
-                const baseChance =
-                    Math.max(
-                        0,
-                        Number(outcome.chancePercent) || 0
-                    );
-
-
-                const rarityPosition =
-                    index / lastIndex;
-
-
-                const luckWeight =
-                    order > 0
-                        ? Math.pow(
-                            luckRating,
-                            rarityPosition * 2
-                        )
-                        : 1;
-
-
-                return {
-                    outcome,
-                    weight:
-                        baseChance * luckWeight
-                };
-
-            }
-        );
-
-
-    const totalWeight =
-        weighted.reduce(
-            (sum, entry) =>
-                sum + entry.weight,
-            0
-        );
-
-
-    if(totalWeight <= 0){
-
-        return outcomes[0];
-
-    }
-
-
-    let roll =
-        Math.random() * totalWeight;
-
-
-    for(const entry of weighted){
-
-        roll -= entry.weight;
-
-        if(roll <= 0){
-
-            return entry.outcome;
-
-        }
-
-    }
-
-
-    return weighted[
-        weighted.length - 1
-    ].outcome;
-
-}
+function rollCommandOutcome(outcomes,profile){ return rarityEngine.pick(rarityEngine.resolveRows(outcomes,profile)); }
 
 
 function rollCommandXP(
