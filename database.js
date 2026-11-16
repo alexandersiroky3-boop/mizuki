@@ -4898,7 +4898,8 @@ async function getUserUpgradeEffects(
 async function purchaseUserUpgrade(
     guildID,
     userID,
-    requestedCategory
+    requestedCategory,
+    expectedLevel = null
 ){
 
     const category =
@@ -4998,7 +4999,7 @@ async function purchaseUserUpgrade(
 
 
         const useFreeUpgrade =
-            Number(
+            expectedLevel === null && Number(
                 entitlementResult.rows[0]?.freeUpgradeTokens
                 ?? entitlementResult.rows[0]?.freeupgradetokens
             ) > 0;
@@ -5054,6 +5055,11 @@ async function purchaseUserUpgrade(
                 ) || 0
             );
 
+
+        if(expectedLevel !== null && currentLevel !== expectedLevel){
+            await client.query('COMMIT');
+            return {success:false,status:'level-changed',level:currentLevel};
+        }
 
         const nextUpgrade =
             upgrades.getNextUpgrade(
@@ -7461,6 +7467,7 @@ async function performMythicKissReward(
         Date.now();
 
 
+    await require("./systems/playerFeatures").init();
     const client =
         await db.connect();
 
@@ -8535,6 +8542,11 @@ async function performEZWin(
         // GREATEST prevents negative XP balances.
         // Explicit casts keep the parameter-only CASE expression numeric;
         // without them PostgreSQL can resolve it as TEXT (`integer - text`).
+        const counterVictims = (await client.query(
+            'SELECT userID AS "userID", xp FROM users WHERE guildID=$1 ORDER BY userID FOR UPDATE',
+            [normalizedGuildID]
+        )).rows.filter(row=>row.userID!==normalizedWinnerUserID && Number(row.xp)>0);
+
         const drainedUsers =
             await client.query(`
 
@@ -8600,6 +8612,16 @@ async function performEZWin(
         ]);
 
 
+        if(counterVictims.length){
+            const losses=counterVictims.map(row=>-Math.min(Number(row.xp),Number(row.xp)>=safeLevel100XPThreshold?safeLevel100PlusLoss:safeLevel1To99Loss));
+            await client.query(`
+                INSERT INTO player_features(guild_id,user_id,data)
+                SELECT $1,v.id,jsonb_build_object('lastCounterTarget',jsonb_build_object(
+                    'actor',$4::TEXT,'command','ezwin','actorDelta',$5::BIGINT,'targetDelta',v.loss,'at',$6::BIGINT))
+                FROM UNNEST($2::TEXT[],$3::BIGINT[]) AS v(id,loss)
+                ON CONFLICT(guild_id,user_id) DO UPDATE SET data=player_features.data||EXCLUDED.data
+            `,[normalizedGuildID,counterVictims.map(row=>row.userID),losses.map(String),normalizedWinnerUserID,String(safeWinnerReward),timestamp]);
+        }
         await client.query("COMMIT");
 
 
@@ -9892,6 +9914,10 @@ async function applyBossRewardBundle(
     const nextHugRepeat =
         bundle?.nextHugRepeat;
 
+    if(bundle?.counterattack){
+        await client.query('SELECT userID FROM users WHERE guildID=$1 AND userID=$2 FOR UPDATE',[normalizedGuildID,normalizedUserID]);
+        await require("./systems/playerFeatures").merge(normalizedGuildID,normalizedUserID,{counterattack:true},client);
+    }
     const guaranteedJackpots = Math.max(0, Math.floor(Number(bundle?.guaranteedJackpots) || 0));
 
 
@@ -10367,6 +10393,7 @@ async function getBossChallengeSnapshot(
 
 
     return {
+        userID: normalizedUserID,
         level:
             Math.max(
                 0,
@@ -23018,7 +23045,17 @@ async function getRollGuaranteeProgress(guildID,userID,threshold=100){
     return {guaranteed:false,threshold,progress:Number(result.rows[0]?.rollguaranteeprogress)||0};
 }
 
+// Internal transaction boundary for persistent tutorial / challenge lifecycle work.
+async function gameTransaction(work){
+    const client=await db.connect();
+    try{await client.query('BEGIN');const result=await work(client);await client.query('COMMIT');return result;}
+    catch(error){await client.query('ROLLBACK');throw error;}
+    finally{client.release();}
+}
+function gameQuery(sql,params=[]){return db.query(sql,params);}
+
 module.exports = {
+    gameTransaction, gameQuery,
     adminSetLevel, adminGiveBoost, clearGuildBlessing, setAdminRollGuarantee, consumeAdminRollGuarantee, getRollGuaranteeProgress,
     removeMultiCommands,
 
@@ -23158,6 +23195,8 @@ module.exports = {
     getRaidBossContributions,
 
     grantBossRewardBundle,
+    applyBossRewardBundle,
+    invalidateUserCache: (guild,user) => userCache.delete(`${guild}:${user}`),
 
     grantRaidBossRewardOnce,
 
