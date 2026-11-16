@@ -13,6 +13,12 @@ function normalizeRewards(value){
     if(result.type === 'multi_roll' && result.label){
         result.label = `Each \`!roll\` performs **${result.rollCount || 3} total rolls** for **${Math.round(Number(result.durationMs || 0)/3600000)} hours**`;
     }
+    if(result.type === "guaranteed_jackpot") result.amount = 1;
+    if(result.type === "boost" && ["luck","xp"].includes(result.boostType) && ["max","tier3"].includes(result.tier)){
+        const weekly = result.weeklyRewardRulesetVersion != null;
+        const caps = weekly ? [15,20,25,30] : [5,7,10,15];
+        if(result.questUpgradeLevel != null) result.amount = Math.min(Number(result.amount)||1, caps[Math.min(3,Math.max(0,Number(result.questUpgradeLevel)||0))]);
+    }
     return result;
 }
 module.exports = {MAX_COMMAND_COUNT, EXTENSION_MS, normalizeRewards};
