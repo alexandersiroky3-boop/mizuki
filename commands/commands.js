@@ -26,6 +26,7 @@ function buildCommandsEmbed(guild = null){
             {
                 name: "🔒 Obtainable commands",
                 value:
+                    "`!counterattack` — Frampto FP top-three reward; one use, 1.5× returned effect, no normal cooldown\n" +
                     "`!fight @user` — complete Boss Challenge #3\n" +
                     `\`!bless everyone\` — ${chests.getChestEmoji(guild, "bronze")} Bronze Chest reward\n` +
                     `\`!spawnboss\` — consumes one ${chests.getChestEmoji(guild, "boss")} Boss Chest reward use\n` +
@@ -34,7 +35,7 @@ function buildCommandsEmbed(guild = null){
             {
                 name: "🧰 Utility",
                 value:
-                    "`!afk` • `!mute` • `!updates` • `!ping` • `!commands`"
+                    "`!tutorial` • `!afk` • `!mute` • `!updates` • `!ping` • `!commands`"
             },
             {
                 name: "🛡️ Staff",
