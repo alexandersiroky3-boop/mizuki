@@ -250,6 +250,7 @@ async function applyTroll(message, targetID){
     );
     if(!result?.success) return reply("The troll could not be applied. Please try again.");
 
+    if(result.effect && result.rarity !== "failed") await require("../systems/counterattacks").record(guildID,actorID,targetID,"troll",0,0,result.effect);
     await database.setCommandCooldown(
         guildID, actorID, "troll", Date.now() + COOLDOWN
     ).catch(error => console.error("!troll cooldown save failed:", error));
