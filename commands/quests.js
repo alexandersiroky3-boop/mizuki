@@ -59,6 +59,8 @@ function progressBar(
 
 
 function formatQuest(quest){
+    // Rarity targets are enum values (4/5), not a requested roll count.
+    if(quest.type === "roll_rarity") quest = {...quest, target: 1, progress: quest.completed || Number(quest.progress) >= Number(quest.target) ? 1 : 0};
 
     const current =
         Math.min(
@@ -89,7 +91,7 @@ function formatQuest(quest){
         `${quest.completed ? "✅" : quest.icon} **${quest.label}**\n` +
         `\`${progressBar(
             current,
-            quest.target,
+            target,
             quest.completed
         )}\` **${current.toLocaleString()} / ${target.toLocaleString()}** • ${percentage}%`
     );
@@ -577,6 +579,7 @@ async function execute(message){
     collector.on(
         "collect",
         async interaction => {
+            if(await require('../systems/bosses').blockManipulatedInteraction(interaction))return;
 
             const [
                 action,
