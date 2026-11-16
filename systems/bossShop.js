@@ -1,9 +1,9 @@
 const database = require("../database");
 
 
-const BOSS_SHOP_APPEARANCE_CHANCE_PERCENT = 35;
-const BOSS_SHOP_DURATION_MS = 20 * 60 * 1000;
-const BOSS_SHOP_REFRESH_MS = 10 * 60 * 1000;
+const BOSS_SHOP_APPEARANCE_CHANCE_PERCENT = 100;
+const BOSS_SHOP_DURATION_MS = 30 * 60 * 1000;
+const BOSS_SHOP_REFRESH_MS = BOSS_SHOP_DURATION_MS;
 const BOSS_SHOP_VISIBLE_ITEMS = 3;
 
 
@@ -153,55 +153,15 @@ async function openBossShop(
         openedAt: now,
         expiresAt: now + BOSS_SHOP_DURATION_MS,
         refreshAt: now + BOSS_SHOP_REFRESH_MS,
-        stock: generateBossShopStock(random)
+        stock: generateBossShopStock(random).map(item=>({...item,slotID:`${now}:${item.slotID}`}))
     });
 }
 
 
-async function maybeOpenBossShopAfterRaid(
-    guildID,
-    random = Math.random,
-    now = Date.now()
-){
-    const current = await getActiveBossShop(guildID, now, random);
-    if(current){
-        return {opened: false, alreadyActive: true, shop: current};
-    }
-
-    if((Number(random()) || 0) * 100 >= BOSS_SHOP_APPEARANCE_CHANCE_PERCENT){
-        return {opened: false, alreadyActive: false, shop: null};
-    }
-
-    const shop = await openBossShop(guildID, now, random);
-    return {opened: true, alreadyActive: false, shop};
-}
+async function maybeOpenBossShopAfterRaid(guildID,random=Math.random,now=Date.now()){ const shop=await openBossShop(guildID,now,random);return {opened:true,alreadyActive:false,shop}; }
 
 
-async function getActiveBossShop(
-    guildID,
-    now = Date.now(),
-    random = Math.random
-){
-    let shop = await database.getBossShopState(guildID);
-    if(!shop || shop.expiresAt <= now){
-        return null;
-    }
-
-    if(shop.refreshAt <= now){
-        shop = await database.saveBossShopState({
-            guildID,
-            openedAt: shop.openedAt,
-            expiresAt: shop.expiresAt,
-            refreshAt: Math.min(
-                shop.expiresAt,
-                now + BOSS_SHOP_REFRESH_MS
-            ),
-            stock: generateBossShopStock(random)
-        });
-    }
-
-    return shop;
-}
+async function getActiveBossShop(guildID,now=Date.now()){ const shop=await database.getBossShopState(guildID);return shop && shop.expiresAt>now ? shop : null; }
 
 
 async function purchaseBossShopItem(
