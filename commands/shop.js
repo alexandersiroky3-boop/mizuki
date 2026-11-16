@@ -1243,6 +1243,7 @@ async function execute(message){
     collector.on(
         "collect",
         async interaction => {
+            if(await require('../systems/bosses').blockManipulatedInteraction(interaction))return;
 
             const [
                 action,
