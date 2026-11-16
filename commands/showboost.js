@@ -500,7 +500,10 @@ async function buildBoostPanel(
         inventoryMap(rows);
 
 
+    const extras = await require('../systems/playerFeatures').get(member.guild.id,member.id);
     const description =
+        (extras.counterattack ? '**⚔️ Counterattack:** 1 use — `!counterattack`\n' : '') +
+        (Number(extras.luckPenaltyUntil)>Date.now() ? `**Tutorial penalty:** ½ command luck until <t:${Math.floor(extras.luckPenaltyUntil/1000)}:R>\n` : '') +
         `**Hourly chat XP:** ${Number(hourlyXP).toLocaleString()} *(tracking only)*\n` +
         `**Active XP Boost:** ${formatActiveBoost(activeXP)}\n` +
         `**Active Luck Boost:** ${formatActiveBoost(activeLuck)}\n` +
@@ -692,6 +695,7 @@ async function execute(message){
     collector.on("collect", async interaction => {
 
         try{
+        if(await require('../systems/bosses').blockManipulatedInteraction(interaction))return;
 
         if(interaction.user.id !== message.author.id){
 
