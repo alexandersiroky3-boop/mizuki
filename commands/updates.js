@@ -21,6 +21,8 @@ const UPDATE_PAGES = Object.freeze([
 
 *(why do you ask? cuz arcane bot sucks and i decided to make my own yipeee)*
 
+||@everyone||
+
 ━━━━━━━━━━━━━━━━━━━━━━
 
 # :robot::girl: Goth Mommy Bot :girl::robot:
@@ -73,7 +75,7 @@ Every 20 seconds you can earn XP by chatting. Gain specific amount of XP to leve
     },
     {
         version: "1.2",
-        description: `# Luck Boosts:
+        description: `So i did some changes to the bot. This may be the last changes for the bot because i dont want it to have more than 50k lines of code which is already very close to that.
 
 # • Luck System
 
@@ -202,7 +204,7 @@ Buffed ezwin's cooldown up to 24 hours.`
 ## [Big Update]
 
 ### • Enhanced Critical System
-Reaching 20+ consecutive criticals gives 5x more xp & +3 percentage chance on getting a critical.
+The old milestone-based critical rewards have been retired. Each consecutive critical now grows its underlying XP by 15–30%, up to the user's cap.
 
 Rewrited the entire critical system, making it more compatible with quests.
 
@@ -307,7 +309,7 @@ Buffed @👁️‍🗨️ Luck Boost Ω timer to 5 minutes instead of 3 minutes.
 
 *Buffed the prices in !shop for all xp boosts.*
 
-*After reaching 50 or more consecutive criticals, it will multiply your 49 consecutive criticals by 20x*
+*Critical XP no longer receives milestone multipliers at 20, 50, or 100 consecutive hits.*
 
 *@👁️‍🗨️ Luck Boost Ω with @XP Boost MAX have a higher capped critical chance at \`98%\`, @👁️‍🗨️ Luck Boost Ω with @🧿 XP Boost ထ have a even higher capped critical chance at \`99%\`*
 
@@ -360,62 +362,9 @@ Added another new command "!sell" where you can sell boosts for 50% of the boost
     },
     {
         version: "2.0.0",
-        description: `## Update 2.0.0
+        description: `# Update 2.0.0
 
-### • [Power Runes]
-
-There are 3 types of Power Runes: @🔹Power Rune I , @💠Power Rune II , @🔷Power Rune III .
-
-These Power Runes basically contains specific amount of XP:
-
-@🔹Power Rune I == 100,000 XP
-@💠Power Rune II == 1,000,000 XP
-@🔷Power Rune III == 10,000,000 XP
-
-You obtain these by chatting, through trading and activate them in !boost.
-
-
-### • [!troll]
-
-Added a new fun command where you can troll users by giving them a bad effect for a short amount of time...
-
-This makes you slightly slow down the user and you could perhaps surpass him faster..
-
-### • [!afk]
-
-Added a new command where by typing !afk, it'll add to your username the state [afk]..
-
-After sending a message or typing !afk again will remove that [afk] state...
-
-
-### • [!updates]
-
-Contains a list of updates of the bot.
-
-*From now on i'll only send vague short updates & mainly patches in this channel, I don't want to flood this channel with constant new updates, every detailed update belongs there...*
-
-
-### • [Lore]
-
-There's now lore in the new command's dialogues.
-
-Each rarity on the commands has its own "dialogues", they are in a random sequence, better the rarity, the better da dialogue will be...
-
-*If you perhaps want to be in some of the future lore/dialogues then dm me. (I only take people that are ACTIVE in the events/leaderboards/chatting ect..*
-
-
-### • [QOL / Patches]
-*Completely reworked !roll, !hug, !kiss, !steal, !ezwin.*
-*Made selling less OP.*
-*On rolling I added that when you rolled a big prize you'll know it by it saying "Rolling..." like if its loading.*
-*Fixed a bug where now Power Runes stay in inventory when found.*
-*Added that you can mute in !mute the Power Rune replies*
-*Fixed some upgrades in !upgrades*
-*Added some more features to the existing upgrades in !upgrades*
-*Added more upgrades in !upgrades...*
-*Made esthetically criticals look better.*
-*Removed the permanent buffs from the merchant (like permanent 2x chat xp or permanent 3 rolls per 1 roll).*
-*You now can obtain permanent 2x chat XP and permanent 3 rolls in the !upgrades*`
+*Update logs coming soon...*`
     },
     {
         version: "2.1",
@@ -442,6 +391,36 @@ Every prize is described in detail in <#1324937238190227592>.
 *Reworked \`!troll\`.*
 
 *Luck Boosts now affect \`!troll\`.*`
+    },
+    {
+        version: "2.2.1.0 (Part 1)",
+        description: `## [──Update 2.2.1.0 (Part 1)──]
+
+### • [!boss]
+
+Added the new **raid-boss system**. Raid bosses can appear from active server chat, and everyone can work together to damage them before their one-hour timer ends.
+
+Added **17+ canon boss versions** across global raids and personal challenges, each with its own OVERALL, HP, advantages, mastered abilities, and combat behavior.
+
+The server's top three damage dealers receive the strongest raid rewards, while every other contributor still earns a reward.
+
+Added three solo **Challenges** with private five-minute battles, ordered enemies, first-clear rewards, and smaller replay rewards.
+
+*Command: \`!boss\`*
+
+### • [!fight]
+
+Added the new **!fight** command. It is permanently unlocked by completing **Boss Challenge #3: Mrhacker's Conclusion**.
+
+### • [QOL / Balance]
+
+*Slightly buffed every Rolling upgrade.*
+
+*Nerfed chatting upgrades.*
+
+*Expanded the shop price ranges for Luck and XP Boosts.*
+
+*The direct XP-for-Luck Ω and XP-for-XP Infinity Traveling Merchant deals now each have only a 5% chance to appear.*`
     }
 ]);
 
