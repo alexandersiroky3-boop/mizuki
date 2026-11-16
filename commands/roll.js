@@ -1,3 +1,4 @@
+const rarityEngine = require("../utils/rarity");
 const database = require("../database");
 const boosts = require("../systems/boosts");
 const xp = require("../utils/xp");
@@ -63,19 +64,8 @@ const PERMANENT_ROLL_EDIT_ERROR_CODES =
 // EASY ROLL CUSTOMIZATION
 // =====================================================
 //
-// All chancePercent values are REAL percentages:
-//
-// 72    = 72%
-// 0.5   = 0.5%
-// 0.05  = 0.05%
-// 0.001 = 0.001%
-//
-// IMPORTANT:
-// These are the BASE chances before an active
-// Luck Boost changes the outcome weights.
-//
-// The universal base table must add up to exactly 100%.
-// The bot checks this automatically when it starts.
+// Edit decimal weights and XP ranges in utils/rarityConfig.js.
+// chancePercent is a derived compatibility field, never a second odds table.
 
 const ROLL_SETTINGS = {
 
@@ -87,160 +77,14 @@ const ROLL_SETTINGS = {
         // Every user begins with this same table. Rolling upgrades create a
         // personal normalized copy without mutating these base chances.
 
-        base: [
-
-            {
-                chancePercent: 60.089824,
-                type: "neutral",
-                min: -100,
-                max: 100
-            },
-
-            {
-                chancePercent: 7,
-                type: "negative",
-                min: -5000,
-                max: -101
-            },
-
-            {
-                chancePercent: 25,
-                type: "positive",
-                min: 100,
-                max: 5000
-            },
-
-            {
-                chancePercent: 2,
-                type: "negative",
-                min: -10000,
-                max: -5000
-            },
-
-            {
-                chancePercent: 5,
-                type: "positive",
-                min: 5000,
-                max: 25000
-            },
-
-            {
-                chancePercent: 0.5,
-                type: "positive",
-                min: 25000,
-                max: 75000
-            },
-
-            {
-                chancePercent: 0.1,
-                type: "positive",
-                min: 75000,
-                max: 200000
-            },
-
-            {
-                chancePercent: 0.05,
-                type: "positive",
-                min: 200000,
-                max: 500000
-            },
-
-            {
-                chancePercent: 0.009,
-                type: "positive",
-                min: 500000,
-                max: 2000000
-            },
-
-            {
-                chancePercent: 0.250,
-                type: "negative",
-                min: -100000,
-                max: -10000
-            },
-
-            {
-                chancePercent: 0.001,
-                type: "positive",
-                min: 2000000,
-                max: 10000000
-            },
-
-            {
-                chancePercent: 0.0001,
-                type: "positive",
-                min: 10000001,
-                max: 30000000
-            },
-
-            {
-                chancePercent: 0.00005,
-                type: "positive",
-                min: 30000001,
-                max: 50000000
-            },
-
-            {
-                chancePercent: 0.00002,
-                type: "positive",
-                min: 50000001,
-                max: 100000000
-            },
-
-            {
-                chancePercent: 0.000005,
-                type: "positive",
-                min: 100000001,
-                max: 250000000
-            },
-
-            {
-                chancePercent: 0.000001,
-                type: "positive",
-                min: 250000001,
-                max: 500000000
-            }
-
-        ]
+        base: rarityEngine.base("roll")
 
     }
 
 };
 
 
-function rollGuaranteedNegative(
-    chanceTable = ROLL_SETTINGS.chanceTables.base,
-    random = Math.random
-){
-
-    const negativeOutcomes = chanceTable.filter(outcome =>
-        outcome.type === "negative"
-        && Number(outcome.max) < 0
-    );
-
-    const totalWeight = negativeOutcomes.reduce(
-        (sum, outcome) =>
-            sum + Math.max(0, Number(outcome.chancePercent) || 0),
-        0
-    );
-
-    let cursor = random() * totalWeight;
-    let selected = negativeOutcomes[negativeOutcomes.length - 1];
-
-    for(const outcome of negativeOutcomes){
-        cursor -= Math.max(0, Number(outcome.chancePercent) || 0);
-        if(cursor < 0){
-            selected = outcome;
-            break;
-        }
-    }
-
-    const min = Math.ceil(Math.min(selected.min, selected.max));
-    const max = Math.floor(Math.max(selected.min, selected.max));
-
-    return Math.floor(random() * (max - min + 1)) + min;
-
-}
+function rollGuaranteedNegative(_table,random=Math.random){ return rarityEngine.sampleXP(rarityEngine.pick(rarityEngine.base('rollNegative'),random),random); }
 
 
 function validateRollChanceTable(
@@ -318,33 +162,15 @@ const ROLL_GUARANTEE_MIN_XP =
     500000;
 
 
-// The 100-roll milestone has its own capped Luck tables. This prevents
-// permanent Boost and Rolling upgrades from multiplying an already-guaranteed
-// result into an uncontrolled high-range chance. No Luck through MAX still
-// favor 500,000–10,000,000 XP, while the rare three-minute Ω boost is
-// intentionally allowed to be extremely powerful.
-const ROLL_GUARANTEE_XP_RANGES = [
-    { type: "positive", min: 500000, max: 2000000 },
-    { type: "positive", min: 2000001, max: 10000000 },
-    { type: "positive", min: 10000001, max: 30000000 },
-    { type: "positive", min: 30000001, max: 50000000 },
-    { type: "positive", min: 50000001, max: 100000000 },
-    { type: "positive", min: 100000001, max: 250000000 },
-    { type: "positive", min: 250000001, max: 1500000000 }
-];
+// Milestone guarantees use their own editable distribution. Normal Luck and
+// upgrade rarity adjustments do not reweight this distribution.
+const ROLL_GUARANTEE_XP_RANGES = require("../utils/rarityConfig").guarantee.map(({weight,...range})=>range);
 
 
 // Array positions match ROLL_GUARANTEE_XP_RANGES above.
 // 0 = no boost, 1 = Luck I, 2 = Luck II, 3 = Luck III,
 // 4 = Luck MAX, 5 = Luck Ω.
-const ROLL_GUARANTEE_CHANCES_BY_LUCK_ORDER = {
-    0: [75, 23, 1.4, 0.3, 0.15, 0.1, 0.05],
-    1: [70, 26.5, 2.4, 0.5, 0.25, 0.25, 0.1],
-    2: [65, 30, 3.4, 0.8, 0.4, 0.3, 0.1],
-    3: [58, 34.5, 5, 1.2, 0.6, 0.5, 0.2],
-    4: [50, 40, 6, 1.5, 0.8, 1.2, 0.5],
-    5: [10, 20, 25, 18, 12, 10, 5]
-};
+const ROLL_GUARANTEE_CHANCES_BY_LUCK_ORDER = Object.fromEntries([0,1,2,3,4,5].map(order=>[order,rarityEngine.guarantee().map(r=>r.chancePercent)]));
 
 
 const ROLL_GUARANTEE_CHANCE_TABLES =
@@ -400,18 +226,7 @@ function getRollGuaranteeLuckOrder(
 }
 
 
-function getRollGuaranteeChanceTable(
-    rollLuckProfile
-){
-    return (
-        ROLL_GUARANTEE_CHANCE_TABLES[
-            getRollGuaranteeLuckOrder(
-                rollLuckProfile
-            )
-        ]
-        || ROLL_GUARANTEE_CHANCE_TABLE
-    );
-}
+function getRollGuaranteeChanceTable(_profile){ return rarityEngine.guarantee(); }
 
 
 function buildRollGuaranteeFooter(
@@ -590,6 +405,15 @@ function buildRollCountdownLine(
 
 }
 
+
+function moveRollTimerToFooter(content){
+ const text=String(content), match=text.match(ROLL_COUNTDOWN_PATTERN)||text.match(/⏱️ (?:\*\*)?You can Roll now\.(?:\*\*)?/);
+ if(!match)return text;
+ const clean=text.replace(' • '+match[0],'').replace(match[0],'').trimEnd();
+ const footer=/🎯 [^\n]+/;
+ const guarantee=clean.match(footer)?.[0];
+ return guarantee?clean.replace(guarantee,'').trimEnd()+'\n\n'+guarantee+' • '+match[0]:clean+'\n'+match[0];
+}
 
 function replaceRollCountdown(
     content,
@@ -1154,7 +978,7 @@ function getRollRevealEmojiSequence(
 
 
     // The loading animation begins at exactly 25,000 XP.
-    if(Number(revealXP) < 25000){
+    if(Math.abs(Number(revealXP)) < 25000){
         return [];
     }
 
@@ -1539,6 +1363,7 @@ async function sendRollResultMessage(
     rollAccess,
     content
 ){
+    content = moveRollTimerToFooter(content);
 
     const cooldownEndsAt =
         getRollCountdownEndsAt(
@@ -1849,7 +1674,7 @@ gorjezz then decides to ask:*
 
 *Kape says as beyondborder_08386, ${author} & gorjezz watch in pure shock.*
 
-**${emojis.rainbowRoll} The shocked future made ${author} gain some bonus power by ${formattedBonusXP} XP!**${rollGuaranteeFooter}`;
+**${emojis.rainbowRoll} Jackpot reward: exactly 200,000,000 XP — no additional XP bonuses.**${rollGuaranteeFooter}`;
 
     }
 
@@ -2690,7 +2515,7 @@ if(rollGuarantee.guaranteed){
         milestoneRolledXP =
             luck.rollGuaranteedMinimumWithLuck(
                 milestoneRolledXP,
-                5000001,
+                rarityEngine.base('roll').find(row=>row.key==='mythic').min,
                 rollChanceTable,
                 levelTableName,
                 rollLuckProfile,
@@ -2712,6 +2537,8 @@ if(rollGuarantee.guaranteed){
 
 }
 
+
+const selectedRarityKey = (guaranteedRoll?.type === "minimum" && guaranteedRoll.minXP >= 100000000 ? "jackpot" : null) || adminGuaranteedRarity || ((guaranteedRoll || rollGuarantee.guaranteed) ? rarityEngine.keyForXP(rolledXP) : luckResult.rarityKey);
 
 let rollingUpgradeDoubled =
     false;
@@ -2756,12 +2583,12 @@ if(adminGuaranteedRarity){
 // The normal result—including guarantees and the Rolling upgrade—is final
 // before this independent Evolved check. Negative/troll-loss results never
 // evolve, while every result inside Multi Roll gets its own second roll.
-const rarityRolledXP =
-    rolledXP;
+const finalRarityKey = forcedNegativeByTroll && !adminGuaranteedRarity ? rarityEngine.keyForXP(Math.abs(rolledXP)) : selectedRarityKey;
+const rarityRolledXP = rarityEngine.presentationXP(finalRarityKey);
 
 
 const evolved =
-    rolledXP > 0
+    rolledXP !== 0
     && luck.rollEvolvedCommandRarity(
         luckResult.profile,
         Math.random,
@@ -2775,6 +2602,12 @@ rolledXP =
         evolved
     );
 
+
+// Jackpot is a fixed final payout, including Evolved and other roll multipliers.
+if(finalRarityKey === "jackpot"){
+    rolledXP = rolledXP < 0 ? -200000000 : 200000000;
+    rollingUpgradeDoubled = false;
+}
 
 // This is the Luck Boost used
 // during the current roll.
@@ -2806,7 +2639,7 @@ let bonusXP =
     0;
 
 
-if(bonusPercentRange){
+if(finalRarityKey !== "jackpot" && bonusPercentRange && rolledXP > 0){
 
     bonusXP =
         rollPercentageLessBonus(
@@ -2823,7 +2656,7 @@ if(bonusPercentRange){
 // Loading begins only for a real 25,000+ XP result. Multi Roll calculations
 // remain concurrent, while loader creation is coordinated by roll number.
 const shouldPlayRollReveal =
-    rolledXP >= 25000;
+    Math.abs(rolledXP) >= 25000;
 
 
 if(shouldPlayRollReveal){
@@ -2928,7 +2761,7 @@ if(rollGuarantee.guaranteed){
 
 
 const questRarityXP =
-    redirectedByTroll
+    redirectedByTroll || rolledXP <= 0
         ? 0
         : rarityRolledXP;
 
@@ -3044,6 +2877,14 @@ if(bonusXP > 0){
 }
 
 
+// Signed per-result accounting prevents mixed multi-rolls cancelling boss
+// damage/healing. The prefix router must not also process !roll's net balance.
+try{
+    const combat=await require('../systems/bosses').handleCommandXP(message,'!roll',targetRollXP+(redirectedByTroll?0:bonusXP));
+    await require('./boss').handleCombatResult(message,combat);
+}catch(error){console.error('Roll boss combat hook failed:',error);}
+await require('../systems/tutorial').onXP(message,Math.max(0,targetRollXP)+(redirectedByTroll?0:bonusXP),'command').catch(e=>console.error('Tutorial roll hook:',e));
+
 // Each real roll—including every result inside Multi Roll—keeps its own
 // independent XP Boost and Luck Boost drop checks after its reveal.
 const xpBoostDropMessage =
@@ -3088,7 +2929,7 @@ const guaranteedRollExtra = adminGuaranteedRarity
         : guaranteedRoll === "impossible"
             ? "\nQuest reward used: guaranteed Impossible Roll."
             : guaranteedRoll?.type === "minimum"
-                ? `\nQuest reward used: guaranteed ${Number(guaranteedRoll.minXP).toLocaleString()}+ XP roll.`
+                ? (finalRarityKey === 'jackpot' ? '\nQuest reward used: guaranteed 200,000,000 XP Jackpot.' : `\nQuest reward used: guaranteed ${Number(guaranteedRoll.minXP).toLocaleString()}+ XP roll.`)
                 : "";
 
 
@@ -3106,7 +2947,7 @@ const rollingUpgradeExtra =
 
 
 const evolvedExtra =
-    luck.buildEvolvedCommandExtra(
+    finalRarityKey === 'jackpot' ? (evolved ? '\n✨ Evolved Jackpot — the fixed 200,000,000 XP payout is unchanged.' : '') : luck.buildEvolvedCommandExtra(
         evolved,
         "ROLL"
     );
@@ -3185,7 +3026,7 @@ if(!options.skipLevelSync){
 
 if(rolledXP > 0){
 
-    const positiveDialogue =
+    const positiveDialogue = moveRollTimerToFooter(
         buildPositiveRollDialogue({
             message,
             rolledXP,
@@ -3196,7 +3037,7 @@ if(rolledXP > 0){
             rollCooldownExtra,
             rollContextExtras,
             rollGuaranteeFooter
-        });
+        }));
 
 
     if(options.deferRollResult){
@@ -3231,8 +3072,9 @@ const rollEmojis =
     );
 
 
-const negativeDialogue =
-    `${rollEmojis.roll} ${message.author} rolled **${rolledXP.toLocaleString()} XP!** Better luck next time... 💀${rollCooldownExtra}${rollContextExtras}${rollGuaranteeFooter}`;
+const negativeDialogue = moveRollTimerToFooter(
+    `**NEGATIVE ${String(finalRarityKey).toUpperCase()}** ${evolved ? luck.buildEvolvedRarityMarker(message.guild,true) : ''} ${message.author} rolled **${rolledXP.toLocaleString()} XP!** Better luck next time... 💀${rollCooldownExtra}${rollContextExtras}${rollGuaranteeFooter}`
+);
 
 
 if(options.deferRollResult){
@@ -3264,6 +3106,7 @@ return sendRollResultMessage(
 
 
 module.exports = {
+    moveRollTimerToFooter,
 
     execute,
 
