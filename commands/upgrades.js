@@ -191,6 +191,7 @@ async function execute(message){
     });
 
     collector.on("collect", async interaction => {
+        if(await require('../systems/bosses').blockManipulatedInteraction(interaction))return;
         if(interaction.user.id !== message.author.id){
             return interaction.reply({
                 content: "❌ This upgrade panel belongs to someone else. Run `!upgrades` to open your own.",
