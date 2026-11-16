@@ -1,3 +1,4 @@
+const rarityEngine = require("../utils/rarity");
 const database = require("../database");
 const leveling = require("../systems/leveling");
 const luck = require("../utils/luck");
@@ -28,58 +29,7 @@ const FIGHT_RESULT_CHANCES =
     });
 
 
-const FIGHT_RARITIES =
-    Object.freeze([
-        Object.freeze({
-            key: "common",
-            label: "COMMON",
-            minXP: 250000,
-            maxXP: 1500000,
-            lossMultiplier: 0.90
-        }),
-        Object.freeze({
-            key: "uncommon",
-            label: "UNCOMMON",
-            minXP: 1500000,
-            maxXP: 3000000,
-            lossMultiplier: 0.90
-        }),
-        Object.freeze({
-            key: "rare",
-            label: "RARE",
-            minXP: 3000000,
-            maxXP: 12000000,
-            lossMultiplier: 0.90
-        }),
-        Object.freeze({
-            key: "epic",
-            label: "EPIC",
-            minXP: 12000000,
-            maxXP: 25000000,
-            lossMultiplier: 0.95
-        }),
-        Object.freeze({
-            key: "legendary",
-            label: "LEGENDARY",
-            minXP: 25000000,
-            maxXP: 75000000,
-            lossMultiplier: 1.05
-        }),
-        Object.freeze({
-            key: "mythic",
-            label: "MYTHIC",
-            minXP: 75000000,
-            maxXP: 200000000,
-            lossMultiplier: 1.20
-        }),
-        Object.freeze({
-            key: "cosmic",
-            label: "COSMIC",
-            minXP: 200000000,
-            maxXP: 1000000000,
-            lossMultiplier: 1.20
-        })
-    ]);
+const FIGHT_RARITIES = rarityEngine.base("fight");
 
 
 const RARITY_BY_KEY =
@@ -93,63 +43,7 @@ const RARITY_BY_KEY =
 
 // The user's base values total 99.99%. The unassigned 0.01% is added to
 // Common so none of the rare chances need to be changed.
-const FIGHT_RARITY_CHANCES =
-    Object.freeze({
-        none: Object.freeze({
-            common: 75.01,
-            uncommon: 20,
-            rare: 3.889,
-            epic: 0.9,
-            legendary: 0.15,
-            mythic: 0.05,
-            cosmic: 0.001
-        }),
-        tier1: Object.freeze({
-            common: 70,
-            uncommon: 23,
-            rare: 5.5,
-            epic: 1.173,
-            legendary: 0.25,
-            mythic: 0.075,
-            cosmic: 0.002
-        }),
-        tier2: Object.freeze({
-            common: 62,
-            uncommon: 28,
-            rare: 8,
-            epic: 1.345,
-            legendary: 0.5,
-            mythic: 0.15,
-            cosmic: 0.005
-        }),
-        tier3: Object.freeze({
-            common: 50,
-            uncommon: 32,
-            rare: 14,
-            epic: 2.64,
-            legendary: 1,
-            mythic: 0.35,
-            cosmic: 0.01
-        }),
-        max: Object.freeze({
-            common: 35,
-            uncommon: 33,
-            rare: 23,
-            epic: 5.225,
-            legendary: 3,
-            mythic: 0.75,
-            cosmic: 0.025
-        }),
-        omega: Object.freeze({
-            common: 10,
-            uncommon: 20,
-            rare: 32,
-            epic: 20.564285714285713,
-            legendary: 14.285714285714286,
-            mythic: 3,
-            cosmic: 0.15
-        })
-    });
+const FIGHT_RARITY_CHANCES = Object.fromEntries(["none","tier1","tier2","tier3","max","omega"].map(tier => [tier,Object.fromEntries(rarityEngine.resolve("fight",{tier}).map(r=>[r.key,r.chancePercent]))]));
 
 
 for(const [tier, chances] of Object.entries(FIGHT_RARITY_CHANCES)){
@@ -204,49 +98,10 @@ function getLuckTier(profile){
 }
 
 
-function getFightRarityTable(profile = null){
-
-    const chances =
-        FIGHT_RARITY_CHANCES[
-            getLuckTier(profile)
-        ];
+function getFightRarityTable(profile = null){ return rarityEngine.resolve("fight", profile); }
 
 
-    return FIGHT_RARITIES.map(rarity => ({
-        ...rarity,
-        chancePercent:
-            chances[rarity.key]
-    }));
-
-}
-
-
-function rollFightRarity(
-    profile = null,
-    random = Math.random
-){
-
-    let position =
-        clampRandom(random()) * 100;
-
-
-    for(const rarity of getFightRarityTable(profile)){
-
-        position -= rarity.chancePercent;
-
-
-        if(position < 0){
-            return rarity;
-        }
-
-    }
-
-
-    return FIGHT_RARITIES[
-        FIGHT_RARITIES.length - 1
-    ];
-
-}
+function rollFightRarity(profile = null, random = Math.random){ return rarityEngine.pick(getFightRarityTable(profile),random); }
 
 
 function rollFightResult(random = Math.random){
@@ -1697,6 +1552,7 @@ async function execute(
     }
 
 
+    if(!botTarget) await require("../systems/counterattacks").record(guildID,fighterUserID,target.id,"fight",payout.fighterDelta,payout.targetDelta);
     await Promise.all([
         syncFightParticipant(
             message,
