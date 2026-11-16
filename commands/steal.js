@@ -1,3 +1,4 @@
+const rarityEngine = require("../utils/rarity");
 const database = require("../database");
 const xp = require("../utils/xp");
 const leveling =
@@ -29,104 +30,10 @@ const BOT_NAMES = [
 
 
 
-const LEVEL100_PLUS_STEAL_OUTCOMES = [
-    {
-        key: "failure",
-        chancePercent: 23.2
-    },
-    {
-        key: "common",
-        chancePercent: 65,
-        min: 50000,
-        max: 125000,
-        rarity: "COMMON"
-    },
-    {
-        key: "uncommon",
-        chancePercent: 10,
-        min: 125000,
-        max: 250000,
-        rarity: "UNCOMMON"
-    },
-    {
-        key: "rare",
-        chancePercent: 1,
-        min: 250000,
-        max: 500000,
-        rarity: "RARE"
-    },
-    {
-        key: "epic",
-        chancePercent: 0.5,
-        min: 500000,
-        max: 2500000,
-        rarity: "EPIC"
-    },
-    {
-        key: "legendary",
-        chancePercent: 0.25,
-        min: 2500000,
-        max: 5000000,
-        rarity: "LEGENDARY"
-    },
-    {
-        key: "mythic",
-        chancePercent: 0.05,
-        min: 5000000,
-        max: 25000000,
-        rarity: "MYTHIC"
-    }
-];
+const LEVEL100_PLUS_STEAL_OUTCOMES = rarityEngine.base("steal.level100Plus");
 
 
-const LEVEL1_TO99_STEAL_OUTCOMES = [
-    {
-        key: "failure",
-        chancePercent: 19.34
-    },
-    {
-        key: "common",
-        chancePercent: 75,
-        min: 5000,
-        max: 15000,
-        rarity: "COMMON"
-    },
-    {
-        key: "uncommon",
-        chancePercent: 5,
-        min: 15000,
-        max: 30000,
-        rarity: "UNCOMMON"
-    },
-    {
-        key: "rare",
-        chancePercent: 0.5,
-        min: 30000,
-        max: 50000,
-        rarity: "RARE"
-    },
-    {
-        key: "epic",
-        chancePercent: 0.1,
-        min: 50000,
-        max: 100000,
-        rarity: "EPIC"
-    },
-    {
-        key: "legendary",
-        chancePercent: 0.05,
-        min: 100000,
-        max: 250000,
-        rarity: "LEGENDARY"
-    },
-    {
-        key: "mythic",
-        chancePercent: 0.01,
-        min: 250000,
-        max: 500000,
-        rarity: "MYTHIC"
-    }
-];
+const LEVEL1_TO99_STEAL_OUTCOMES = rarityEngine.base("steal.level1To99");
 
 
 function getStealOutcomesForLevel(level){
@@ -1400,6 +1307,7 @@ const luckExtra =
         );
 
 
+        if(target?.id) await require("../systems/counterattacks").record(guildID,userID,target.id,"steal",attemptedAmount,-attemptedAmount);
         await quests.recordEvent(
             message,
             "mythic_steal",
@@ -1536,6 +1444,7 @@ const luckExtra =
     );
 
 
+    await require("../systems/counterattacks").record(guildID,userID,target.id,"steal",stolenXP,-stolenXP);
     await trolls.applyStealBackfire(
         guildID,
         userID,
