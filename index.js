@@ -13,6 +13,7 @@ const powerRunes = require("./systems/powerRunes");
 const trolls = require("./systems/trolls");
 const bosses = require("./systems/bosses");
 const database = require("./database");
+const tutorial = require('./systems/tutorial');
 const adminTools = require("./commands/adminTools");
 const {setNonOverlappingInterval} = require("./utils/asyncWork");
 const luck =
@@ -127,7 +128,6 @@ const missingMessageHookWarnings =
 
 const BOSS_DAMAGE_COMMANDS =
     new Set([
-        "!roll",
         "!kiss",
         "!steal",
         "!ezwin",
@@ -478,6 +478,9 @@ async function executePrefixCommandSafely(
     const commandStartedAt =
         Date.now();
 
+    const tutorialTracks=tutorial.inRoom(message)&&tutorial.XP_COMMANDS.has(normalizedLabel)&&normalizedLabel!=='!roll';
+    const tutorialBefore=tutorialTracks?await captureCommandXPBalance(message).catch(()=>null):null;
+
     let xpBefore =
         null;
 
@@ -512,6 +515,11 @@ async function executePrefixCommandSafely(
             commandModule,
             message
         );
+
+        if(tutorialTracks && tutorialBefore!==null){
+            const after=await captureCommandXPBalance(message);
+            await tutorial.onXP(message,Number(after-tutorialBefore),'command').catch(e=>console.error('Tutorial command hook:',e));
+        }
 
 
         if(tracksBossDamage){
@@ -572,6 +580,8 @@ async function dispatchPrefixCommand(
 
     const exactRoutes =
         new Map([
+            ['!tutorial',['!tutorial',tutorial]],
+            ['!counterattack',['!counterattack',require('./systems/counterattacks')]],
             ["!level", ["!level", levelCommand]],
             ["!rank", ["!rank", rankCommand]],
             ["!leaderboard", ["!leaderboard", rankCommand]],
@@ -879,6 +889,7 @@ partials:[
 
 
 client.once("clientReady", async () => {
+    await tutorial.start(client).catch(error=>console.error('Tutorial startup failed:',error));
 
 
     // Discord is connected. Render may now mark the service healthy once
@@ -1347,6 +1358,7 @@ client.on(
 
 client.on("interactionCreate", async interaction => {
     if(!interaction.isChatInputCommand() || !adminTools.slashCommands.some(c=>c.name===interaction.commandName)) return;
+    if(await bosses.blockManipulatedInteraction(interaction))return;
     if(!interaction.guildId || !isMainGuild(interaction.guildId)){
         await interaction.reply({content:"This command is only available in the main server.",flags:64}).catch(()=>{});
         return;
@@ -1364,6 +1376,7 @@ client.on("interactionCreate", async interaction => {
     if(!interaction.isChatInputCommand() || interaction.commandName !== "troll"){
         return;
     }
+    if(await bosses.blockManipulatedInteraction(interaction))return;
     if(!interaction.guild || !isMainGuild(interaction.guild.id)){
         return interaction.reply({
             content: "This command is only available in the main server.",
@@ -1520,6 +1533,16 @@ client.on(
         }
 
 
+        try{if(await levelCommand.handleInteraction(interaction))return;}
+        catch(error){console.error('Level customization failed:',error);const payload={content:'Could not save your level panel. Please try again.',flags:64};if(interaction.deferred||interaction.replied)await interaction.editReply(payload).catch(()=>{});else await interaction.reply(payload).catch(()=>{});return;}
+        try{if(await tutorial.handleInteraction(interaction))return;}
+        catch(error){
+            console.error('Tutorial interaction failed:',error);
+            if(interaction.deferred||interaction.replied)await interaction.editReply({content:'The tutorial could not continue. Please try !tutorial again.'}).catch(()=>{});
+            else await interaction.reply({content:'The tutorial could not continue. Please try !tutorial again.',flags:64}).catch(()=>{});
+            return;
+        }
+        if(await bosses.blockManipulatedInteraction(interaction))return;
         let bossHandled = false;
 
 
@@ -1747,6 +1770,10 @@ async message => {
             message.content
                 .trim()
                 .toLowerCase();
+
+        if(message.author.bot)return;
+        if(await bosses.blockManipulatedMessage(message))return;
+        await tutorial.onMessage(message).catch(error=>console.error('Tutorial message hook failed:',error));
 
 
         // These optional systems are isolated so an outdated AFK/troll file
@@ -2173,6 +2200,8 @@ if(
 
         if(!result)
             return;
+
+        await tutorial.onXP(message,result.earnedXP,'chat').catch(e=>console.error('Tutorial chat hook:',e));
 
 
 const bossCombatResult =
