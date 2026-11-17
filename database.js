@@ -5596,83 +5596,55 @@ async function addXP(
     amount
 ){
 
+    // Keep user creation, XP mutation, message counting, and leaderboard
+    // activity in one database round-trip. The previous implementation used
+    // two awaited queries for every roll payout, adding avoidable latency.
     await db.query(`
-
-    INSERT INTO users
-    (
+        WITH updated_user AS (
+            INSERT INTO users (
+                guildID,
+                userID,
+                xp,
+                messages
+            )
+            VALUES (
+                $1,
+                $2,
+                GREATEST(0, $3),
+                1
+            )
+            ON CONFLICT (guildID, userID)
+            DO UPDATE SET
+                xp = CASE
+                    WHEN users.xp < 0 THEN users.xp + $3
+                    ELSE GREATEST(0, users.xp + $3)
+                END,
+                messages = users.messages + 1
+            RETURNING guildID, userID
+        )
+        INSERT INTO leaderboard_xp_activity (
+            guildID,
+            userID,
+            amount,
+            timestamp
+        )
+        SELECT
+            guildID,
+            userID,
+            $3,
+            $4
+        FROM updated_user
+        WHERE $3 > 0
+    `, [
         guildID,
-        userID
-    )
-
-    VALUES($1,$2)
-
-    ON CONFLICT DO NOTHING
-
-    `,
-    [
-        guildID,
-        userID
+        userID,
+        amount,
+        Date.now()
     ]);
 
-
-
-
-await db.query(`
-
-WITH updated_user AS (
-
-    UPDATE users
-
-    SET
-
-    xp = CASE WHEN xp < 0 THEN xp + $3 ELSE GREATEST(0, xp + $3) END,
-
-    messages = messages + 1
-
-
-    WHERE guildID=$1
-
-    AND userID=$2
-
-    RETURNING guildID, userID
-
-)
-
-INSERT INTO leaderboard_xp_activity
-(
-    guildID,
-    userID,
-    amount,
-    timestamp
-)
-
-SELECT
-    guildID,
-    userID,
-    $3,
-    $4
-
-FROM updated_user
-
-WHERE $3 > 0
-
-`,
-[
-    guildID,
-    userID,
-    amount,
-    Date.now()
-]);
-
-
-
-    userCache.delete(
-        `${guildID}:${userID}`
-    );
+    userCache.delete(`${guildID}:${userID}`);
 
 }
-
-
 
 
 
