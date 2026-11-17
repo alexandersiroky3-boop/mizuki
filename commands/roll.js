@@ -2609,6 +2609,7 @@ if(finalRarityKey === "jackpot"){
     rollingUpgradeDoubled = false;
 }
 
+
 // This is the Luck Boost used
 // during the current roll.
 //
