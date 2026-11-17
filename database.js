@@ -1098,7 +1098,7 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
 
     {
         id: "timed_nine_roll",
-        name: "Nine-Roll License",
+        name: "Temporary Triple Roll License (Ω)",
         stockOptions: [1],
         variants: [
             {
@@ -1110,7 +1110,7 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
                 reward: merchantSide({
                     perk: {
                         type: "multi_roll_timed",
-                        rollCount: 9,
+                        rollCount: 3,
                         durationMs:
                             48 * MERCHANT_HOUR
                     }
@@ -1125,7 +1125,7 @@ const TRAVELING_MERCHANT_DEAL_TEMPLATES = [
                 reward: merchantSide({
                     perk: {
                         type: "multi_roll_timed",
-                        rollCount: 9,
+                        rollCount: 3,
                         durationMs:
                             72 * MERCHANT_HOUR
                     }
