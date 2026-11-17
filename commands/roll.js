@@ -43,7 +43,7 @@ const ROLL_FINAL_EDIT_RETRY_WINDOW_MS =
 
 
 const ROLL_REVEAL_FRAME_DELAY_MS =
-    1000;
+    250;
 
 
 const ROLL_MESSAGE_MAX_LENGTH =
@@ -1093,191 +1093,107 @@ async function playRollReveal(
             rolledXP
         );
 
-
     if(emojiSequence.length === 0){
         return null;
     }
-
 
     const waitFunction =
         typeof wait === "function"
             ? wait
             : waitForRollReveal;
 
-
     const rollLabel =
-        String(options?.rollLabel || "")
-            .trim();
-
+        String(options?.rollLabel || "").trim();
 
     const onStarted =
         typeof options?.onStarted === "function"
             ? options.onStarted
             : null;
 
-    let startNotified =
-        false;
-
+    let startNotified = false;
 
     function notifyStarted(){
-
-        if(startNotified){
-            return;
-        }
-
-
+        if(startNotified) return;
         startNotified = true;
-
-
         if(onStarted){
             try{
                 onStarted();
             }
             catch(_error){
-                // Ordering coordination must never break the roll itself.
+                // Reveal coordination must never break the roll itself.
             }
         }
-
     }
 
     let revealMessage = null;
-    let elapsed = 0;
-
 
     try{
+        // Create the loader once. The first rarity frame is already visible,
+        // so there is no need to edit it repeatedly just to animate dots.
+        revealMessage = await message.reply({
+            content: buildRollRevealText(
+                emojiSequence[0],
+                3,
+                rollLabel,
+                options.evolved && emojiSequence.length === 1
+            ),
+            allowedMentions: {
+                repliedUser: false,
+                parse: []
+            }
+        });
 
-        revealMessage =
-            await message.reply({
-                content:
-                    buildRollRevealText(
-                        emojiSequence[0],
-                        3,
-                        rollLabel
-                    ),
+        // Multi-roll children only need to wait for the loader to exist,
+        // not for the entire animation to finish.
+        notifyStarted();
 
+        if(!revealMessage || typeof revealMessage.edit !== "function"){
+            return revealMessage;
+        }
+
+        // One edit per rarity transition. The old implementation made three
+        // dot edits plus several waits for every emoji, causing 4+ seconds per
+        // stage and up to ~20 seconds for a high-rarity roll.
+        for(let emojiIndex = 1; emojiIndex < emojiSequence.length; emojiIndex++){
+            await waitFunction(ROLL_REVEAL_FRAME_DELAY_MS);
+
+            await revealMessage.edit({
+                content: buildRollRevealText(
+                    emojiSequence[emojiIndex],
+                    3,
+                    rollLabel,
+                    Boolean(options.evolved && emojiIndex === emojiSequence.length - 1)
+                ),
                 allowedMentions: {
-                    repliedUser: false,
                     parse: []
                 }
             });
-
-
-        // The next numbered Multi Roll may create its loader now. We notify
-        // only after Discord has accepted this message, preserving 1, 2, 3...
-        // while every already-created animation continues concurrently.
-        notifyStarted();
-
-
-        if(
-            !revealMessage
-            ||
-            typeof revealMessage.edit !==
-                "function"
-        ){
-
-            return revealMessage;
-
         }
 
-
-        for(
-            let emojiIndex = 0;
-            emojiIndex < emojiSequence.length;
-            emojiIndex++
-        ){
-
-            const emoji =
-                emojiSequence[emojiIndex];
-
-
-            if(emojiIndex > 0){
-
-                await revealMessage.edit({
-                    content:
-                        buildRollRevealText(
-                            emoji,
-                            3,
-                            rollLabel,
-                            options.evolved && elapsed >= 2000
-                        ),
-                    allowedMentions: {
-                        parse: []
-                    }
-                });
-
-            }
-
-
-            await waitFunction(
-                ROLL_REVEAL_FRAME_DELAY_MS
-            );
-            elapsed += ROLL_REVEAL_FRAME_DELAY_MS;
-
-
-            for(
-                let dotCount = 1;
-                dotCount <= 3;
-                dotCount++
-            ){
-
-                await revealMessage.edit({
-                    content:
-                        buildRollRevealText(
-                            emoji,
-                            dotCount,
-                            rollLabel,
-                            options.evolved && elapsed >= 2000
-                        ),
-                    allowedMentions: {
-                        parse: []
-                    }
-                });
-
-
-                await waitFunction(
-                    ROLL_REVEAL_FRAME_DELAY_MS
-                );
-                elapsed += ROLL_REVEAL_FRAME_DELAY_MS;
-
-            }
-
-        }
-
+        // Let the final rarity frame be visible briefly before removing it.
+        await waitFunction(ROLL_REVEAL_FRAME_DELAY_MS);
     }
     catch(_error){
-
-        // A missing permission, a deleted loading message, or a temporary
-        // Discord edit failure must never prevent the real roll result.
-
+        // A missing permission, deleted loader, or temporary edit failure must
+        // never prevent the actual XP payout.
     }
     finally{
-
-        // Also release the next numbered roll if sending this loader failed.
+        // Release the next numbered multi-roll loader even if this one failed.
         notifyStarted();
 
-        if(
-            revealMessage
-            &&
-            typeof revealMessage.delete ===
-                "function"
-        ){
-
+        if(revealMessage && typeof revealMessage.delete === "function"){
             try{
                 await revealMessage.delete();
             }
             catch(_error){
                 // The final roll result still needs to be sent.
             }
-
         }
-
     }
-
 
     return revealMessage;
 
 }
-
 
 function splitLongMessage(
     content,
@@ -1630,7 +1546,7 @@ function buildPositiveRollDialogue({
 
     if(rarityRolledXP >= 100000000){
 
-        return `${emojis.rainbowRoll} **${qualityPrefix}JACKPOT** ${author} ROLLED A JACKPOT 🎰 **[${formattedRolledXP} XP]**${evolvedMarker}${resultExtras}
+        return `${emojis.rainbowRoll} **JACKPOT** ${author} ROLLED A JACKPOT 🎰 **[${formattedRolledXP} XP]**${evolvedMarker}${resultExtras}
 
 ### The future?
 
@@ -1680,7 +1596,7 @@ gorjezz then decides to ask:*
 
 *Kape says as beyondborder_08386, ${author} & gorjezz watch in pure shock.*
 
-**${emojis.rainbowRoll} Jackpot reward: 200,000,000–2,000,000,000 XP, based on its quality tier.**${rollGuaranteeFooter}`;
+**${emojis.rainbowRoll} Jackpot reward: exactly 200,000,000 XP — no additional XP bonuses.**${rollGuaranteeFooter}`;
 
     }
 
@@ -2554,7 +2470,6 @@ if(
     upgradeEffects.doubleTenMillionRolls
     &&
     rolledXP > 10000000
-    && luckResult.rarityKey !== "jackpot"
 ){
 
     rolledXP *= 2;
@@ -2610,11 +2525,9 @@ rolledXP =
     );
 
 
-// Jackpot keeps its configured 200M–2B range. Evolved may increase the
-// sampled payout, but the final jackpot is capped at the configured maximum.
+// Jackpot is a fixed final payout, including Evolved and other roll multipliers.
 if(finalRarityKey === "jackpot"){
-    const jackpotCap = 2000000000;
-    rolledXP = Math.sign(rolledXP || 1) * Math.min(Math.abs(rolledXP), jackpotCap);
+    rolledXP = rolledXP < 0 ? -200000000 : 200000000;
     rollingUpgradeDoubled = false;
 }
 
@@ -2939,7 +2852,7 @@ const guaranteedRollExtra = adminGuaranteedRarity
         : guaranteedRoll === "impossible"
             ? "\nQuest reward used: guaranteed Impossible Roll."
             : guaranteedRoll?.type === "minimum"
-                ? (finalRarityKey === 'jackpot' ? '\nQuest reward used: guaranteed Jackpot roll.' : `\nQuest reward used: guaranteed ${Number(guaranteedRoll.minXP).toLocaleString()}+ XP roll.`)
+                ? (finalRarityKey === 'jackpot' ? '\nQuest reward used: guaranteed 200,000,000 XP Jackpot.' : `\nQuest reward used: guaranteed ${Number(guaranteedRoll.minXP).toLocaleString()}+ XP roll.`)
                 : "";
 
 
@@ -2957,7 +2870,7 @@ const rollingUpgradeExtra =
 
 
 const evolvedExtra =
-    finalRarityKey === 'jackpot' ? (evolved ? '\n✨ Evolved Jackpot — payout is capped at 2,000,000,000 XP.' : '') : luck.buildEvolvedCommandExtra(
+    finalRarityKey === 'jackpot' ? (evolved ? '\n✨ Evolved Jackpot — the fixed 200,000,000 XP payout is unchanged.' : '') : luck.buildEvolvedCommandExtra(
         evolved,
         "ROLL"
     );
@@ -3047,9 +2960,7 @@ if(rolledXP > 0){
             rollCooldownExtra,
             rollContextExtras,
             rollGuaranteeFooter,
-            quality: finalRarityKey === "jackpot"
-                ? (rolledXP <= 750000000 ? "bad" : rolledXP <= 1250000000 ? "neutral" : "good")
-                : (luckResult.quality || "neutral")
+            quality: luckResult.quality || "neutral"
         }));
 
 
