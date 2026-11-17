@@ -134,7 +134,8 @@ const QUALITY_SPLITS = Object.freeze({
     epic:       [0.60,     0.88],
     legendary:  [0.55,     0.85],
     mythic:     [0.105,    0.342],  // ~10M-30M / 30M-75M / 75M-200M as requested
-    jackpot:    [0.150,      0.420]     // fixed value, always neutral
+    // 200M–750M bad, 750,000,001–1.25B neutral, 1,250,000,001–2B good
+    jackpot:    [550000000 / 1800000000, 1050000000 / 1800000000]
 });
 
 function pickQuality(random = Math.random){
@@ -151,7 +152,7 @@ function sampleXP(row, random = Math.random){
     if(!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min)
         throw Error("Invalid reward XP range");
 
-    // Fixed-value rows keep their exact payout, but still receive a quality tier.
+    // Fixed-value rows stay exact. Ranged jackpots use the same quality split system.
     if(min === max) return min;
 
     const key = String(row.key || "").toLowerCase();
@@ -183,7 +184,7 @@ function sampleXPWithQuality(row, random = Math.random){
     if(!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min)
         throw Error("Invalid reward XP range");
 
-    if(min === max) return { xp: min, quality: pickQuality(random) };
+    if(min === max) return { xp: min, quality: "neutral" };
 
     const key = String(row.key || "").toLowerCase();
     const splits = QUALITY_SPLITS[key] || [0.70, 0.92];
