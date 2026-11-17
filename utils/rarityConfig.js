@@ -49,42 +49,42 @@ module.exports = {
                 "min": 100000,
                 "max": 500000,
                 "rarity": "COMMON",
-                "weight": 0.7536371507778711
+                "weight": 0.68
             },
             {
                 "key": "uncommon",
                 "min": 500000,
                 "max": 2000000,
                 "rarity": "UNCOMMON",
-                "weight": 0.21938784922212884
+                "weight": 0.24
             },
             {
                 "key": "rare",
                 "min": 2000000,
                 "max": 5000000,
                 "rarity": "RARE",
-                "weight": 0.022000000000000002
+                "weight": 0.055
             },
             {
                 "key": "epic",
                 "min": 5000000,
                 "max": 12500000,
                 "rarity": "EPIC",
-                "weight": 0.004024999999999999
+                "weight": 0.018
             },
             {
                 "key": "legendary",
                 "min": 12500000,
                 "max": 30000000,
                 "rarity": "LEGENDARY",
-                "weight": 0.0009375
+                "weight": 0.006
             },
             {
                 "key": "mythic",
                 "min": 30000000,
                 "max": 55000000,
                 "rarity": "MYTHIC",
-                "weight": 0.0000125
+                "weight": 0.001
             }
         ],
         "hug.level100Plus": [
@@ -93,42 +93,42 @@ module.exports = {
                 "min": 500000,
                 "max": 2000000,
                 "rarity": "COMMON",
-                "weight": 0.6461615789473685
+                "weight": 0.58
             },
             {
                 "key": "uncommon",
                 "min": 2000000,
                 "max": 5000000,
                 "rarity": "UNCOMMON",
-                "weight": 0.2982284210526316
+                "weight": 0.27
             },
             {
                 "key": "rare",
                 "min": 5000000,
                 "max": 12500000,
                 "rarity": "RARE",
-                "weight": 0.044000000000000004
+                "weight": 0.09
             },
             {
                 "key": "epic",
                 "min": 12500000,
                 "max": 30000000,
                 "rarity": "EPIC",
-                "weight": 0.010235
+                "weight": 0.04
             },
             {
                 "key": "legendary",
                 "min": 30000000,
                 "max": 55000000,
                 "rarity": "LEGENDARY",
-                "weight": 0.00125
+                "weight": 0.015
             },
             {
                 "key": "mythic",
                 "min": 55000000,
                 "max": 200000000,
                 "rarity": "MYTHIC",
-                "weight": 0.000125
+                "weight": 0.005
             }
         ],
         "hugBot.level1To99": [
@@ -136,37 +136,37 @@ module.exports = {
                 "min": 35000,
                 "max": 150000,
                 "key": "common",
-                "weight": 0.6357764705882353
+                "weight": 0.68
             },
             {
                 "min": 150000,
                 "max": 750000,
                 "key": "uncommon",
-                "weight": 0.19562352941176472
+                "weight": 0.24
             },
             {
                 "min": 750000,
                 "max": 2000000,
                 "key": "rare",
-                "weight": 0.11000000000000001
+                "weight": 0.055
             },
             {
                 "min": 2000000,
                 "max": 5000000,
                 "key": "epic",
-                "weight": 0.044849999999999994
+                "weight": 0.018
             },
             {
                 "min": 5000000,
                 "max": 15000000,
                 "key": "legendary",
-                "weight": 0.0125
+                "weight": 0.006
             },
             {
                 "min": 15000000,
                 "max": 27500000,
                 "key": "mythic",
-                "weight": 0.00125
+                "weight": 0.001
             }
         ],
         "hugBot.level100Plus": [
@@ -174,31 +174,31 @@ module.exports = {
                 "min": 250000,
                 "max": 1000000,
                 "key": "common",
-                "weight": 0.6358529411764706
+                "weight": 0.58
             },
             {
                 "min": 1000000,
                 "max": 2500000,
                 "key": "uncommon",
-                "weight": 0.19564705882352942
+                "weight": 0.27
             },
             {
                 "min": 2500000,
                 "max": 7500000,
                 "key": "rare",
-                "weight": 0.11000000000000001
+                "weight": 0.09
             },
             {
                 "min": 7500000,
                 "max": 15000000,
                 "key": "epic",
-                "weight": 0.046
+                "weight": 0.04
             },
             {
                 "min": 15000000,
                 "max": 27500000,
                 "key": "legendary",
-                "weight": 0.0125
+                "weight": 0.02
             }
         ],
         "kiss.level1To99": [
@@ -207,42 +207,42 @@ module.exports = {
                 "min": 20000,
                 "max": 50000,
                 "rarity": "COMMON",
-                "weight": 0.7473324742268042
+                "weight": 0.68
             },
             {
                 "key": "uncommon",
                 "min": 50000,
                 "max": 125000,
                 "rarity": "UNCOMMON",
-                "weight": 0.21921752577319586
+                "weight": 0.24
             },
             {
                 "key": "rare",
                 "min": 125000,
                 "max": 350000,
                 "rarity": "RARE",
-                "weight": 0.024200000000000006
+                "weight": 0.055
             },
             {
                 "key": "epic",
                 "min": 350000,
                 "max": 750000,
                 "rarity": "EPIC",
-                "weight": 0.008624999999999999
+                "weight": 0.018
             },
             {
                 "key": "legendary",
                 "min": 750000,
                 "max": 2000000,
                 "rarity": "LEGENDARY",
-                "weight": 0.0006125
+                "weight": 0.006
             },
             {
                 "key": "mythic",
                 "min": 2000000,
                 "max": 5000000,
                 "rarity": "MYTHIC",
-                "weight": 0.0000125
+                "weight": 0.001
             }
         ],
         "kiss.level100Plus": [
@@ -251,42 +251,42 @@ module.exports = {
                 "min": 50000,
                 "max": 125000,
                 "rarity": "COMMON",
-                "weight": 0.6958663157894737
+                "weight": 0.58
             },
             {
                 "key": "uncommon",
                 "min": 125000,
                 "max": 350000,
                 "rarity": "UNCOMMON",
-                "weight": 0.2485236842105263
+                "weight": 0.27
             },
             {
                 "key": "rare",
                 "min": 350000,
                 "max": 750000,
                 "rarity": "RARE",
-                "weight": 0.044000000000000004
+                "weight": 0.09
             },
             {
                 "key": "epic",
                 "min": 750000,
                 "max": 2000000,
                 "rarity": "EPIC",
-                "weight": 0.010235
+                "weight": 0.04
             },
             {
                 "key": "legendary",
                 "min": 2000000,
                 "max": 12500000,
                 "rarity": "LEGENDARY",
-                "weight": 0.00125
+                "weight": 0.015
             },
             {
                 "key": "mythic",
                 "min": 12500000,
                 "max": 75000000,
                 "rarity": "MYTHIC",
-                "weight": 0.000125
+                "weight": 0.005
             }
         ],
         "steal.level100Plus": [
@@ -299,42 +299,42 @@ module.exports = {
                 "min": 200000,
                 "max": 500000,
                 "rarity": "COMMON",
-                "weight": 0.6478333333333334
+                "weight": 0.52
             },
             {
                 "key": "uncommon",
                 "min": 500000,
                 "max": 1250000,
                 "rarity": "UNCOMMON",
-                "weight": 0.09966666666666667
+                "weight": 0.27
             },
             {
                 "key": "rare",
                 "min": 1250000,
                 "max": 3000000,
                 "rarity": "RARE",
-                "weight": 0.011000000000000001
+                "weight": 0.12
             },
             {
                 "key": "epic",
                 "min": 3000000,
                 "max": 7500000,
                 "rarity": "EPIC",
-                "weight": 0.00575
+                "weight": 0.05
             },
             {
                 "key": "legendary",
                 "min": 7500000,
                 "max": 20000000,
                 "rarity": "LEGENDARY",
-                "weight": 0.003125
+                "weight": 0.025
             },
             {
                 "key": "mythic",
                 "min": 20000000,
                 "max": 150000000,
                 "rarity": "MYTHIC",
-                "weight": 0.000625
+                "weight": 0.015
             }
         ],
         "steal.level1To99": [
@@ -347,42 +347,42 @@ module.exports = {
                 "min": 50000,
                 "max": 200000,
                 "rarity": "COMMON",
-                "weight": 0.74925
+                "weight": 0.62
             },
             {
                 "key": "uncommon",
                 "min": 200000,
                 "max": 500000,
                 "rarity": "UNCOMMON",
-                "weight": 0.04995
+                "weight": 0.25
             },
             {
                 "key": "rare",
                 "min": 500000,
                 "max": 1000000,
                 "rarity": "RARE",
-                "weight": 0.0055000000000000005
+                "weight": 0.08
             },
             {
                 "key": "epic",
                 "min": 1000000,
                 "max": 2500000,
                 "rarity": "EPIC",
-                "weight": 0.00115
+                "weight": 0.03
             },
             {
                 "key": "legendary",
                 "min": 2500000,
                 "max": 5000000,
                 "rarity": "LEGENDARY",
-                "weight": 0.000625
+                "weight": 0.015
             },
             {
                 "key": "mythic",
                 "min": 5000000,
                 "max": 12500000,
                 "rarity": "MYTHIC",
-                "weight": 0.000125
+                "weight": 0.005
             }
         ],
         "ezwin.level1To99": [
@@ -410,7 +410,7 @@ module.exports = {
                         "max": 15000000
                     }
                 },
-                "weight": 0.9375
+                "weight": 0.92
             },
             {
                 "key": "legendary",
@@ -436,7 +436,7 @@ module.exports = {
                         "max": 100000000
                     }
                 },
-                "weight": 0.0625
+                "weight": 0.08
             }
         ],
         "ezwin.level100Plus": [
@@ -464,7 +464,7 @@ module.exports = {
                         "max": 125000000
                     }
                 },
-                "weight": 0.875
+                "weight": 0.92
             },
             {
                 "key": "legendary",
@@ -490,7 +490,7 @@ module.exports = {
                         "max": 1000000000
                     }
                 },
-                "weight": 0.125
+                "weight": 0.08
             }
         ],
         "fight": [
