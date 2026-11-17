@@ -1630,7 +1630,7 @@ function buildPositiveRollDialogue({
 
     if(rarityRolledXP >= 100000000){
 
-        return `${emojis.rainbowRoll} **JACKPOT** ${author} ROLLED A JACKPOT 🎰 **[${formattedRolledXP} XP]**${evolvedMarker}${resultExtras}
+        return `${emojis.rainbowRoll} **${qualityPrefix}JACKPOT** ${author} ROLLED A JACKPOT 🎰 **[${formattedRolledXP} XP]**${evolvedMarker}${resultExtras}
 
 ### The future?
 
@@ -1680,7 +1680,7 @@ gorjezz then decides to ask:*
 
 *Kape says as beyondborder_08386, ${author} & gorjezz watch in pure shock.*
 
-**${emojis.rainbowRoll} Jackpot reward: exactly 200,000,000 XP — no additional XP bonuses.**${rollGuaranteeFooter}`;
+**${emojis.rainbowRoll} Jackpot reward: 200,000,000–2,000,000,000 XP, based on its quality tier.**${rollGuaranteeFooter}`;
 
     }
 
@@ -2554,6 +2554,7 @@ if(
     upgradeEffects.doubleTenMillionRolls
     &&
     rolledXP > 10000000
+    && luckResult.rarityKey !== "jackpot"
 ){
 
     rolledXP *= 2;
@@ -2609,9 +2610,11 @@ rolledXP =
     );
 
 
-// Jackpot is a fixed final payout, including Evolved and other roll multipliers.
+// Jackpot keeps its configured 200M–2B range. Evolved may increase the
+// sampled payout, but the final jackpot is capped at the configured maximum.
 if(finalRarityKey === "jackpot"){
-    rolledXP = rolledXP < 0 ? -200000000 : 200000000;
+    const jackpotCap = 2000000000;
+    rolledXP = Math.sign(rolledXP || 1) * Math.min(Math.abs(rolledXP), jackpotCap);
     rollingUpgradeDoubled = false;
 }
 
@@ -2936,7 +2939,7 @@ const guaranteedRollExtra = adminGuaranteedRarity
         : guaranteedRoll === "impossible"
             ? "\nQuest reward used: guaranteed Impossible Roll."
             : guaranteedRoll?.type === "minimum"
-                ? (finalRarityKey === 'jackpot' ? '\nQuest reward used: guaranteed 200,000,000 XP Jackpot.' : `\nQuest reward used: guaranteed ${Number(guaranteedRoll.minXP).toLocaleString()}+ XP roll.`)
+                ? (finalRarityKey === 'jackpot' ? '\nQuest reward used: guaranteed Jackpot roll.' : `\nQuest reward used: guaranteed ${Number(guaranteedRoll.minXP).toLocaleString()}+ XP roll.`)
                 : "";
 
 
@@ -2954,7 +2957,7 @@ const rollingUpgradeExtra =
 
 
 const evolvedExtra =
-    finalRarityKey === 'jackpot' ? (evolved ? '\n✨ Evolved Jackpot — the fixed 200,000,000 XP payout is unchanged.' : '') : luck.buildEvolvedCommandExtra(
+    finalRarityKey === 'jackpot' ? (evolved ? '\n✨ Evolved Jackpot — payout is capped at 2,000,000,000 XP.' : '') : luck.buildEvolvedCommandExtra(
         evolved,
         "ROLL"
     );
@@ -3044,7 +3047,9 @@ if(rolledXP > 0){
             rollCooldownExtra,
             rollContextExtras,
             rollGuaranteeFooter,
-            quality: luckResult.quality || "neutral"
+            quality: finalRarityKey === "jackpot"
+                ? (rolledXP <= 750000000 ? "bad" : rolledXP <= 1250000000 ? "neutral" : "good")
+                : (luckResult.quality || "neutral")
         }));
 
 
