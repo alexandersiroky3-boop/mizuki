@@ -626,7 +626,7 @@ module.exports = {
                 "key": "jackpot",
                 "weight": 5e-7,
                 "min": 200000000,
-                "max": 200000000,
+                "max": 2000000000,
                 "type": "positive",
                 "presentationXP": 200000000
             }
@@ -1162,7 +1162,7 @@ module.exports = {
                 "rare": 0.0275,
                 "epic": 0.005,
                 "legendary": 0.00425,
-                "mythic": 0.001,
+                "mythic": 0.0005,
                 "jackpot": 1e-7
             },
             "tier2": {
@@ -1171,7 +1171,7 @@ module.exports = {
                 "rare": 0.06,
                 "epic": 0.03,
                 "legendary": 0.009,
-                "mythic": 0.0035,
+                "mythic": 0.001,
                 "jackpot": 5e-7
             },
             "tier3": {
@@ -1180,7 +1180,7 @@ module.exports = {
                 "rare": 0.15,
                 "epic": 0.0465,
                 "legendary": 0.01,
-                "mythic": 0.005,
+                "mythic": 0.0025,
                 "jackpot": 0.000001
             },
             "max": {
@@ -1189,16 +1189,16 @@ module.exports = {
                 "rare": -0.12263214285714286,
                 "epic": 0.2,
                 "legendary": 0.25,
-                "mythic": 0.065,
-                "jackpot": 0.000055
+                "mythic": 0.005,
+                "jackpot": 0.000005
             },
             "omega": {
                 "common": -0.4109677419354838,
                 "uncommon": -0.30822580645161285,
                 "rare": -0.14383870967741932,
                 "epic": -0.09246774193548386,
-                "legendary": 0.7,
-                "mythic": 0.25,
+                "legendary": 0.65,
+                "mythic": 0.025,
                 "jackpot": 0.0055
             }
         }
