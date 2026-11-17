@@ -5,7 +5,7 @@ const xp=require('../utils/xp');
 const roles=require('../systems/levelRoles');
 const features=require('../systems/playerFeatures');
 const panel=require('../utils/levelPanel');
-const fields={hideXP:'Total XP',hideLevel:'Level',hideRank:'All-time rank',hideRole:'Level role',hideStreak:'Best critical streak'};
+const fields={hideXP:'Total XP',hideLevel:'Level',hideRank:'All-time rank',hideRole:'Level role',hideStreak:'Best critical streak',hideMessages:'XP message count'};
 function button(id,label,style=ButtonStyle.Secondary){return new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style);}
 async function render(guild,member){
     const user=member.user, data=await db.getUser(guild.id,user.id);
@@ -15,36 +15,37 @@ async function render(guild,member){
     const role=await roles.syncMemberLevelRole(member,level);
     const needed=xp.getNextLevelXP(level)-xp.getLevelXP(level),progress=Math.max(0,total-xp.getLevelXP(level));
     const percentage=needed>0?Math.max(0,Math.min(100,Math.floor(progress/needed*100))):100;
+    const heading=s.hideLevel ? 'Your Journey' : `Level ${level.toLocaleString()}`;
+    const progressLine= s.hideXP || s.hideLevel
+        ? `**${percentage}%** to the next level`
+        : `**${progress.toLocaleString()}** / **${needed.toLocaleString()}** XP  ·  **${percentage}%**`;
+    let description;
+    if(s.layout==='compact') description=`**${heading}**\n${panel.bar(percentage,s.bar)}  **${percentage}%**`;
+    else if(s.layout==='showcase') description=`# ${heading}\n\n${panel.bar(percentage,s.bar)}\n\n${progressLine}\n\n*Keep going. Your next milestone is closer than you think.*`;
+    else description=[`### ${heading}`,'',panel.bar(percentage,s.bar),'',progressLine].join('\n');
     const embed=new EmbedBuilder().setColor(s.color).setAuthor({name:s.nickname||member.displayName||user.username,iconURL:user.displayAvatarURL()})
-        .setThumbnail(user.displayAvatarURL({size:256})).setDescription([
-            s.hideLevel ? '### Your Journey' : `### ✨ Level ${level.toLocaleString()}`,
-            '',
-            panel.bar(percentage, s.bar),
-            '',
-            s.hideXP || s.hideLevel
-                ? `**${percentage}%** to the next level`
-                : `**${progress.toLocaleString()}** / **${needed.toLocaleString()}** XP  ·  **${percentage}%**`
-        ].join('\n')).setFooter({text: 'GothMommy • Level Profile'});
+        .setThumbnail(user.displayAvatarURL({size:256})).setDescription(description).setFooter({text: 'GothMommy • Level Profile'});
     const values=[];
     if(!s.hideXP)values.push({name:'Total XP',value:total.toLocaleString(),inline:true});
     if(!s.hideRank)values.push({name:'All-time rank',value:`#${await db.getUserLeaderboardRank(guild.id,user.id)}`,inline:true});
     if(!s.hideStreak)values.push({name:'Best streak',value:`${Number(data.bestcriticalstreak)||0} criticals`,inline:true});
     if(!s.hideRole)values.push({name:'Level role',value:role?.role?.roleID?`<@&${role.role.roleID}>`:'None',inline:true});
-    values.push({name:'XP messages',value:Number(data.messages||0).toLocaleString(),inline:true});
+    if(!s.hideMessages)values.push({name:'XP messages',value:Number(data.messages||0).toLocaleString(),inline:true});
     embed.addFields(values);
     return {embeds:[embed],components:[new ActionRowBuilder().addComponents(button(`level_customize:${user.id}`,'Customize'))],allowedMentions:{parse:[]}};
 }
 function editor(owner,s){
     return {content:'Choose what appears on your !level panel. These settings do not hide your public leaderboard entry. Empty nickname restores your Discord name.',
         embeds:[],components:[
-            new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`level_visibility:${owner}`).setPlaceholder('Select fields to hide').setMinValues(0).setMaxValues(5).addOptions(Object.entries(fields).map(([value,label])=>({label,value,default:s[value]})))),
-            new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`level_bar:${owner}`).setPlaceholder('Progress bar style').addOptions([...Object.keys(panel.STYLES).filter(k=>panel.STYLES[k]!==null), 'gradient', 'wave'].map(value=>({label: value==='golden'?'Golden (custom)':value==='gradient'?'Gradient ▓░':value==='wave'?'Wave ▰▱':value[0].toUpperCase()+value.slice(1), value, default:s.bar===value})))),
+            new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`level_visibility:${owner}`).setPlaceholder('Select fields to hide').setMinValues(0).setMaxValues(6).addOptions(Object.entries(fields).map(([value,label])=>({label,value,default:s[value]})))),
+            new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`level_bar:${owner}`).setPlaceholder('Progress bar style').addOptions([...Object.keys(panel.STYLES).filter(k=>panel.STYLES[k]!==null), 'gradient', 'wave'].map(value=>({label: value==='golden'?'Golden':value==='gradient'?'Gradient ▓░':value==='wave'?'Wave ▰▱':value[0].toUpperCase()+value.slice(1), value, default:s.bar===value})))),
+            new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`level_layout:${owner}`).setPlaceholder('Profile layout').addOptions([{label:'Classic',value:'classic',description:'Balanced profile with all details'},{label:'Compact',value:'compact',description:'A smaller, minimal profile'},{label:'Showcase',value:'showcase',description:'Large heading and motivational footer'}].map(o=>({...o,default:s.layout===o.value})))),
             new ActionRowBuilder().addComponents(button(`level_appearance:${owner}`,'Nickname & color'),button(`level_preview:${owner}`,'Preview',ButtonStyle.Primary),button(`level_reset:${owner}`,'Reset'))
         ],allowedMentions:{parse:[]}};
 }
 async function execute(message){await message.reply(await render(message.guild,message.member));}
 async function handleInteraction(i){
-    if(!/^level_(customize|visibility|bar|appearance|save|preview|reset):/.test(i.customId||''))return false;
+    if(!/^level_(customize|visibility|bar|layout|appearance|save|preview|reset):/.test(i.customId||''))return false;
     const [action,owner]=i.customId.split(':');
     if(i.user.id!==owner){await i.reply({content:'Only the profile owner can customize this panel.',flags:64});return true;}
     if(action==='level_appearance'){
@@ -54,10 +55,12 @@ async function handleInteraction(i){
             new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('color').setLabel('Color: #RRGGBB').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(7).setValue(s.color)));
         await i.showModal(modal);return true;
     }
-    await i.deferReply({flags:64});
+    if(action==='level_customize') await i.deferReply({flags:64});
+    else await i.deferUpdate();
     let s=panel.settings((await features.get(i.guildId,owner)).levelPanel);
     if(action==='level_visibility')for(const key of Object.keys(fields))s[key]=i.values.includes(key);
     if(action==='level_bar')s.bar=i.values[0];
+    if(action==='level_layout')s.layout=i.values[0];
     if(action==='level_reset')s=panel.settings();
     if(action==='level_save'){
         const color=i.fields.getTextInputValue('color').trim();
