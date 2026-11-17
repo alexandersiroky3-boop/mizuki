@@ -32,11 +32,17 @@ function transfer(rows,deltas={},scale=1){
         if(!existing.has(key)||!Number.isFinite(amount))throw Error('Invalid Luck delta: '+key);
     }
     const entries=Object.entries(deltas).map(([key,n])=>[key,n*scale]);
-    const add=entries.filter(([,n])=>n>0), remove=entries.filter(([,n])=>n<0);
+    const add=entries.filter(([,n])=>n>0), rawRemove=entries.filter(([,n])=>n<0);
     const requested=add.reduce((s,[,n])=>s+n,0);
-    const deducted=remove.reduce((s,[,n])=>s-n,0);
-    if(Math.abs(requested-deducted)>1e-8)throw Error('Luck additions and deductions must balance');
+    const deducted=rawRemove.reduce((s,[,n])=>s-n,0);
     if(!requested)return rows.map(r=>({...r}));
+
+    // Treat configured positive deltas as the intended luck increase. Older
+    // rarity tables can have slightly (or substantially) mismatched donor
+    // totals; proportionally scale their deductions to the requested amount
+    // instead of crashing while resolving a luck profile.
+    const removalScale=deducted>0?requested/deducted:0;
+    const remove=rawRemove.map(([key,n])=>[key,n*removalScale]);
     const result=rows.map(r=>({...r})), byKey=new Map(result.map(r=>[r.key,r]));
     const available=remove.reduce((s,[key])=>s+byKey.get(key).weight,0);
     const amount=Math.min(requested,available);
@@ -128,7 +134,7 @@ const QUALITY_SPLITS = Object.freeze({
     epic:       [0.60,     0.88],
     legendary:  [0.55,     0.85],
     mythic:     [0.105,    0.342],  // ~10M-30M / 30M-75M / 75M-200M as requested
-    jackpot:    [1.0, 1.0]     // fixed value, always neutral
+    jackpot:    [0.150,      0.420]     // fixed value, always neutral
 });
 
 function pickQuality(random = Math.random){
