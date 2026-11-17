@@ -1586,7 +1586,8 @@ function buildPositiveRollDialogue({
     bonusXP = 0,
     rollCooldownExtra = "",
     rollContextExtras = "",
-    rollGuaranteeFooter = ""
+    rollGuaranteeFooter = "",
+    quality = "neutral"
 }){
 
     const author =
@@ -1615,6 +1616,11 @@ function buildPositiveRollDialogue({
             evolved
         );
 
+    // Quality label: *bad* / *good* prefix; neutral stays plain.
+    const qualityPrefix =
+        quality === "bad" ? "*bad* " :
+        quality === "good" ? "*good* " :
+        "";
 
     // Evolved multiplies the payout, not the rarity. Story/dialogue selection
     // therefore stays tied to the original normal result.
@@ -1681,7 +1687,7 @@ gorjezz then decides to ask:*
 
     if(rarityRolledXP > 5000000){
 
-        return `${emojis.mythicRoll} **MYTHIC** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker} 🌃${resultExtras}
+        return `${emojis.mythicRoll} **${qualityPrefix}MYTHIC** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker} 🌃${resultExtras}
 
 ### The Great Ruler
 
@@ -1760,7 +1766,7 @@ Then Kape finally equipped it and felt the bonus, unfathomable power coursing th
 
     if(rarityRolledXP > 500000){
 
-        return `${emojis.goldenRoll} **LEGENDARY** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker} 🌠${resultExtras}
+        return `${emojis.goldenRoll} **${qualityPrefix}LEGENDARY** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker} 🌠${resultExtras}
 
 ### ${author} VS beyondborder_08386
 
@@ -1825,7 +1831,7 @@ ${author} gritted their teeth and swore they would make beyondborder_08386 pay..
 
     if(rarityRolledXP > 100000){
 
-        return `${emojis.halfGoldenRoll} **EPIC** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker} ${emojis.inevitableGalaxy}${resultExtras}
+        return `${emojis.halfGoldenRoll} **${qualityPrefix}EPIC** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker} ${emojis.inevitableGalaxy}${resultExtras}
 
 *Kape was sitting on the crew's couch with gorjezz before seeing ${author} arrive...*
 
@@ -1866,7 +1872,7 @@ Kape sighed, slightly annoyed, and raised his Gauntlet toward ${author}. Using t
 
     if(rarityRolledXP > 25000){
 
-        return `${emojis.roll} **RARE** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker} ✨${resultExtras}
+        return `${emojis.roll} **${qualityPrefix}RARE** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker} ✨${resultExtras}
 
 *Mrnoob was wandering outside beside the crew's house when he saw thezdrink and ${author} walking nearby. Mrnoob quickly approached them...*
 
@@ -1895,7 +1901,7 @@ Kape sighed, slightly annoyed, and raised his Gauntlet toward ${author}. Using t
 
     if(rarityRolledXP > 5000){
 
-        return `${emojis.roll} **UNCOMMON** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker}${resultExtras}
+        return `${emojis.roll} **${qualityPrefix}UNCOMMON** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker}${resultExtras}
 
 *Mizuki told ${author} that if they rolled a die and it landed on the number 6, Mizuki would reward them...
 
@@ -1910,7 +1916,7 @@ A deal is a deal...*
     }
 
 
-    return `${emojis.roll} **COMMON** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker}${resultExtras}${rollGuaranteeFooter}`;
+    return `${emojis.roll} **${qualityPrefix}COMMON** ${author} rolled **+${formattedRolledXP} XP!**${evolvedMarker}${resultExtras}${rollGuaranteeFooter}`;
 
 }
 
@@ -3037,7 +3043,8 @@ if(rolledXP > 0){
             bonusXP,
             rollCooldownExtra,
             rollContextExtras,
-            rollGuaranteeFooter
+            rollGuaranteeFooter,
+            quality: luckResult.quality || "neutral"
         }));
 
 
@@ -3073,8 +3080,11 @@ const rollEmojis =
     );
 
 
+const qualityPrefix =
+    (luckResult.quality === "bad" ? "*bad* " :
+     luckResult.quality === "good" ? "*good* " : "");
 const negativeDialogue = moveRollTimerToFooter(
-    `**NEGATIVE ${String(finalRarityKey).toUpperCase()}** ${evolved ? luck.buildEvolvedRarityMarker(message.guild,true) : ''} ${message.author} rolled **${rolledXP.toLocaleString()} XP!** Better luck next time... 💀${rollCooldownExtra}${rollContextExtras}${rollGuaranteeFooter}`
+    `**NEGATIVE ${qualityPrefix}${String(finalRarityKey).toUpperCase()}** ${evolved ? luck.buildEvolvedRarityMarker(message.guild,true) : ''} ${message.author} rolled **${rolledXP.toLocaleString()} XP!** Better luck next time... 💀${rollCooldownExtra}${rollContextExtras}${rollGuaranteeFooter}`
 );
 
 
