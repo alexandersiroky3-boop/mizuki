@@ -151,7 +151,7 @@ function sampleXP(row, random = Math.random){
     if(!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min)
         throw Error("Invalid reward XP range");
 
-    // Fixed-value rows (jackpot) stay exact
+    // Fixed-value rows keep their exact payout, but still receive a quality tier.
     if(min === max) return min;
 
     const key = String(row.key || "").toLowerCase();
@@ -183,7 +183,7 @@ function sampleXPWithQuality(row, random = Math.random){
     if(!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min)
         throw Error("Invalid reward XP range");
 
-    if(min === max) return { xp: min, quality: "neutral" };
+    if(min === max) return { xp: min, quality: pickQuality(random) };
 
     const key = String(row.key || "").toLowerCase();
     const splits = QUALITY_SPLITS[key] || [0.70, 0.92];
