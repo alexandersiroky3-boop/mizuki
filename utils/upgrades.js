@@ -293,7 +293,7 @@ function getUpgradeEffects(levels = {}){
         tenCriticalBurstChance: burstChanceByLevel[chat],
 
         rollingLevel: roll,
-        doubleTenMillionRolls: roll >= 5,
+        doubleTenMillionRolls: false,  // Removed: was stacking with Evolved into multi-billion rolls
         rareRollWeightMultiplier: roll >= 8 ? 6 : (roll >= 7 ? 3 : (roll >= 6 ? 2 : 1)),
         rollGuaranteeThreshold: roll >= 8 ? 50 : (roll >= 7 ? 75 : 100),
         rollGuaranteeMinimumXP: roll >= 8 ? 5000001 : 500000,
