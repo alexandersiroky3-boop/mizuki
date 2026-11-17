@@ -5,8 +5,10 @@ const DEFAULTS = {
     hideRank: false,
     hideRole: false,
     hideStreak: false,
+    hideMessages: false,
     color: '#7A5CFF',
     bar: 'blocks',
+    layout: 'classic',
     nickname: ''
 };
 
@@ -19,7 +21,9 @@ const STYLES = {
     hearts:   ['💜', '🖤'],
     classic:  ['▰', '▱'],
     dots:     ['●', '○'],
-    golden:   [':golden_square:', ':empty_golden_square:'],
+    // Discord does not convert :emoji_name: text into custom emoji. Use
+    // Unicode gold blocks so the bar renders reliably in embeds everywhere.
+    golden:   ['🟨', '⬛'],
     fire:     ['🟧', '⬛'],
     pink:     ['🩷', '⬛'],
     solid:    ['█', '░'],
@@ -34,13 +38,14 @@ const STYLES = {
 
 function settings(value = {}) {
     const s = { ...DEFAULTS };
-    for (const key of ['hideXP', 'hideLevel', 'hideRank', 'hideRole', 'hideStreak']) {
+    for (const key of ['hideXP', 'hideLevel', 'hideRank', 'hideRole', 'hideStreak', 'hideMessages']) {
         s[key] = value[key] === true;
     }
     if (/^#[0-9a-f]{6}$/i.test(value.color || '')) s.color = value.color;
     if (STYLES[value.bar] !== undefined || value.bar === 'gradient' || value.bar === 'wave') {
         s.bar = value.bar;
     }
+    if (['classic', 'compact', 'showcase'].includes(value.layout)) s.layout = value.layout;
     s.nickname = String(value.nickname || '')
         .replace(/[\r\n\t\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '')
         .trim()
