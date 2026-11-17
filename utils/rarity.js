@@ -110,10 +110,97 @@ function pick(rows,random=Math.random){
     for(const row of entries){position-=row.weight;if(position<0)return row;}
     return entries[entries.length-1];
 }
-function sampleXP(row,random=Math.random){
-    const min=row.min??row.minXP,max=row.max??row.maxXP;
-    if(!Number.isSafeInteger(min)||!Number.isSafeInteger(max)||max<min)throw Error('Invalid reward XP range');
-    return min+Math.floor(unit(random)*(max-min+1));
+// Quality sub-tiers inside each rarity (85% bad / 10% neutral / 5% good).
+// This keeps the full authored range possible while making high rolls rare.
+const QUALITY_WEIGHTS = Object.freeze([
+    { key: "bad",     weight: 0.85 },
+    { key: "neutral", weight: 0.10 },
+    { key: "good",    weight: 0.05 }
+]);
+
+// Split points as fractions of the rarity's full range (low → mid → high).
+// Tuned so "bad" covers most of the bottom, "good" is the top tail.
+const QUALITY_SPLITS = Object.freeze({
+    //            badEnd   neutralEnd  (good goes to 1.0)
+    common:     [0.70,     0.92],
+    uncommon:   [0.70,     0.92],
+    rare:       [0.65,     0.90],
+    epic:       [0.60,     0.88],
+    legendary:  [0.55,     0.85],
+    mythic:     [0.105,    0.342],  // ~10M-30M / 30M-75M / 75M-200M as requested
+    jackpot:    [0.150,      0.420]     // fixed value, always neutral
+});
+
+function pickQuality(random = Math.random){
+    let position = unit(random);
+    for(const q of QUALITY_WEIGHTS){
+        position -= q.weight;
+        if(position < 0) return q.key;
+    }
+    return "bad";
+}
+
+function sampleXP(row, random = Math.random){
+    const min = row.min ?? row.minXP, max = row.max ?? row.maxXP;
+    if(!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min)
+        throw Error("Invalid reward XP range");
+
+    // Fixed-value rows (jackpot) stay exact
+    if(min === max) return min;
+
+    const key = String(row.key || "").toLowerCase();
+    const splits = QUALITY_SPLITS[key] || [0.70, 0.92];
+    const quality = pickQuality(random);
+
+    const span = max - min;
+    let low, high;
+    if(quality === "bad"){
+        low = min;
+        high = min + Math.floor(span * splits[0]);
+    }else if(quality === "neutral"){
+        low = min + Math.floor(span * splits[0]) + 1;
+        high = min + Math.floor(span * splits[1]);
+    }else{ // good
+        low = min + Math.floor(span * splits[1]) + 1;
+        high = max;
+    }
+
+    // Safety: keep bounds valid
+    low = Math.max(min, Math.min(max, low));
+    high = Math.max(low, Math.min(max, high));
+
+    return low + Math.floor(unit(random) * (high - low + 1));
+}
+
+function sampleXPWithQuality(row, random = Math.random){
+    const min = row.min ?? row.minXP, max = row.max ?? row.maxXP;
+    if(!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min)
+        throw Error("Invalid reward XP range");
+
+    if(min === max) return { xp: min, quality: "neutral" };
+
+    const key = String(row.key || "").toLowerCase();
+    const splits = QUALITY_SPLITS[key] || [0.70, 0.92];
+    const quality = pickQuality(random);
+
+    const span = max - min;
+    let low, high;
+    if(quality === "bad"){
+        low = min;
+        high = min + Math.floor(span * splits[0]);
+    }else if(quality === "neutral"){
+        low = min + Math.floor(span * splits[0]) + 1;
+        high = min + Math.floor(span * splits[1]);
+    }else{
+        low = min + Math.floor(span * splits[1]) + 1;
+        high = max;
+    }
+
+    low = Math.max(min, Math.min(max, low));
+    high = Math.max(low, Math.min(max, high));
+
+    const xp = low + Math.floor(unit(random) * (high - low + 1));
+    return { xp, quality };
 }
 function guarantee(){return normalize(config.guarantee);}
 function keyForXP(xp){
@@ -136,6 +223,8 @@ function roll(profile,rollingLevel=0,random=Math.random){
     const negative=unit(random)<negativeChance(profile,rollingLevel);
     const rows=negative?base('rollNegative'):resolve('roll',profile,{rollingLevel});
     const row=pick(rows,random);
-    return {rolledXP:sampleXP(row,random),rarityKey:row.key,negative};
+    const { xp, quality } = sampleXPWithQuality(row, random);
+    // For negative tables the stored min/max are already negative, so xp comes out negative.
+    return {rolledXP: xp, rarityKey: row.key, negative, quality};
 }
-module.exports={base,resolve,resolveRows,pick,sampleXP,transfer,normalize,guarantee,keyForXP,presentationXP,evolvedChance,negativeChance,roll};
+module.exports={base,resolve,resolveRows,pick,sampleXP,sampleXPWithQuality,transfer,normalize,guarantee,keyForXP,presentationXP,evolvedChance,negativeChance,roll};
