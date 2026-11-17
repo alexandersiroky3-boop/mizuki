@@ -128,7 +128,7 @@ const QUALITY_SPLITS = Object.freeze({
     epic:       [0.60,     0.88],
     legendary:  [0.55,     0.85],
     mythic:     [0.105,    0.342],  // ~10M-30M / 30M-75M / 75M-200M as requested
-    jackpot:    [0.150,      0.420]     // fixed value, always neutral
+    jackpot:    [1.0, 1.0]     // fixed value, always neutral
 });
 
 function pickQuality(random = Math.random){
