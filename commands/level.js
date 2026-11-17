@@ -17,10 +17,14 @@ async function render(guild,member){
     const percentage=needed>0?Math.max(0,Math.min(100,Math.floor(progress/needed*100))):100;
     const embed=new EmbedBuilder().setColor(s.color).setAuthor({name:s.nickname||member.displayName||user.username,iconURL:user.displayAvatarURL()})
         .setThumbnail(user.displayAvatarURL({size:256})).setDescription([
-            s.hideLevel?'### Your journey':`### Level ${level.toLocaleString()}`,
-            panel.bar(percentage,s.bar),
-            s.hideXP||s.hideLevel?`${percentage}% to the next level`:`**${progress.toLocaleString()} / ${needed.toLocaleString()} XP** · ${percentage}%`
-        ].join('\n')).setFooter({text:'GothMommy • Level profile'});
+            s.hideLevel ? '### Your Journey' : `### ✨ Level ${level.toLocaleString()}`,
+            '',
+            panel.bar(percentage, s.bar),
+            '',
+            s.hideXP || s.hideLevel
+                ? `**${percentage}%** to the next level`
+                : `**${progress.toLocaleString()}** / **${needed.toLocaleString()}** XP  ·  **${percentage}%**`
+        ].join('\n')).setFooter({text: 'GothMommy • Level Profile'});
     const values=[];
     if(!s.hideXP)values.push({name:'Total XP',value:total.toLocaleString(),inline:true});
     if(!s.hideRank)values.push({name:'All-time rank',value:`#${await db.getUserLeaderboardRank(guild.id,user.id)}`,inline:true});
@@ -34,7 +38,7 @@ function editor(owner,s){
     return {content:'Choose what appears on your !level panel. These settings do not hide your public leaderboard entry. Empty nickname restores your Discord name.',
         embeds:[],components:[
             new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`level_visibility:${owner}`).setPlaceholder('Select fields to hide').setMinValues(0).setMaxValues(5).addOptions(Object.entries(fields).map(([value,label])=>({label,value,default:s[value]})))),
-            new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`level_bar:${owner}`).setPlaceholder('Progress bar style').addOptions(Object.keys(panel.STYLES).map(value=>({label:value[0].toUpperCase()+value.slice(1),value,default:s.bar===value})))),
+            new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`level_bar:${owner}`).setPlaceholder('Progress bar style').addOptions([...Object.keys(panel.STYLES).filter(k=>panel.STYLES[k]!==null), 'gradient', 'wave'].map(value=>({label: value==='golden'?'Golden (custom)':value==='gradient'?'Gradient ▓░':value==='wave'?'Wave ▰▱':value[0].toUpperCase()+value.slice(1), value, default:s.bar===value})))),
             new ActionRowBuilder().addComponents(button(`level_appearance:${owner}`,'Nickname & color'),button(`level_preview:${owner}`,'Preview',ButtonStyle.Primary),button(`level_reset:${owner}`,'Reset'))
         ],allowedMentions:{parse:[]}};
 }
