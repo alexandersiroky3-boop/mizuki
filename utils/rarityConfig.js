@@ -1,4 +1,4 @@
-// Decimal weights; edit tables, luck, boostUpgradeByLevel and rollingUpgradeByLevel.
+// Centralized rarity odds and command-only Omega bonus. Roll odds are unchanged.
 module.exports = {
     "trollXP": {
         "messageMog": {
@@ -49,42 +49,42 @@ module.exports = {
                 "min": 100000,
                 "max": 500000,
                 "rarity": "COMMON",
-                "weight": 0.68
+                "weight": 0.42
             },
             {
                 "key": "uncommon",
                 "min": 500000,
                 "max": 2000000,
                 "rarity": "UNCOMMON",
-                "weight": 0.24
+                "weight": 0.26
             },
             {
                 "key": "rare",
                 "min": 2000000,
                 "max": 5000000,
                 "rarity": "RARE",
-                "weight": 0.055
+                "weight": 0.17
             },
             {
                 "key": "epic",
                 "min": 5000000,
                 "max": 12500000,
                 "rarity": "EPIC",
-                "weight": 0.018
+                "weight": 0.09
             },
             {
                 "key": "legendary",
                 "min": 12500000,
                 "max": 30000000,
                 "rarity": "LEGENDARY",
-                "weight": 0.006
+                "weight": 0.04
             },
             {
                 "key": "mythic",
                 "min": 30000000,
                 "max": 55000000,
                 "rarity": "MYTHIC",
-                "weight": 0.001
+                "weight": 0.02
             }
         ],
         "hug.level100Plus": [
@@ -93,42 +93,42 @@ module.exports = {
                 "min": 500000,
                 "max": 2000000,
                 "rarity": "COMMON",
-                "weight": 0.58
+                "weight": 0.32
             },
             {
                 "key": "uncommon",
                 "min": 2000000,
                 "max": 5000000,
                 "rarity": "UNCOMMON",
-                "weight": 0.27
+                "weight": 0.26
             },
             {
                 "key": "rare",
                 "min": 5000000,
                 "max": 12500000,
                 "rarity": "RARE",
-                "weight": 0.09
+                "weight": 0.19
             },
             {
                 "key": "epic",
                 "min": 12500000,
                 "max": 30000000,
                 "rarity": "EPIC",
-                "weight": 0.04
+                "weight": 0.12
             },
             {
                 "key": "legendary",
                 "min": 30000000,
                 "max": 55000000,
                 "rarity": "LEGENDARY",
-                "weight": 0.015
+                "weight": 0.07
             },
             {
                 "key": "mythic",
                 "min": 55000000,
                 "max": 200000000,
                 "rarity": "MYTHIC",
-                "weight": 0.005
+                "weight": 0.04
             }
         ],
         "hugBot.level1To99": [
@@ -136,37 +136,37 @@ module.exports = {
                 "min": 35000,
                 "max": 150000,
                 "key": "common",
-                "weight": 0.68
+                "weight": 0.5
             },
             {
                 "min": 150000,
                 "max": 750000,
                 "key": "uncommon",
-                "weight": 0.24
+                "weight": 0.26
             },
             {
                 "min": 750000,
                 "max": 2000000,
                 "key": "rare",
-                "weight": 0.055
+                "weight": 0.14
             },
             {
                 "min": 2000000,
                 "max": 5000000,
                 "key": "epic",
-                "weight": 0.018
+                "weight": 0.06
             },
             {
                 "min": 5000000,
                 "max": 15000000,
                 "key": "legendary",
-                "weight": 0.006
+                "weight": 0.03
             },
             {
                 "min": 15000000,
                 "max": 27500000,
                 "key": "mythic",
-                "weight": 0.001
+                "weight": 0.01
             }
         ],
         "hugBot.level100Plus": [
@@ -174,31 +174,31 @@ module.exports = {
                 "min": 250000,
                 "max": 1000000,
                 "key": "common",
-                "weight": 0.58
+                "weight": 0.36
             },
             {
                 "min": 1000000,
                 "max": 2500000,
                 "key": "uncommon",
-                "weight": 0.27
+                "weight": 0.28
             },
             {
                 "min": 2500000,
                 "max": 7500000,
                 "key": "rare",
-                "weight": 0.09
+                "weight": 0.2
             },
             {
                 "min": 7500000,
                 "max": 15000000,
                 "key": "epic",
-                "weight": 0.04
+                "weight": 0.11
             },
             {
                 "min": 15000000,
                 "max": 27500000,
                 "key": "legendary",
-                "weight": 0.02
+                "weight": 0.05
             }
         ],
         "kiss.level1To99": [
@@ -207,42 +207,42 @@ module.exports = {
                 "min": 20000,
                 "max": 50000,
                 "rarity": "COMMON",
-                "weight": 0.68
+                "weight": 0.5
             },
             {
                 "key": "uncommon",
                 "min": 50000,
                 "max": 125000,
                 "rarity": "UNCOMMON",
-                "weight": 0.24
+                "weight": 0.26
             },
             {
                 "key": "rare",
                 "min": 125000,
                 "max": 350000,
                 "rarity": "RARE",
-                "weight": 0.055
+                "weight": 0.14
             },
             {
                 "key": "epic",
                 "min": 350000,
                 "max": 750000,
                 "rarity": "EPIC",
-                "weight": 0.018
+                "weight": 0.06
             },
             {
                 "key": "legendary",
                 "min": 750000,
                 "max": 2000000,
                 "rarity": "LEGENDARY",
-                "weight": 0.006
+                "weight": 0.03
             },
             {
                 "key": "mythic",
                 "min": 2000000,
                 "max": 5000000,
                 "rarity": "MYTHIC",
-                "weight": 0.001
+                "weight": 0.01
             }
         ],
         "kiss.level100Plus": [
@@ -251,138 +251,138 @@ module.exports = {
                 "min": 50000,
                 "max": 125000,
                 "rarity": "COMMON",
-                "weight": 0.58
+                "weight": 0.43
             },
             {
                 "key": "uncommon",
                 "min": 125000,
                 "max": 350000,
                 "rarity": "UNCOMMON",
-                "weight": 0.27
+                "weight": 0.26
             },
             {
                 "key": "rare",
                 "min": 350000,
                 "max": 750000,
                 "rarity": "RARE",
-                "weight": 0.09
+                "weight": 0.17
             },
             {
                 "key": "epic",
                 "min": 750000,
                 "max": 2000000,
                 "rarity": "EPIC",
-                "weight": 0.04
+                "weight": 0.08
             },
             {
                 "key": "legendary",
                 "min": 2000000,
                 "max": 12500000,
                 "rarity": "LEGENDARY",
-                "weight": 0.015
+                "weight": 0.04
             },
             {
                 "key": "mythic",
                 "min": 12500000,
                 "max": 75000000,
                 "rarity": "MYTHIC",
-                "weight": 0.005
+                "weight": 0.02
             }
         ],
         "steal.level100Plus": [
             {
                 "key": "failure",
-                "weight": 0.23199999999999998
+                "weight": 0.11
             },
             {
                 "key": "common",
                 "min": 200000,
                 "max": 500000,
                 "rarity": "COMMON",
-                "weight": 0.52
+                "weight": 0.34
             },
             {
                 "key": "uncommon",
                 "min": 500000,
                 "max": 1250000,
                 "rarity": "UNCOMMON",
-                "weight": 0.27
+                "weight": 0.24
             },
             {
                 "key": "rare",
                 "min": 1250000,
                 "max": 3000000,
                 "rarity": "RARE",
-                "weight": 0.12
+                "weight": 0.16
             },
             {
                 "key": "epic",
                 "min": 3000000,
                 "max": 7500000,
                 "rarity": "EPIC",
-                "weight": 0.05
+                "weight": 0.08
             },
             {
                 "key": "legendary",
                 "min": 7500000,
                 "max": 20000000,
                 "rarity": "LEGENDARY",
-                "weight": 0.025
+                "weight": 0.05
             },
             {
                 "key": "mythic",
                 "min": 20000000,
                 "max": 150000000,
                 "rarity": "MYTHIC",
-                "weight": 0.015
+                "weight": 0.02
             }
         ],
         "steal.level1To99": [
             {
                 "key": "failure",
-                "weight": 0.1934
+                "weight": 0.13
             },
             {
                 "key": "common",
                 "min": 50000,
                 "max": 200000,
                 "rarity": "COMMON",
-                "weight": 0.62
+                "weight": 0.38
             },
             {
                 "key": "uncommon",
                 "min": 200000,
                 "max": 500000,
                 "rarity": "UNCOMMON",
-                "weight": 0.25
+                "weight": 0.23
             },
             {
                 "key": "rare",
                 "min": 500000,
                 "max": 1000000,
                 "rarity": "RARE",
-                "weight": 0.08
+                "weight": 0.14
             },
             {
                 "key": "epic",
                 "min": 1000000,
                 "max": 2500000,
                 "rarity": "EPIC",
-                "weight": 0.03
+                "weight": 0.07
             },
             {
                 "key": "legendary",
                 "min": 2500000,
                 "max": 5000000,
                 "rarity": "LEGENDARY",
-                "weight": 0.015
+                "weight": 0.035
             },
             {
                 "key": "mythic",
                 "min": 5000000,
                 "max": 12500000,
                 "rarity": "MYTHIC",
-                "weight": 0.005
+                "weight": 0.015
             }
         ],
         "ezwin.level1To99": [
@@ -410,7 +410,7 @@ module.exports = {
                         "max": 15000000
                     }
                 },
-                "weight": 0.92
+                "weight": 0.85
             },
             {
                 "key": "legendary",
@@ -436,7 +436,7 @@ module.exports = {
                         "max": 100000000
                     }
                 },
-                "weight": 0.08
+                "weight": 0.15
             }
         ],
         "ezwin.level100Plus": [
@@ -464,7 +464,7 @@ module.exports = {
                         "max": 125000000
                     }
                 },
-                "weight": 0.92
+                "weight": 0.82
             },
             {
                 "key": "legendary",
@@ -490,7 +490,7 @@ module.exports = {
                         "max": 1000000000
                     }
                 },
-                "weight": 0.08
+                "weight": 0.18
             }
         ],
         "fight": [
@@ -500,7 +500,7 @@ module.exports = {
                 "minXP": 1000000,
                 "maxXP": 3000000,
                 "lossMultiplier": 0.9,
-                "weight": 0.7455682938638039
+                "weight": 0.53
             },
             {
                 "key": "uncommon",
@@ -508,7 +508,7 @@ module.exports = {
                 "minXP": 3000000,
                 "maxXP": 7500000,
                 "lossMultiplier": 0.9,
-                "weight": 0.1987917061361962
+                "weight": 0.23
             },
             {
                 "key": "rare",
@@ -516,7 +516,7 @@ module.exports = {
                 "minXP": 7500000,
                 "maxXP": 15000000,
                 "lossMultiplier": 0.9,
-                "weight": 0.042779000000000005
+                "weight": 0.12
             },
             {
                 "key": "epic",
@@ -524,7 +524,7 @@ module.exports = {
                 "minXP": 15000000,
                 "maxXP": 35000000,
                 "lossMultiplier": 0.95,
-                "weight": 0.01035
+                "weight": 0.07
             },
             {
                 "key": "legendary",
@@ -532,7 +532,7 @@ module.exports = {
                 "minXP": 35000000,
                 "maxXP": 100000000,
                 "lossMultiplier": 1.05,
-                "weight": 0.001875
+                "weight": 0.032
             },
             {
                 "key": "mythic",
@@ -540,7 +540,7 @@ module.exports = {
                 "minXP": 100000000,
                 "maxXP": 350000000,
                 "lossMultiplier": 1.2,
-                "weight": 0.000625
+                "weight": 0.015
             },
             {
                 "key": "cosmic",
@@ -548,29 +548,29 @@ module.exports = {
                 "minXP": 350000000,
                 "maxXP": 2000000000,
                 "lossMultiplier": 1.5,
-                "weight": 0.000011000000000000001
+                "weight": 0.003
             }
         ],
         "troll": [
             {
                 "key": "failed",
                 "rarity": "failed",
-                "weight": 0.245
+                "weight": 0.2
             },
             {
                 "key": "common",
                 "rarity": "common",
-                "weight": 0.583
+                "weight": 0.5
             },
             {
                 "key": "rare",
                 "rarity": "rare",
-                "weight": 0.1595
+                "weight": 0.25
             },
             {
                 "key": "legendary",
                 "rarity": "legendary",
-                "weight": 0.0125
+                "weight": 0.05
             }
         ],
         "roll": [
@@ -616,7 +616,7 @@ module.exports = {
             },
             {
                 "key": "mythic",
-                "weight": 0.00003125,
+                "weight": 3.125e-05,
                 "min": 10000001,
                 "max": 199999999,
                 "type": "positive",
@@ -624,7 +624,7 @@ module.exports = {
             },
             {
                 "key": "jackpot",
-                "weight": 5e-7,
+                "weight": 5e-07,
                 "min": 200000000,
                 "max": 2000000000,
                 "type": "positive",
@@ -674,7 +674,7 @@ module.exports = {
             },
             {
                 "key": "mythic",
-                "weight": 0.000018750000000000002,
+                "weight": 1.8750000000000002e-05,
                 "min": -199999999,
                 "max": -10000001,
                 "type": "negative",
@@ -682,7 +682,7 @@ module.exports = {
             },
             {
                 "key": "jackpot",
-                "weight": 3.5e-7,
+                "weight": 3.5e-07,
                 "min": -200000000,
                 "max": -200000000,
                 "type": "negative",
@@ -698,7 +698,7 @@ module.exports = {
                 "rare": 0.0075,
                 "epic": 0.003,
                 "legendary": 0.00055,
-                "mythic": 0.00004
+                "mythic": 4e-05
             },
             "tier2": {
                 "common": -0.011678030303030303,
@@ -780,7 +780,7 @@ module.exports = {
                 "common": -0.001314459049544995,
                 "uncommon": -0.00040444893832153697,
                 "rare": -0.00020222446916076848,
-                "epic": -0.0000788675429726997,
+                "epic": -7.88675429726997e-05,
                 "legendary": 0.0016,
                 "mythic": 0.0004
             },
@@ -822,7 +822,7 @@ module.exports = {
                 "common": -0.0013131313131313131,
                 "uncommon": -0.00040404040404040404,
                 "rare": -0.00020202020202020202,
-                "epic": -0.00008080808080808081,
+                "epic": -8.080808080808081e-05,
                 "legendary": 0.002
             },
             "tier2": {
@@ -858,8 +858,8 @@ module.exports = {
             "tier1": {
                 "common": -0.001500750375187594,
                 "uncommon": -0.00044022011005502755,
-                "rare": -0.00004402201100550276,
-                "epic": -0.00001500750375187594,
+                "rare": -4.402201100550276e-05,
+                "epic": -1.500750375187594e-05,
                 "legendary": 0.0016,
                 "mythic": 0.0004
             },
@@ -867,7 +867,7 @@ module.exports = {
                 "common": -0.0056278139069534765,
                 "uncommon": -0.0016508254127063533,
                 "rare": -0.00016508254127063532,
-                "epic": -0.00005627813906953477,
+                "epic": -5.627813906953477e-05,
                 "legendary": 0.006,
                 "mythic": 0.0015
             },
@@ -900,8 +900,8 @@ module.exports = {
             "tier1": {
                 "common": -0.001401541695865452,
                 "uncommon": -0.0005005506056662329,
-                "rare": -0.00008008809690659726,
-                "epic": -0.00001781960156171789,
+                "rare": -8.008809690659726e-05,
+                "epic": -1.781960156171789e-05,
                 "legendary": 0.0016,
                 "mythic": 0.0004
             },
@@ -909,7 +909,7 @@ module.exports = {
                 "common": -0.005255781359495445,
                 "uncommon": -0.0018770647712483737,
                 "rare": -0.00030033036339973974,
-                "epic": -0.0000668235058564421,
+                "epic": -6.68235058564421e-05,
                 "legendary": 0.006,
                 "mythic": 0.0015
             },
@@ -943,8 +943,8 @@ module.exports = {
                 "failure": -0.0004653961885656971,
                 "common": -0.001303911735205617,
                 "uncommon": -0.00020060180541624876,
-                "rare": -0.000020060180541624878,
-                "epic": -0.000010030090270812439,
+                "rare": -2.0060180541624878e-05,
+                "epic": -1.0030090270812439e-05,
                 "legendary": 0.0016,
                 "mythic": 0.0004
             },
@@ -952,8 +952,8 @@ module.exports = {
                 "failure": -0.0017452357071213638,
                 "common": -0.004889669007021063,
                 "uncommon": -0.0007522567703109327,
-                "rare": -0.00007522567703109326,
-                "epic": -0.00003761283851554663,
+                "rare": -7.522567703109326e-05,
+                "epic": -3.761283851554663e-05,
                 "legendary": 0.006,
                 "mythic": 0.0015
             },
@@ -990,8 +990,8 @@ module.exports = {
                 "failure": -0.0003870322193315989,
                 "common": -0.0015009005403241943,
                 "uncommon": -0.00010006003602161297,
-                "rare": -0.000010006003602161298,
-                "epic": -0.000002001200720432259,
+                "rare": -1.0006003602161298e-05,
+                "epic": -2.001200720432259e-06,
                 "legendary": 0.0016,
                 "mythic": 0.0004
             },
@@ -999,8 +999,8 @@ module.exports = {
                 "failure": -0.001451370822493496,
                 "common": -0.005628377026215729,
                 "uncommon": -0.0003752251350810486,
-                "rare": -0.00003752251350810486,
-                "epic": -0.000007504502701620972,
+                "rare": -3.752251350810486e-05,
+                "epic": -7.504502701620972e-06,
                 "legendary": 0.006,
                 "mythic": 0.0015
             },
@@ -1009,7 +1009,7 @@ module.exports = {
                 "common": -0.015009005403241947,
                 "uncommon": -0.0010006003602161299,
                 "rare": -0.000100060036021613,
-                "epic": -0.0000200120072043226,
+                "epic": -2.00120072043226e-05,
                 "legendary": 0.016,
                 "mythic": 0.004
             },
@@ -1018,7 +1018,7 @@ module.exports = {
                 "common": -0.03752251350810487,
                 "uncommon": -0.002501500900540325,
                 "rare": -0.0002501500900540325,
-                "epic": -0.000050030018010806504,
+                "epic": -5.0030018010806504e-05,
                 "legendary": 0.04000000000000001,
                 "mythic": 0.010000000000000002
             },
@@ -1080,20 +1080,20 @@ module.exports = {
             "tier1": {
                 "common": -0.0015032214751650817,
                 "uncommon": -0.00040080561929478246,
-                "rare": -0.00007793665267187045,
-                "epic": -0.000018036252868265215,
+                "rare": -7.793665267187045e-05,
+                "epic": -1.8036252868265215e-05,
                 "legendary": 0.0016,
                 "mythic": 0.00038,
-                "cosmic": 0.00002
+                "cosmic": 2e-05
             },
             "tier2": {
                 "common": -0.0056370805318690575,
                 "uncommon": -0.0015030210723554344,
                 "rare": -0.00029226244751951423,
-                "epic": -0.00006763594825599456,
+                "epic": -6.763594825599456e-05,
                 "legendary": 0.006,
                 "mythic": 0.001425,
-                "cosmic": 0.000075
+                "cosmic": 7.5e-05
             },
             "tier3": {
                 "common": -0.015032214751650818,
@@ -1163,7 +1163,7 @@ module.exports = {
                 "epic": 0.005,
                 "legendary": 0.00425,
                 "mythic": 0.0005,
-                "jackpot": 1e-7
+                "jackpot": 1e-07
             },
             "tier2": {
                 "common": -0.07454581818181817,
@@ -1172,7 +1172,7 @@ module.exports = {
                 "epic": 0.03,
                 "legendary": 0.009,
                 "mythic": 0.001,
-                "jackpot": 5e-7
+                "jackpot": 5e-07
             },
             "tier3": {
                 "common": -0.15862575,
@@ -1181,7 +1181,7 @@ module.exports = {
                 "epic": 0.0465,
                 "legendary": 0.01,
                 "mythic": 0.0025,
-                "jackpot": 0.000001
+                "jackpot": 1e-06
             },
             "max": {
                 "common": -0.29431714285714283,
@@ -1190,7 +1190,7 @@ module.exports = {
                 "epic": 0.2,
                 "legendary": 0.25,
                 "mythic": 0.005,
-                "jackpot": 0.000005
+                "jackpot": 5e-06
             },
             "omega": {
                 "common": -0.4109677419354838,
@@ -1208,7 +1208,7 @@ module.exports = {
             "common": -0.0037815739962371404,
             "uncommon": -0.0011008366358432411,
             "rare": -0.000100076057803931,
-            "epic": -0.000017513310115687924,
+            "epic": -1.7513310115687924e-05,
             "legendary": 0.004,
             "mythic": 0.001
         },
@@ -1216,7 +1216,7 @@ module.exports = {
             "common": -0.0032535789368305134,
             "uncommon": -0.0015016518169986982,
             "rare": -0.00020022024226649314,
-            "epic": -0.00004454900390429472,
+            "epic": -4.454900390429472e-05,
             "legendary": 0.0007142857142857143,
             "mythic": 0.004285714285714286
         },
@@ -1239,7 +1239,7 @@ module.exports = {
             "common": -0.0037518759379689846,
             "uncommon": -0.0011005502751375688,
             "rare": -0.0001100550275137569,
-            "epic": -0.00003751875937968984,
+            "epic": -3.751875937968984e-05,
             "legendary": 0.004,
             "mythic": 0.001
         },
@@ -1247,7 +1247,7 @@ module.exports = {
             "common": -0.0035038542396636295,
             "uncommon": -0.001251376514165582,
             "rare": -0.00020022024226649314,
-            "epic": -0.00004454900390429472,
+            "epic": -4.454900390429472e-05,
             "legendary": 0.0007142857142857143,
             "mythic": 0.004285714285714286
         },
@@ -1255,8 +1255,8 @@ module.exports = {
             "failure": -0.0011634904714142426,
             "common": -0.0032597793380140416,
             "uncommon": -0.0005015045135406218,
-            "rare": -0.00005015045135406218,
-            "epic": -0.00002507522567703109,
+            "rare": -5.015045135406218e-05,
+            "epic": -2.507522567703109e-05,
             "legendary": 0.004,
             "mythic": 0.001
         },
@@ -1264,8 +1264,8 @@ module.exports = {
             "failure": -0.0009675805483289976,
             "common": -0.003752251350810487,
             "uncommon": -0.00025015009005403246,
-            "rare": -0.00002501500900540325,
-            "epic": -0.00000500300180108065,
+            "rare": -2.501500900540325e-05,
+            "epic": -5.00300180108065e-06,
             "legendary": 0.004,
             "mythic": 0.001
         },
@@ -1281,10 +1281,10 @@ module.exports = {
             "common": -0.0037580536879127046,
             "uncommon": -0.0010020140482369562,
             "rare": -0.00019484163167967614,
-            "epic": -0.00004509063217066303,
+            "epic": -4.509063217066303e-05,
             "legendary": 0.004,
             "mythic": 0.00095,
-            "cosmic": 0.00005
+            "cosmic": 5e-05
         },
         "troll": {
             "failed": -0.0012373737373737375,
@@ -1295,17 +1295,17 @@ module.exports = {
         "roll": {
             "common": -0.007302511394037085,
             "uncommon": -0.0006614918588443035,
-            "rare": -0.00006879721713001923,
-            "epic": -0.000017199529988591773,
+            "rare": -6.879721713001923e-05,
+            "epic": -1.7199529988591773e-05,
             "legendary": 0.002,
             "mythic": 0.006,
-            "jackpot": 0.00005
+            "jackpot": 5e-05
         },
         "rollOmega": {
             "common": -0.0076653691030575625,
             "uncommon": -0.0006943610195322195,
-            "rare": -0.00007221571239113823,
-            "epic": -0.00001805416501908081,
+            "rare": -7.221571239113823e-05,
+            "epic": -1.805416501908081e-05,
             "legendary": 0.002,
             "mythic": 0.006,
             "jackpot": 0.00045
@@ -1316,16 +1316,16 @@ module.exports = {
             "common": -0.011811018428616501,
             "uncommon": -0.0010698911803916562,
             "rare": -0.00011127202074942242,
-            "epic": -0.000027818370242417996,
+            "epic": -2.7818370242417996e-05,
             "legendary": 0.01,
             "mythic": 0.003,
-            "jackpot": 0.00002
+            "jackpot": 2e-05
         },
         "omega": {
             "common": -0.0057490268272931706,
             "uncommon": -0.0005207707646491645,
-            "rare": -0.000054161784293353656,
-            "epic": -0.000013540623764310603,
+            "rare": -5.4161784293353656e-05,
+            "epic": -1.3540623764310603e-05,
             "legendary": 0.0015,
             "mythic": 0.0045,
             "jackpot": 0.0003375
@@ -1439,7 +1439,7 @@ module.exports = {
                 "common": -0.0037815739962371404,
                 "uncommon": -0.0011008366358432411,
                 "rare": -0.000100076057803931,
-                "epic": -0.000017513310115687924,
+                "epic": -1.7513310115687924e-05,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1447,7 +1447,7 @@ module.exports = {
                 "common": -0.0032535789368305134,
                 "uncommon": -0.0015016518169986982,
                 "rare": -0.00020022024226649314,
-                "epic": -0.00004454900390429472,
+                "epic": -4.454900390429472e-05,
                 "legendary": 0.0007142857142857143,
                 "mythic": 0.004285714285714286
             },
@@ -1470,7 +1470,7 @@ module.exports = {
                 "common": -0.0037518759379689846,
                 "uncommon": -0.0011005502751375688,
                 "rare": -0.0001100550275137569,
-                "epic": -0.00003751875937968984,
+                "epic": -3.751875937968984e-05,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1478,7 +1478,7 @@ module.exports = {
                 "common": -0.0035038542396636295,
                 "uncommon": -0.001251376514165582,
                 "rare": -0.00020022024226649314,
-                "epic": -0.00004454900390429472,
+                "epic": -4.454900390429472e-05,
                 "legendary": 0.0007142857142857143,
                 "mythic": 0.004285714285714286
             },
@@ -1486,8 +1486,8 @@ module.exports = {
                 "failure": -0.0011634904714142426,
                 "common": -0.0032597793380140416,
                 "uncommon": -0.0005015045135406218,
-                "rare": -0.00005015045135406218,
-                "epic": -0.00002507522567703109,
+                "rare": -5.015045135406218e-05,
+                "epic": -2.507522567703109e-05,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1495,8 +1495,8 @@ module.exports = {
                 "failure": -0.0009675805483289976,
                 "common": -0.003752251350810487,
                 "uncommon": -0.00025015009005403246,
-                "rare": -0.00002501500900540325,
-                "epic": -0.00000500300180108065,
+                "rare": -2.501500900540325e-05,
+                "epic": -5.00300180108065e-06,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1512,10 +1512,10 @@ module.exports = {
                 "common": -0.0037580536879127046,
                 "uncommon": -0.0010020140482369562,
                 "rare": -0.00019484163167967614,
-                "epic": -0.00004509063217066303,
+                "epic": -4.509063217066303e-05,
                 "legendary": 0.004,
                 "mythic": 0.00095,
-                "cosmic": 0.00005
+                "cosmic": 5e-05
             },
             "troll": {
                 "failed": -0.0012373737373737375,
@@ -1526,17 +1526,17 @@ module.exports = {
             "roll": {
                 "common": -0.007302511394037085,
                 "uncommon": -0.0006614918588443035,
-                "rare": -0.00006879721713001923,
-                "epic": -0.000017199529988591773,
+                "rare": -6.879721713001923e-05,
+                "epic": -1.7199529988591773e-05,
                 "legendary": 0.002,
                 "mythic": 0.006,
-                "jackpot": 0.00005
+                "jackpot": 5e-05
             },
             "roll.omega": {
                 "common": -0.0076653691030575625,
                 "uncommon": -0.0006943610195322195,
-                "rare": -0.00007221571239113823,
-                "epic": -0.00001805416501908081,
+                "rare": -7.221571239113823e-05,
+                "epic": -1.805416501908081e-05,
                 "legendary": 0.002,
                 "mythic": 0.006,
                 "jackpot": 0.00045
@@ -1563,7 +1563,7 @@ module.exports = {
                 "common": -0.0037815739962371404,
                 "uncommon": -0.0011008366358432411,
                 "rare": -0.000100076057803931,
-                "epic": -0.000017513310115687924,
+                "epic": -1.7513310115687924e-05,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1571,7 +1571,7 @@ module.exports = {
                 "common": -0.0032535789368305134,
                 "uncommon": -0.0015016518169986982,
                 "rare": -0.00020022024226649314,
-                "epic": -0.00004454900390429472,
+                "epic": -4.454900390429472e-05,
                 "legendary": 0.0007142857142857143,
                 "mythic": 0.004285714285714286
             },
@@ -1594,7 +1594,7 @@ module.exports = {
                 "common": -0.0037518759379689846,
                 "uncommon": -0.0011005502751375688,
                 "rare": -0.0001100550275137569,
-                "epic": -0.00003751875937968984,
+                "epic": -3.751875937968984e-05,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1602,7 +1602,7 @@ module.exports = {
                 "common": -0.0035038542396636295,
                 "uncommon": -0.001251376514165582,
                 "rare": -0.00020022024226649314,
-                "epic": -0.00004454900390429472,
+                "epic": -4.454900390429472e-05,
                 "legendary": 0.0007142857142857143,
                 "mythic": 0.004285714285714286
             },
@@ -1610,8 +1610,8 @@ module.exports = {
                 "failure": -0.0011634904714142426,
                 "common": -0.0032597793380140416,
                 "uncommon": -0.0005015045135406218,
-                "rare": -0.00005015045135406218,
-                "epic": -0.00002507522567703109,
+                "rare": -5.015045135406218e-05,
+                "epic": -2.507522567703109e-05,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1619,8 +1619,8 @@ module.exports = {
                 "failure": -0.0009675805483289976,
                 "common": -0.003752251350810487,
                 "uncommon": -0.00025015009005403246,
-                "rare": -0.00002501500900540325,
-                "epic": -0.00000500300180108065,
+                "rare": -2.501500900540325e-05,
+                "epic": -5.00300180108065e-06,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1636,10 +1636,10 @@ module.exports = {
                 "common": -0.0037580536879127046,
                 "uncommon": -0.0010020140482369562,
                 "rare": -0.00019484163167967614,
-                "epic": -0.00004509063217066303,
+                "epic": -4.509063217066303e-05,
                 "legendary": 0.004,
                 "mythic": 0.00095,
-                "cosmic": 0.00005
+                "cosmic": 5e-05
             },
             "troll": {
                 "failed": -0.0012373737373737375,
@@ -1650,17 +1650,17 @@ module.exports = {
             "roll": {
                 "common": -0.007302511394037085,
                 "uncommon": -0.0006614918588443035,
-                "rare": -0.00006879721713001923,
-                "epic": -0.000017199529988591773,
+                "rare": -6.879721713001923e-05,
+                "epic": -1.7199529988591773e-05,
                 "legendary": 0.002,
                 "mythic": 0.006,
-                "jackpot": 0.00005
+                "jackpot": 5e-05
             },
             "roll.omega": {
                 "common": -0.0076653691030575625,
                 "uncommon": -0.0006943610195322195,
-                "rare": -0.00007221571239113823,
-                "epic": -0.00001805416501908081,
+                "rare": -7.221571239113823e-05,
+                "epic": -1.805416501908081e-05,
                 "legendary": 0.002,
                 "mythic": 0.006,
                 "jackpot": 0.00045
@@ -1687,7 +1687,7 @@ module.exports = {
                 "common": -0.0037815739962371404,
                 "uncommon": -0.0011008366358432411,
                 "rare": -0.000100076057803931,
-                "epic": -0.000017513310115687924,
+                "epic": -1.7513310115687924e-05,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1695,7 +1695,7 @@ module.exports = {
                 "common": -0.0032535789368305134,
                 "uncommon": -0.0015016518169986982,
                 "rare": -0.00020022024226649314,
-                "epic": -0.00004454900390429472,
+                "epic": -4.454900390429472e-05,
                 "legendary": 0.0007142857142857143,
                 "mythic": 0.004285714285714286
             },
@@ -1718,7 +1718,7 @@ module.exports = {
                 "common": -0.0037518759379689846,
                 "uncommon": -0.0011005502751375688,
                 "rare": -0.0001100550275137569,
-                "epic": -0.00003751875937968984,
+                "epic": -3.751875937968984e-05,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1726,7 +1726,7 @@ module.exports = {
                 "common": -0.0035038542396636295,
                 "uncommon": -0.001251376514165582,
                 "rare": -0.00020022024226649314,
-                "epic": -0.00004454900390429472,
+                "epic": -4.454900390429472e-05,
                 "legendary": 0.0007142857142857143,
                 "mythic": 0.004285714285714286
             },
@@ -1734,8 +1734,8 @@ module.exports = {
                 "failure": -0.0011634904714142426,
                 "common": -0.0032597793380140416,
                 "uncommon": -0.0005015045135406218,
-                "rare": -0.00005015045135406218,
-                "epic": -0.00002507522567703109,
+                "rare": -5.015045135406218e-05,
+                "epic": -2.507522567703109e-05,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1743,8 +1743,8 @@ module.exports = {
                 "failure": -0.0009675805483289976,
                 "common": -0.003752251350810487,
                 "uncommon": -0.00025015009005403246,
-                "rare": -0.00002501500900540325,
-                "epic": -0.00000500300180108065,
+                "rare": -2.501500900540325e-05,
+                "epic": -5.00300180108065e-06,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1760,10 +1760,10 @@ module.exports = {
                 "common": -0.0037580536879127046,
                 "uncommon": -0.0010020140482369562,
                 "rare": -0.00019484163167967614,
-                "epic": -0.00004509063217066303,
+                "epic": -4.509063217066303e-05,
                 "legendary": 0.004,
                 "mythic": 0.00095,
-                "cosmic": 0.00005
+                "cosmic": 5e-05
             },
             "troll": {
                 "failed": -0.0012373737373737375,
@@ -1774,17 +1774,17 @@ module.exports = {
             "roll": {
                 "common": -0.007302511394037085,
                 "uncommon": -0.0006614918588443035,
-                "rare": -0.00006879721713001923,
-                "epic": -0.000017199529988591773,
+                "rare": -6.879721713001923e-05,
+                "epic": -1.7199529988591773e-05,
                 "legendary": 0.002,
                 "mythic": 0.006,
-                "jackpot": 0.00005
+                "jackpot": 5e-05
             },
             "roll.omega": {
                 "common": -0.0076653691030575625,
                 "uncommon": -0.0006943610195322195,
-                "rare": -0.00007221571239113823,
-                "epic": -0.00001805416501908081,
+                "rare": -7.221571239113823e-05,
+                "epic": -1.805416501908081e-05,
                 "legendary": 0.002,
                 "mythic": 0.006,
                 "jackpot": 0.00045
@@ -1811,7 +1811,7 @@ module.exports = {
                 "common": -0.0037815739962371404,
                 "uncommon": -0.0011008366358432411,
                 "rare": -0.000100076057803931,
-                "epic": -0.000017513310115687924,
+                "epic": -1.7513310115687924e-05,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1819,7 +1819,7 @@ module.exports = {
                 "common": -0.0032535789368305134,
                 "uncommon": -0.0015016518169986982,
                 "rare": -0.00020022024226649314,
-                "epic": -0.00004454900390429472,
+                "epic": -4.454900390429472e-05,
                 "legendary": 0.0007142857142857143,
                 "mythic": 0.004285714285714286
             },
@@ -1842,7 +1842,7 @@ module.exports = {
                 "common": -0.0037518759379689846,
                 "uncommon": -0.0011005502751375688,
                 "rare": -0.0001100550275137569,
-                "epic": -0.00003751875937968984,
+                "epic": -3.751875937968984e-05,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1850,7 +1850,7 @@ module.exports = {
                 "common": -0.0035038542396636295,
                 "uncommon": -0.001251376514165582,
                 "rare": -0.00020022024226649314,
-                "epic": -0.00004454900390429472,
+                "epic": -4.454900390429472e-05,
                 "legendary": 0.0007142857142857143,
                 "mythic": 0.004285714285714286
             },
@@ -1858,8 +1858,8 @@ module.exports = {
                 "failure": -0.0011634904714142426,
                 "common": -0.0032597793380140416,
                 "uncommon": -0.0005015045135406218,
-                "rare": -0.00005015045135406218,
-                "epic": -0.00002507522567703109,
+                "rare": -5.015045135406218e-05,
+                "epic": -2.507522567703109e-05,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1867,8 +1867,8 @@ module.exports = {
                 "failure": -0.0009675805483289976,
                 "common": -0.003752251350810487,
                 "uncommon": -0.00025015009005403246,
-                "rare": -0.00002501500900540325,
-                "epic": -0.00000500300180108065,
+                "rare": -2.501500900540325e-05,
+                "epic": -5.00300180108065e-06,
                 "legendary": 0.004,
                 "mythic": 0.001
             },
@@ -1884,10 +1884,10 @@ module.exports = {
                 "common": -0.0037580536879127046,
                 "uncommon": -0.0010020140482369562,
                 "rare": -0.00019484163167967614,
-                "epic": -0.00004509063217066303,
+                "epic": -4.509063217066303e-05,
                 "legendary": 0.004,
                 "mythic": 0.00095,
-                "cosmic": 0.00005
+                "cosmic": 5e-05
             },
             "troll": {
                 "failed": -0.0012373737373737375,
@@ -1898,17 +1898,17 @@ module.exports = {
             "roll": {
                 "common": -0.007302511394037085,
                 "uncommon": -0.0006614918588443035,
-                "rare": -0.00006879721713001923,
-                "epic": -0.000017199529988591773,
+                "rare": -6.879721713001923e-05,
+                "epic": -1.7199529988591773e-05,
                 "legendary": 0.002,
                 "mythic": 0.006,
-                "jackpot": 0.00005
+                "jackpot": 5e-05
             },
             "roll.omega": {
                 "common": -0.0076653691030575625,
                 "uncommon": -0.0006943610195322195,
-                "rare": -0.00007221571239113823,
-                "epic": -0.00001805416501908081,
+                "rare": -7.221571239113823e-05,
+                "epic": -1.805416501908081e-05,
                 "legendary": 0.002,
                 "mythic": 0.006,
                 "jackpot": 0.00045
@@ -1940,7 +1940,7 @@ module.exports = {
                 "epic": -0.00011234205488194003,
                 "legendary": 0.005,
                 "mythic": 0.0015,
-                "jackpot": 0.00002
+                "jackpot": 2e-05
             },
             "omega": {
                 "common": -0.022157240857652114,
@@ -1957,16 +1957,16 @@ module.exports = {
                 "common": -0.011811018428616501,
                 "uncommon": -0.0010698911803916562,
                 "rare": -0.00011127202074942242,
-                "epic": -0.000027818370242417996,
+                "epic": -2.7818370242417996e-05,
                 "legendary": 0.01,
                 "mythic": 0.003,
-                "jackpot": 0.00002
+                "jackpot": 2e-05
             },
             "omega": {
                 "common": -0.0057490268272931706,
                 "uncommon": -0.0005207707646491645,
-                "rare": -0.000054161784293353656,
-                "epic": -0.000013540623764310603,
+                "rare": -5.4161784293353656e-05,
+                "epic": -1.3540623764310603e-05,
                 "legendary": 0.0015,
                 "mythic": 0.0045,
                 "jackpot": 0.0003375
@@ -1977,16 +1977,16 @@ module.exports = {
                 "common": -0.011811018428616501,
                 "uncommon": -0.0010698911803916562,
                 "rare": -0.00011127202074942242,
-                "epic": -0.000027818370242417996,
+                "epic": -2.7818370242417996e-05,
                 "legendary": 0.01,
                 "mythic": 0.003,
-                "jackpot": 0.00002
+                "jackpot": 2e-05
             },
             "omega": {
                 "common": -0.0057490268272931706,
                 "uncommon": -0.0005207707646491645,
-                "rare": -0.000054161784293353656,
-                "epic": -0.000013540623764310603,
+                "rare": -5.4161784293353656e-05,
+                "epic": -1.3540623764310603e-05,
                 "legendary": 0.0015,
                 "mythic": 0.0045,
                 "jackpot": 0.0003375
@@ -1997,16 +1997,16 @@ module.exports = {
                 "common": -0.011811018428616501,
                 "uncommon": -0.0010698911803916562,
                 "rare": -0.00011127202074942242,
-                "epic": -0.000027818370242417996,
+                "epic": -2.7818370242417996e-05,
                 "legendary": 0.01,
                 "mythic": 0.003,
-                "jackpot": 0.00002
+                "jackpot": 2e-05
             },
             "omega": {
                 "common": -0.0057490268272931706,
                 "uncommon": -0.0005207707646491645,
-                "rare": -0.000054161784293353656,
-                "epic": -0.000013540623764310603,
+                "rare": -5.4161784293353656e-05,
+                "epic": -1.3540623764310603e-05,
                 "legendary": 0.0015,
                 "mythic": 0.0045,
                 "jackpot": 0.0003375
@@ -2017,16 +2017,16 @@ module.exports = {
                 "common": -0.011811018428616501,
                 "uncommon": -0.0010698911803916562,
                 "rare": -0.00011127202074942242,
-                "epic": -0.000027818370242417996,
+                "epic": -2.7818370242417996e-05,
                 "legendary": 0.01,
                 "mythic": 0.003,
-                "jackpot": 0.00002
+                "jackpot": 2e-05
             },
             "omega": {
                 "common": -0.0057490268272931706,
                 "uncommon": -0.0005207707646491645,
-                "rare": -0.000054161784293353656,
-                "epic": -0.000013540623764310603,
+                "rare": -5.4161784293353656e-05,
+                "epic": -1.3540623764310603e-05,
                 "legendary": 0.0015,
                 "mythic": 0.0045,
                 "jackpot": 0.0003375
@@ -2037,16 +2037,16 @@ module.exports = {
                 "common": -0.011811018428616501,
                 "uncommon": -0.0010698911803916562,
                 "rare": -0.00011127202074942242,
-                "epic": -0.000027818370242417996,
+                "epic": -2.7818370242417996e-05,
                 "legendary": 0.01,
                 "mythic": 0.003,
-                "jackpot": 0.00002
+                "jackpot": 2e-05
             },
             "omega": {
                 "common": -0.0057490268272931706,
                 "uncommon": -0.0005207707646491645,
-                "rare": -0.000054161784293353656,
-                "epic": -0.000013540623764310603,
+                "rare": -5.4161784293353656e-05,
+                "epic": -1.3540623764310603e-05,
                 "legendary": 0.0015,
                 "mythic": 0.0045,
                 "jackpot": 0.0003375
@@ -2057,16 +2057,16 @@ module.exports = {
                 "common": -0.011811018428616501,
                 "uncommon": -0.0010698911803916562,
                 "rare": -0.00011127202074942242,
-                "epic": -0.000027818370242417996,
+                "epic": -2.7818370242417996e-05,
                 "legendary": 0.01,
                 "mythic": 0.003,
-                "jackpot": 0.00002
+                "jackpot": 2e-05
             },
             "omega": {
                 "common": -0.0057490268272931706,
                 "uncommon": -0.0005207707646491645,
-                "rare": -0.000054161784293353656,
-                "epic": -0.000013540623764310603,
+                "rare": -5.4161784293353656e-05,
+                "epic": -1.3540623764310603e-05,
                 "legendary": 0.0015,
                 "mythic": 0.0045,
                 "jackpot": 0.0003375
@@ -2091,6 +2091,53 @@ module.exports = {
                 "mythic": 0.0975,
                 "jackpot": 0.005
             }
+        }
+    },
+    "commandOmegaBonus": {
+        "hug.level1To99": {
+            "mythic": 0.16,
+            "legendary": 0.06
+        },
+        "hug.level100Plus": {
+            "mythic": 0.15,
+            "legendary": 0.08
+        },
+        "hugBot.level1To99": {
+            "mythic": 0.12,
+            "legendary": 0.07
+        },
+        "hugBot.level100Plus": {
+            "legendary": 0.2
+        },
+        "kiss.level1To99": {
+            "mythic": 0.15,
+            "legendary": 0.07
+        },
+        "kiss.level100Plus": {
+            "mythic": 0.13,
+            "legendary": 0.07
+        },
+        "steal.level1To99": {
+            "mythic": 0.12,
+            "legendary": 0.06
+        },
+        "steal.level100Plus": {
+            "mythic": 0.11,
+            "legendary": 0.06
+        },
+        "ezwin.level1To99": {
+            "legendary": 0.22
+        },
+        "ezwin.level100Plus": {
+            "legendary": 0.22
+        },
+        "fight": {
+            "cosmic": 0.05,
+            "mythic": 0.08,
+            "legendary": 0.08
+        },
+        "troll": {
+            "legendary": 0.15
         }
     }
 };
