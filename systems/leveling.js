@@ -796,7 +796,7 @@ async function syncLevelAndAnnounce(
 
 
     const oldLevel =
-        Number(user.level) || 1;
+        Number.isFinite(Number(user.level)) ? Number(user.level) : 1;
 
 
     const calculatedLevel =
