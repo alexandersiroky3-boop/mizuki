@@ -43,7 +43,7 @@ const ROLL_FINAL_EDIT_RETRY_WINDOW_MS =
 
 
 const ROLL_REVEAL_FRAME_DELAY_MS =
-    250;
+    800;
 
 
 const ROLL_MESSAGE_MAX_LENGTH =
@@ -913,14 +913,14 @@ function getRollEmojis(guild){
     ]));
 }
 
-const ROLL_REEL_FRAMES = 13;
-const ROLL_REEL_WEIGHTS = Object.freeze([
-    ["roll", 0.68],
-    ["halfGoldenRoll", 0.21],
-    ["goldenRoll", 0.085],
-    ["mythicRoll", 0.0225],
-    ["rainbowRoll", 0.0025]
+// Fewer Discord message edits keeps the reel responsive, even with Multi Roll.
+// The timing allows Discord to display each frame before the next edit.
+const ROLL_REEL_FRAMES = 7; // Six preview frames, then the real outcome.
+const ROLL_REEL_COMMON_KEYS = Object.freeze([
+    "roll", "halfGoldenRoll", "goldenRoll"
 ]);
+const ROLL_REEL_RAINBOW_PREVIEW_CHANCE = 0.005;
+const ROLL_REEL_MYTHIC_PREVIEW_CHANCE = 0.035;
 
 function getRollFinalEmojiKey(rarityKey, evolved = false){
     // Two neighboring rarities share a visual tier; never use the *amount*
@@ -940,27 +940,56 @@ function getRollFinalEmojiKey(rarityKey, evolved = false){
 function getRollRevealEmojiSequence(rolledXP, guild, revealXP = rolledXP, options = {}){
     const icons = getRollEmojis(guild);
     const random = typeof options.random === "function" ? options.random : Math.random;
-    const sequence = [];
-    for(let i = 0; i < ROLL_REEL_FRAMES; i++){
-        const position = Math.min(1 - Number.EPSILON, Math.max(0, Number(random()) || 0));
-        let remaining = position;
-        let iconKey = "roll";
-        for(const [name, weight] of ROLL_REEL_WEIGHTS){
-            remaining -= weight;
-            if(remaining < 0){
-                iconKey = name;
-                break;
-            }
-        }
-        sequence.push(icons[iconKey]);
-    }
+    const randomUnit = () => Math.max(0, Math.min(1 - Number.EPSILON, Number(random()) || 0));
     const fallbackKey = Math.abs(Number(revealXP) || 0) >= 100000000
         ? "jackpot" : Math.abs(Number(revealXP) || 0) >= 5000000
             ? "mythic" : "common";
     const finalKey = getRollFinalEmojiKey(options.rarityKey || fallbackKey);
-    // Only the last frame is guaranteed: the actual outcome determines it.
-    sequence[sequence.length - 1] = icons[finalKey];
-    return sequence;
+    const sequenceKeys = [];
+    let commonBag = [];
+
+    function refillCommonBag(){
+        // Shuffle a fresh bag, so regular emojis are shown roughly equally
+        // instead of repeatedly favoring :roll:.
+        commonBag = [...ROLL_REEL_COMMON_KEYS];
+        for(let i = commonBag.length - 1; i > 0; i--){
+            const j = Math.floor(randomUnit() * (i + 1));
+            [commonBag[i], commonBag[j]] = [commonBag[j], commonBag[i]];
+        }
+    }
+
+    function nextCommonKey(blocked){
+        // Never show the same emoji twice in a row; for the last preview
+        // also avoid the final emoji so the reel visibly lands on it.
+        if(!commonBag.some(key => !blocked.has(key))) refillCommonBag();
+        const index = commonBag.findIndex(key => !blocked.has(key));
+        return commonBag.splice(index, 1)[0];
+    }
+
+    for(let frame = 0; frame < ROLL_REEL_FRAMES - 1; frame++){
+        const previousKey = sequenceKeys[sequenceKeys.length - 1];
+        const blocked = new Set(previousKey ? [previousKey] : []);
+        if(frame === ROLL_REEL_FRAMES - 2) blocked.add(finalKey);
+
+        // Rare previews are cosmetic only. Evolved emojis NEVER spin by.
+        // Mythic ~3% and Rainbow ~0.5% per preview attempt.
+        const draw = randomUnit();
+        let key;
+        if(draw < ROLL_REEL_RAINBOW_PREVIEW_CHANCE && !blocked.has("rainbowRoll")){
+            key = "rainbowRoll";
+        }
+        else if(draw < ROLL_REEL_RAINBOW_PREVIEW_CHANCE + ROLL_REEL_MYTHIC_PREVIEW_CHANCE &&
+                !blocked.has("mythicRoll")){
+            key = "mythicRoll";
+        }
+        else{
+            key = nextCommonKey(blocked);
+        }
+        sequenceKeys.push(key);
+    }
+
+    sequenceKeys.push(finalKey);
+    return sequenceKeys.map(key => icons[key]);
 }
 
 function waitForRollReveal(milliseconds){
@@ -1012,11 +1041,12 @@ async function playRollReveal(message, rolledXP, wait = waitForRollReveal, optio
         notifyStarted();
         if(!revealMessage || typeof revealMessage.edit !== "function") return {finish};
 
-        // Fast early frames, then a slower near-stop, like a case-opening reel.
-        // Discord may rate-limit rapid edits: await each edit in order.
+        // Discord API calls are not video frames. Spam-editing the message
+        // makes it stutter when edits get queued/rate-limited. Use fewer,
+        // consistently paced edits with a small slowdown at the end.
         for(let frame = 1; frame < sequence.length; frame++){
             const fraction = frame / (sequence.length - 1);
-            const delay = Math.round(ROLL_REVEAL_FRAME_DELAY_MS * (0.75 + fraction * 0.85));
+            const delay = Math.round(ROLL_REVEAL_FRAME_DELAY_MS + 260 * fraction * fraction);
             await waitFunction(delay);
             await revealMessage.edit({
                 content: buildRollRevealText(
