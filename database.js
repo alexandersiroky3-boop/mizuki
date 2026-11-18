@@ -2590,6 +2590,17 @@ await db.query(`
 
 
 // =====================================================
+// Durable per-user dealer nap. No in-memory counters that reset on restart.
+await db.query(`
+    CREATE TABLE IF NOT EXISTS coinflip_dealer_sessions (
+        guildID TEXT NOT NULL,
+        userID TEXT NOT NULL,
+        flipCount INTEGER NOT NULL DEFAULT 0,
+        restUntil BIGINT NOT NULL DEFAULT 0,
+        PRIMARY KEY(guildID, userID)
+    )
+`);
+
 // GLOBAL RAID BOSSES
 // =====================================================
 // One active boss is stored per guild. Runtime combat is serialized by the
@@ -11826,6 +11837,56 @@ async function purchaseBossShopItem(
 }
 
 
+// Claims one dealer flip atomically across simultaneous messages and bot restarts.
+// The 10th successful claim starts a 2-hour dealer nap. Attempts blocked by
+// cooldown or lack of XP do not use a flip.
+async function claimCoinflipDealerFlip({
+    guildID, userID, limit = 10, restMs = 2 * 60 * 60 * 1000,
+    now = Date.now()
+}){
+    const client = await db.connect();
+    try{
+        await client.query("BEGIN");
+        await client.query(`
+            INSERT INTO coinflip_dealer_sessions(guildID, userID)
+            VALUES($1, $2) ON CONFLICT DO NOTHING
+        `, [String(guildID), String(userID)]);
+        const result = await client.query(`
+            SELECT flipCount, restUntil FROM coinflip_dealer_sessions
+            WHERE guildID=$1 AND userID=$2 FOR UPDATE
+        `, [String(guildID), String(userID)]);
+        const state = result.rows[0];
+        const previousRest = Number(state.restuntil ?? state.restUntil) || 0;
+        const previousCount = Number(state.flipcount ?? state.flipCount) || 0;
+        if(previousRest > now){
+            await client.query("COMMIT");
+            return {allowed: false, remainingMs: previousRest - now, restUntil: previousRest};
+        }
+        const count = previousRest > 0 && previousRest <= now ? 0 : previousCount;
+        if(count >= limit){
+            const restUntil = now + restMs;
+            await client.query(`
+                UPDATE coinflip_dealer_sessions SET restUntil=$3
+                WHERE guildID=$1 AND userID=$2
+            `, [String(guildID), String(userID), restUntil]);
+            await client.query("COMMIT");
+            return {allowed: false, remainingMs: restMs, restUntil};
+        }
+        const flipCount = count + 1;
+        const restUntil = flipCount >= limit ? now + restMs : 0;
+        await client.query(`
+            UPDATE coinflip_dealer_sessions SET flipCount=$3, restUntil=$4
+            WHERE guildID=$1 AND userID=$2
+        `, [String(guildID), String(userID), flipCount, restUntil]);
+        await client.query("COMMIT");
+        return {allowed: true, flipCount, limit, restUntil,
+            dealerSleeping: restUntil > now};
+    }catch(error){
+        await client.query("ROLLBACK");
+        throw error;
+    }finally{client.release();}
+}
+
 async function settleCoinflip({
     guildID,
     userID,
@@ -11844,8 +11905,8 @@ async function settleCoinflip({
     const winAmount =
         Math.max(1, Math.floor(safeBet * safeMultiplier));
 
-    const lossAmount =
-        Math.max(1, Math.ceil(safeBet / safeMultiplier));
+    // A 10x bet risks 10x the original stake, not bet / 10.
+    const lossAmount = winAmount;
 
     const client =
         await db.connect();
@@ -11868,7 +11929,7 @@ async function settleCoinflip({
             `, [String(guildID), String(userID)]);
 
         const balance =
-            Math.max(0, Number(userResult.rows[0]?.xp) || 0);
+            Number(userResult.rows[0]?.xp) || 0;
 
         if(balance < safeBet){
             await client.query("COMMIT");
@@ -11886,7 +11947,7 @@ async function settleCoinflip({
         const updated =
             await client.query(`
                 UPDATE users
-                SET xp=GREATEST(0,xp+$3)
+                SET xp=xp+$3
                 WHERE guildID=$1 AND userID=$2
                 RETURNING xp
             `, [String(guildID), String(userID), delta]);
@@ -11911,10 +11972,7 @@ async function settleCoinflip({
             winAmount,
             lossAmount,
             balance:
-                Math.max(
-                    0,
-                    Number(updated.rows[0]?.xp) || 0
-                )
+                Number(updated.rows[0]?.xp) || 0
         };
     }
     catch(error){
@@ -23217,6 +23275,7 @@ module.exports = {
 
     purchaseBossShopItem,
 
+    claimCoinflipDealerFlip,
     settleCoinflip,
 
     getCommandCooldownRemaining,
