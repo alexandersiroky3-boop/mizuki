@@ -968,10 +968,10 @@ function waitForRollReveal(milliseconds){
 }
 
 function buildRollRevealText(emoji, dotCount = 3, rollLabel = "", showEvolved = false, landed = false){
-    const safeLabel = String(rollLabel || "").trim();
-    return `${emoji} ${landed ? "**Rolled!**" : "**Rolling" + ".".repeat(Math.max(1, Math.min(3, Math.floor(Number(dotCount) || 1)))) + "**"}` +
-        (safeLabel ? ` ${safeLabel}` : "") +
-        (showEvolved ? " **(EVOLVED)**" : "");
+    // While spinning, show ONLY the current emoji. No text or counter labels.
+    // When the reel lands, display "Rolled" next to the final rarity emoji.
+    if(!landed) return String(emoji);
+    return `${emoji} **Rolled**` + (showEvolved ? " **(EVOLVED)**" : "");
 }
 
 async function playRollReveal(message, rolledXP, wait = waitForRollReveal, options = {}){
