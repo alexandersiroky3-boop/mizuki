@@ -83,6 +83,25 @@ function resolve(id,profile=null,{rollingLevel=0}={}){
             rows=transfer(rows,step?.[tier==='omega'?id+'.omega':id]??step?.[id]??delta);
         }
     }
+    // Luck Omega gets an additional *additive* high-rarity probability boost
+    // for cooldown-gated commands. Donor weight comes from lower outcomes;
+    // roll/coinflip/counterattack are deliberately excluded.
+    // Regular Luck I/II/III/MAX continue using the existing signed deltas.
+    if(tier === 'omega' && config.commandOmegaBonus?.[id]){
+        const bonuses = config.commandOmegaBonus[id];
+        const receiverKeys = new Set(Object.keys(bonuses));
+        const donors = rows.filter(row => !receiverKeys.has(row.key) && row.weight > 0);
+        const available = donors.reduce((sum, row) => sum + row.weight, 0);
+        const intended = Object.values(bonuses).reduce((sum, amount) => sum + amount, 0);
+        const total = Math.min(intended, available * 0.8);
+        if(total > 0 && intended > 0){
+            const deltas = Object.fromEntries([
+                ...donors.map(row => [row.key, -total * row.weight / available]),
+                ...Object.entries(bonuses).map(([key, amount]) => [key, total * amount / intended])
+            ]);
+            rows = transfer(rows, deltas);
+        }
+    }
     if(id==='roll')for(let level=1;level<=clampLevel(rollingLevel,8);level++){
         const kind=tier==='omega'?'omega':'normal';
         rows=transfer(rows,config.rollingUpgradeByLevel?.[level]?.[kind]??config.rollingUpgrade[kind]);
@@ -134,8 +153,7 @@ const QUALITY_SPLITS = Object.freeze({
     epic:       [0.60,     0.88],
     legendary:  [0.55,     0.85],
     mythic:     [0.105,    0.342],  // ~10M-30M / 30M-75M / 75M-200M as requested
-    // 200M–750M bad, 750,000,001–1.25B neutral, 1,250,000,001–2B good
-    jackpot:    [550000000 / 1800000000, 1050000000 / 1800000000]
+    jackpot:    [0.150,      0.420]     // fixed value, always neutral
 });
 
 function pickQuality(random = Math.random){
@@ -152,7 +170,7 @@ function sampleXP(row, random = Math.random){
     if(!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min)
         throw Error("Invalid reward XP range");
 
-    // Fixed-value rows stay exact. Ranged jackpots use the same quality split system.
+    // Fixed-value rows keep their exact payout, but still receive a quality tier.
     if(min === max) return min;
 
     const key = String(row.key || "").toLowerCase();
@@ -184,7 +202,7 @@ function sampleXPWithQuality(row, random = Math.random){
     if(!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || max < min)
         throw Error("Invalid reward XP range");
 
-    if(min === max) return { xp: min, quality: "neutral" };
+    if(min === max) return { xp: min, quality: pickQuality(random) };
 
     const key = String(row.key || "").toLowerCase();
     const splits = QUALITY_SPLITS[key] || [0.70, 0.92];
