@@ -7,7 +7,9 @@ const MIN_BET = 1000;
 const MAX_BET = 100000000;
 const MIN_MULTIPLIER = 1.1;
 const MAX_MULTIPLIER = 10;
-const COINFLIP_LOCK_MS = 30 * 1000;
+const COINFLIP_LOCK_MS = 60 * 1000;
+const COINFLIP_DEALER_LIMIT = 10;
+const COINFLIP_DEALER_REST_MS = 2 * 60 * 60 * 1000;
 const FRAME_DELAY_MS = 450;
 
 
@@ -54,6 +56,16 @@ function parseMultiplier(value){
 }
 
 
+// Odds are selected from the user-requested multiplier brackets.
+// 2x belongs to 50%; 4x to 25%; 6x to 12.5%; 8x to 6.25%.
+function getWinChance(multiplier){
+    if(multiplier <= 2) return 0.5;
+    if(multiplier <= 4) return 0.25;
+    if(multiplier <= 6) return 0.125;
+    if(multiplier <= 8) return 0.0625;
+    return 0.03125;
+}
+
 function wait(milliseconds){
     return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
@@ -99,6 +111,16 @@ async function execute(message, options = {}){
         });
     }
 
+    // Only positive, currently spendable balances can open a coinflip.
+    // Loss settlement itself is still allowed to cross below zero.
+    const player = await database.getUser(message.guild.id, message.author.id);
+    if((Number(player?.xp) || 0) < bet){
+        return message.reply({
+            content: `You need **${bet.toLocaleString()} XP** to start this bet. Current balance: **${(Number(player?.xp) || 0).toLocaleString()} XP**.`,
+            allowedMentions: {parse: [], repliedUser: false}
+        });
+    }
+
     const lockClaimed = options.skipLock
         ? true
         : await database.claimCommandCooldown(
@@ -110,7 +132,21 @@ async function execute(message, options = {}){
 
     if(!lockClaimed){
         return message.reply({
-            content: "🪙 Your previous coin is still flipping. Wait for it to land.",
+            content: "The dealer is still dealing. You can flip once per **60 seconds**.",
+            allowedMentions: {parse: [], repliedUser: false}
+        });
+    }
+
+    // The limit is persistent and claimed only after the 60-second cooldown.
+    const dealer = await database.claimCoinflipDealerFlip({
+        guildID: message.guild.id,
+        userID: message.author.id,
+        limit: COINFLIP_DEALER_LIMIT,
+        restMs: COINFLIP_DEALER_REST_MS
+    });
+    if(!dealer.allowed){
+        return message.reply({
+            content: `The dealer is tired. Come back <t:${Math.ceil(dealer.restUntil / 1000)}:R>... Can't you let the hard-working man sleep?`,
             allowedMentions: {parse: [], repliedUser: false}
         });
     }
@@ -148,8 +184,8 @@ async function execute(message, options = {}){
             });
         }
 
-        const landed = Math.random() < 0.5 ? "heads" : "tails";
-        const won = landed === prediction;
+        const won = Math.random() < getWinChance(multiplier);
+        const landed = won ? prediction : (prediction === "heads" ? "tails" : "heads");
 
         const settlement = await database.settleCoinflip({
             guildID: message.guild.id,
@@ -185,7 +221,13 @@ async function execute(message, options = {}){
                 `${landedEmoji} **The coin landed on ${landed.toUpperCase()}!**\n\n` +
                 `${won ? "✅" : "❌"} ${message.author} **${won ? "WON" : "LOST"}** the coinflip.\n` +
                 `${won ? "Received" : "Lost"}: **${Math.abs(settlement.delta).toLocaleString()} XP**\n` +
-                `New balance: **${Number(settlement.balance).toLocaleString()} XP**`,
+                `New balance: **${Number(settlement.balance).toLocaleString()} XP**` +
+                (dealer.dealerSleeping
+                    ? `
+
+**The dealer is tired. Come back <t:${Math.ceil(dealer.restUntil / 1000)}:R>... Can't you let the hard-working man sleep?**`
+                    : `
+Dealer: **${dealer.flipCount}/${COINFLIP_DEALER_LIMIT} flips** before his nap.`),
             allowedMentions: {
                 users: [message.author.id],
                 repliedUser: false
@@ -206,15 +248,7 @@ async function execute(message, options = {}){
         }
         throw error;
     }
-    finally{
-        if(!options.skipLock){
-            await database.clearCommandCooldown(
-                message.guild.id,
-                message.author.id,
-                "coinflip"
-            ).catch(() => null);
-        }
-    }
+
 }
 
 
@@ -226,5 +260,9 @@ module.exports = {
     MAX_MULTIPLIER,
     parseAmount,
     parseMultiplier,
-    getCoinEmojis
+    getCoinEmojis,
+    getWinChance,
+    COINFLIP_LOCK_MS,
+    COINFLIP_DEALER_LIMIT,
+    COINFLIP_DEALER_REST_MS
 };
