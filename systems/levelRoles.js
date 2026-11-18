@@ -167,6 +167,11 @@ function isSystemSync(member){
 
 function getRoleForLevel(level){
 
+    // Negative levels (including Level 0) have no positive-level role.
+    if(Number.isFinite(Number(level)) && Number(level) < 1){
+        return null;
+    }
+
     const safeLevel =
         Math.max(
             1,
@@ -362,10 +367,10 @@ async function syncMemberLevelRole(
         );
 
 
+    // Missing level means "fetch from XP"; an explicit 0 or negative level
+    // is valid and must not be silently converted back to Level 1.
     if(
-        !Number.isFinite(level)
-        ||
-        level < 1
+        knownLevel == null || !Number.isFinite(level)
     ){
 
         const user =
@@ -392,7 +397,7 @@ async function syncMemberLevelRole(
     const result =
         await setExactLevelRole(
             member,
-            role.roleID
+            role?.roleID || null
         );
 
 
