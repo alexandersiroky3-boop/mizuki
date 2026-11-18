@@ -30,7 +30,7 @@ function buildCommandsEmbed(guild = null){
                     "`!fight @user` — complete Boss Challenge #3\n" +
                     `\`!bless everyone\` — ${chests.getChestEmoji(guild, "bronze")} Bronze Chest reward\n` +
                     `\`!spawnboss\` — consumes one ${chests.getChestEmoji(guild, "boss")} Boss Chest reward use\n` +
-                    `\`!coinflip heads|tails <XP> <1.1x-10x>\` — ${chests.getChestEmoji(guild, "boss")} Boss Chest reward`
+                    `\`!coinflip heads|tails <XP> <1.1x-10x>\` — ${chests.getChestEmoji(guild, "boss")} Boss Chest reward (60s cooldown; 10 flips then 2h dealer rest)`
             },
             {
                 name: "🧰 Utility",
