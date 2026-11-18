@@ -35,7 +35,7 @@ const ROLL_READY_MESSAGE =
 
 
 const ROLL_EDIT_RETRY_DELAY_MS =
-    25000;
+    1000;
 
 
 const ROLL_FINAL_EDIT_RETRY_WINDOW_MS =
@@ -43,7 +43,7 @@ const ROLL_FINAL_EDIT_RETRY_WINDOW_MS =
 
 
 const ROLL_REVEAL_FRAME_DELAY_MS =
-    1000;
+    250;
 
 
 const ROLL_MESSAGE_MAX_LENGTH =
@@ -891,308 +891,162 @@ function getCustomEmoji(
 
 
 function getRollEmojis(guild){
-
-    return {
-        roll:
-            getCustomEmoji(
-                guild,
-                "roll",
-                "🎲"
-            ),
-
-        halfGoldenRoll:
-            getCustomEmoji(
-                guild,
-                "half_golden_roll",
-                "✨"
-            ),
-
-        goldenRoll:
-            getCustomEmoji(
-                guild,
-                "golden_roll",
-                "🌠"
-            ),
-
-        mythicRoll:
-            getCustomEmoji(
-                guild,
-                "mythic_roll",
-                "🌃"
-            ),
-
-        rainbowRoll:
-            getCustomEmoji(
-                guild,
-                "rainbow_roll",
-                "🌈"
-            ),
-
-        giftHeart:
-            getCustomEmoji(
-                guild,
-                "gift_heart",
-                "💝"
-            ),
-
-        halfGoldenHeart:
-            getCustomEmoji(
-                guild,
-                "half_golden_heart",
-                "💖"
-            ),
-
-        goldenHeart:
-            getCustomEmoji(
-                guild,
-                "golden_heart",
-                "💛"
-            ),
-
-        mythicHeart:
-            getCustomEmoji(
-                guild,
-                "mythic_heart",
-                "💜"
-            ),
-
-        inevitableGalaxy:
-            getCustomEmoji(
-                guild,
-                "inevitable_galaxy",
-                "🌌"
-            )
+    const icons = {
+        roll: ["roll", "🎲"],
+        rollEvolved: ["roll_evolved", "🎲"],
+        halfGoldenRoll: ["half_golden_roll", "✨"],
+        halfGoldenRollEvolved: ["half_golden_roll_evolved", "✨"],
+        goldenRoll: ["golden_roll", "🌠"],
+        goldenRollEvolved: ["golden_roll_evolved", "🌠"],
+        mythicRoll: ["mythic_roll", "🌃"],
+        mythicRollEvolved: ["mythic_roll_evolved", "🌃"],
+        rainbowRoll: ["rainbow_roll", "🌈"],
+        rainbowRollEvolved: ["rainbow_roll_evolved", "🌈"],
+        giftHeart: ["gift_heart", "💝"],
+        halfGoldenHeart: ["half_golden_heart", "💖"],
+        goldenHeart: ["golden_heart", "💛"],
+        mythicHeart: ["mythic_heart", "💜"],
+        inevitableGalaxy: ["inevitable_galaxy", "🌌"]
     };
-
+    return Object.fromEntries(Object.entries(icons).map(([key, [name, fallback]]) => [
+        key, getCustomEmoji(guild, name, fallback)
+    ]));
 }
 
+const ROLL_REEL_FRAMES = 13;
+const ROLL_REEL_WEIGHTS = Object.freeze([
+    ["roll", 0.68],
+    ["halfGoldenRoll", 0.21],
+    ["goldenRoll", 0.085],
+    ["mythicRoll", 0.0225],
+    ["rainbowRoll", 0.0025]
+]);
 
-function getRollRevealEmojiSequence(
-    rolledXP,
-    guild,
-    revealXP = rolledXP
-){
+function getRollFinalEmojiKey(rarityKey, evolved = false){
+    // Two neighboring rarities share a visual tier; never use the *amount*
+    // after a 10x evolved multiplier to decide its original rarity.
+    const key = ({
+        common: "roll",
+        uncommon: "roll",
+        rare: "halfGoldenRoll",
+        epic: "goldenRoll",
+        legendary: "goldenRoll",
+        mythic: "mythicRoll",
+        jackpot: "rainbowRoll"
+    })[String(rarityKey || '').toLowerCase()] || "roll";
+    return evolved ? key + "Evolved" : key;
+}
 
-    const safeXP =
-        Number(rolledXP) || 0;
-
-
-    // The loading animation begins at exactly 25,000 XP.
-    if(Math.abs(Number(revealXP)) < 25000){
-        return [];
+function getRollRevealEmojiSequence(rolledXP, guild, revealXP = rolledXP, options = {}){
+    const icons = getRollEmojis(guild);
+    const random = typeof options.random === "function" ? options.random : Math.random;
+    const sequence = [];
+    for(let i = 0; i < ROLL_REEL_FRAMES; i++){
+        const position = Math.min(1 - Number.EPSILON, Math.max(0, Number(random()) || 0));
+        let remaining = position;
+        let iconKey = "roll";
+        for(const [name, weight] of ROLL_REEL_WEIGHTS){
+            remaining -= weight;
+            if(remaining < 0){
+                iconKey = name;
+                break;
+            }
+        }
+        sequence.push(icons[iconKey]);
     }
-
-
-    const emojis =
-        getRollEmojis(guild);
-
-    const sequence = [
-        emojis.roll
-    ];
-
-
-    if(safeXP > 100000){
-        sequence.push(
-            emojis.halfGoldenRoll
-        );
-    }
-
-
-    if(safeXP > 500000){
-        sequence.push(
-            emojis.goldenRoll
-        );
-    }
-
-
-    if(safeXP > 5000000){
-        sequence.push(
-            emojis.mythicRoll
-        );
-    }
-
-
-    if(safeXP >= 100000000){
-        sequence.push(
-            emojis.rainbowRoll
-        );
-    }
-
-
+    const fallbackKey = Math.abs(Number(revealXP) || 0) >= 100000000
+        ? "jackpot" : Math.abs(Number(revealXP) || 0) >= 5000000
+            ? "mythic" : "common";
+    const finalKey = getRollFinalEmojiKey(options.rarityKey || fallbackKey);
+    // Only the last frame is guaranteed: the actual outcome determines it.
+    sequence[sequence.length - 1] = icons[finalKey];
     return sequence;
-
 }
-
 
 function waitForRollReveal(milliseconds){
-
-    return new Promise(
-        resolve =>
-            setTimeout(
-                resolve,
-                Math.max(
-                    0,
-                    Number(milliseconds) || 0
-                )
-            )
-    );
-
+    return new Promise(resolve => setTimeout(resolve, Math.max(0, Number(milliseconds) || 0)));
 }
 
-
-function buildRollRevealText(
-    emoji,
-    dotCount = 3,
-    rollLabel = "",
-    showEvolved = false
-){
-
-    const safeDotCount =
-        Math.max(
-            1,
-            Math.min(
-                3,
-                Math.floor(
-                    Number(dotCount) || 1
-                )
-            )
-        );
-
-
-    const safeRollLabel =
-        String(rollLabel || "")
-            .trim();
-
-
-    return (
-        `${emoji} Rolling` +
-        ".".repeat(
-            safeDotCount
-        ) +
-        (
-            safeRollLabel
-                ? ` ${safeRollLabel}`
-                : ""
-        ) + (showEvolved ? " **(EVOLVED)**" : "")
-    );
-
+function buildRollRevealText(emoji, dotCount = 3, rollLabel = "", showEvolved = false, landed = false){
+    const safeLabel = String(rollLabel || "").trim();
+    return `${emoji} ${landed ? "**Rolled!**" : "**Rolling" + ".".repeat(Math.max(1, Math.min(3, Math.floor(Number(dotCount) || 1)))) + "**"}` +
+        (safeLabel ? ` ${safeLabel}` : "") +
+        (showEvolved ? " **(EVOLVED)**" : "");
 }
 
-
-async function playRollReveal(
-    message,
-    rolledXP,
-    wait = waitForRollReveal,
-    options = {}
-){
-
-    const emojiSequence =
-        getRollRevealEmojiSequence(
-            options.rarityRolledXP ?? rolledXP,
-            message.guild,
-            rolledXP
-        );
-
-    if(emojiSequence.length === 0){
-        return null;
-    }
-
-    const waitFunction =
-        typeof wait === "function"
-            ? wait
-            : waitForRollReveal;
-
-    const rollLabel =
-        String(options?.rollLabel || "").trim();
-
-    const onStarted =
-        typeof options?.onStarted === "function"
-            ? options.onStarted
-            : null;
-
-    let startNotified = false;
-
-    function notifyStarted(){
-        if(startNotified) return;
-        startNotified = true;
-        if(onStarted){
-            try{
-                onStarted();
-            }
-            catch(_error){
-                // Reveal coordination must never break the roll itself.
-            }
-        }
-    }
-
+async function playRollReveal(message, rolledXP, wait = waitForRollReveal, options = {}){
+    const waitFunction = typeof wait === "function" ? wait : waitForRollReveal;
+    const rollLabel = String(options.rollLabel || "").trim();
+    const onStarted = typeof options.onStarted === "function" ? options.onStarted : null;
+    const sequence = getRollRevealEmojiSequence(
+        options.rarityRolledXP ?? rolledXP, message.guild, rolledXP,
+        {rarityKey: options.rarityKey, random: options.random}
+    );
+    const emojis = getRollEmojis(message.guild);
     let revealMessage = null;
-
-    try{
-        // Create the loader once. The first rarity frame is already visible,
-        // so there is no need to edit it repeatedly just to animate dots.
-        revealMessage = await message.reply({
-            content: buildRollRevealText(
-                emojiSequence[0],
-                3,
-                rollLabel,
-                options.evolved && emojiSequence.length === 1
-            ),
-            allowedMentions: {
-                repliedUser: false,
-                parse: []
+    let notified = false;
+    let finished = false;
+    let finishPromise = null;
+    function notifyStarted(){
+        if(notified) return;
+        notified = true;
+        try{ onStarted?.(); }catch(_error){ /* Multi Roll must continue. */ }
+    }
+    async function finish(){
+        if(finishPromise) return finishPromise;
+        if(finished) return;
+        finished = true;
+        finishPromise = (async() => {
+            if(revealMessage && typeof revealMessage.delete === "function"){
+                try{ await revealMessage.delete(); }
+                catch(_error){ /* Never suppress the actual roll result. */ }
             }
+        })();
+        return finishPromise;
+    }
+    try{
+        revealMessage = await message.reply({
+            content: buildRollRevealText(sequence[0], 1, rollLabel),
+            allowedMentions: {parse: [], repliedUser: false}
         });
-
-        // Multi-roll children only need to wait for the loader to exist,
-        // not for the entire animation to finish.
         notifyStarted();
+        if(!revealMessage || typeof revealMessage.edit !== "function") return {finish};
 
-        if(!revealMessage || typeof revealMessage.edit !== "function"){
-            return revealMessage;
-        }
-
-        // One edit per rarity transition. The old implementation made three
-        // dot edits plus several waits for every emoji, causing 4+ seconds per
-        // stage and up to ~20 seconds for a high-rarity roll.
-        for(let emojiIndex = 1; emojiIndex < emojiSequence.length; emojiIndex++){
-            await waitFunction(ROLL_REVEAL_FRAME_DELAY_MS);
-
+        // Fast early frames, then a slower near-stop, like a case-opening reel.
+        // Discord may rate-limit rapid edits: await each edit in order.
+        for(let frame = 1; frame < sequence.length; frame++){
+            const fraction = frame / (sequence.length - 1);
+            const delay = Math.round(ROLL_REVEAL_FRAME_DELAY_MS * (0.75 + fraction * 0.85));
+            await waitFunction(delay);
             await revealMessage.edit({
                 content: buildRollRevealText(
-                    emojiSequence[emojiIndex],
-                    3,
-                    rollLabel,
-                    Boolean(options.evolved && emojiIndex === emojiSequence.length - 1)
+                    sequence[frame], frame % 3 + 1, rollLabel, false,
+                    frame === sequence.length - 1
                 ),
-                allowedMentions: {
-                    parse: []
-                }
+                allowedMentions: {parse: []}
             });
         }
-
-        // Let the final rarity frame be visible briefly before removing it.
-        await waitFunction(ROLL_REVEAL_FRAME_DELAY_MS);
+        // Pause on the true rarity, only then reveal the evolved counterpart.
+        if(options.evolved){
+            await waitFunction(2200);
+            await revealMessage.edit({
+                content: buildRollRevealText(
+                    emojis[getRollFinalEmojiKey(options.rarityKey, true)],
+                    3, rollLabel, true, true
+                ),
+                allowedMentions: {parse: []}
+            });
+        }
+        await waitFunction(950);
     }
     catch(_error){
-        // A missing permission, deleted loader, or temporary edit failure must
-        // never prevent the actual XP payout.
+        // An edit/permission failure cannot cancel the XP settlement.
     }
     finally{
-        // Release the next numbered multi-roll loader even if this one failed.
         notifyStarted();
-
-        if(revealMessage && typeof revealMessage.delete === "function"){
-            try{
-                await revealMessage.delete();
-            }
-            catch(_error){
-                // The final roll result still needs to be sent.
-            }
-        }
     }
-
-    return revealMessage;
-
+    // The caller removes the loader only after all XP/quests/boosts finish.
+    return {finish};
 }
 
 function splitLongMessage(
@@ -2067,6 +1921,16 @@ async function executeOwned(message, options = {}){
 
 
 async function executeWithRollAccess(message, options = {}){
+    try{
+        return await executeWithRollAccessInternal(message, options);
+    }
+    finally{
+        // Also runs when post-roll XP/quest/boss work throws an exception.
+        await options.rollRevealCleanup?.();
+    }
+}
+
+async function executeWithRollAccessInternal(message, options = {}){
 
 
     if(!message.guild)
@@ -2576,10 +2440,9 @@ if(finalRarityKey !== "jackpot" && bonusPercentRange && rolledXP > 0){
 }
 
 
-// Loading begins only for a real 25,000+ XP result. Multi Roll calculations
-// remain concurrent, while loader creation is coordinated by roll number.
-const shouldPlayRollReveal =
-    Math.abs(rolledXP) >= 25000;
+// Every !roll gets a case-style reel. Multi Roll calculations remain
+// concurrent, while loader creation is coordinated by roll number.
+const shouldPlayRollReveal = true; // All rolls show the case-style reel.
 
 
 if(shouldPlayRollReveal){
@@ -2612,20 +2475,21 @@ if(shouldPlayRollReveal){
             : "";
 
 
-    await playRollReveal(
+    const rollReveal = await playRollReveal(
         message,
         rolledXP,
         options.rollRevealWait,
         {
             rarityRolledXP,
+            rarityKey: finalRarityKey,
             evolved,
-            rollLabel:
-                rollRevealLabel,
-
-            onStarted:
-                options.markRollRevealStarted
+            rollLabel: rollRevealLabel,
+            onStarted: options.markRollRevealStarted
         }
     );
+    options.rollRevealCleanup = async () => {
+        await rollReveal?.finish();
+    };
 
 }
 else if(options.markRollRevealStarted){
@@ -2965,6 +2829,7 @@ if(rolledXP > 0){
 
 
     if(options.deferRollResult){
+        await options.rollRevealCleanup?.();
         return {
             deferredRollResult: true,
             rollAccess,
@@ -2980,6 +2845,8 @@ if(rolledXP > 0){
         rollAccess
     );
 
+
+    await options.rollRevealCleanup?.();
 
     return sendRollResultMessage(
         message,
@@ -3005,6 +2872,7 @@ const negativeDialogue = moveRollTimerToFooter(
 
 
 if(options.deferRollResult){
+    await options.rollRevealCleanup?.();
     return {
         deferredRollResult: true,
         rollAccess,
@@ -3020,6 +2888,8 @@ await finishOwnedRollCooldown(
     rollAccess
 );
 
+
+await options.rollRevealCleanup?.();
 
 return sendRollResultMessage(
     message,
