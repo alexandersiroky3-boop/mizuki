@@ -915,7 +915,15 @@ function getRollEmojis(guild){
 
 // Fewer Discord message edits keeps the reel responsive, even with Multi Roll.
 // The timing allows Discord to display each frame before the next edit.
-const ROLL_REEL_FRAMES = 7; // Six preview frames, then the real outcome.
+// Total visual frames: preview emojis plus the final result.
+// Higher-tier rolls spin longer, without increasing edits per second.
+const ROLL_REEL_FRAMES_BY_TIER = Object.freeze({
+    roll: 4,             // Common / Uncommon / Rare
+    halfGoldenRoll: 5,   // Epic
+    goldenRoll: 6,       // Legendary
+    mythicRoll: 7,       // Mythic
+    rainbowRoll: 9       // Jackpot
+});
 const ROLL_REEL_COMMON_KEYS = Object.freeze([
     "roll", "halfGoldenRoll", "goldenRoll"
 ]);
@@ -923,13 +931,13 @@ const ROLL_REEL_RAINBOW_PREVIEW_CHANCE = 0.005;
 const ROLL_REEL_MYTHIC_PREVIEW_CHANCE = 0.035;
 
 function getRollFinalEmojiKey(rarityKey, evolved = false){
-    // Two neighboring rarities share a visual tier; never use the *amount*
-    // after a 10x evolved multiplier to decide its original rarity.
+    // Match the same emoji used by the final reward message; the XP amount
+    // after an Evolved multiplier must not change the base rarity's icon.
     const key = ({
         common: "roll",
         uncommon: "roll",
-        rare: "halfGoldenRoll",
-        epic: "goldenRoll",
+        rare: "roll",
+        epic: "halfGoldenRoll",
         legendary: "goldenRoll",
         mythic: "mythicRoll",
         jackpot: "rainbowRoll"
@@ -945,6 +953,9 @@ function getRollRevealEmojiSequence(rolledXP, guild, revealXP = rolledXP, option
         ? "jackpot" : Math.abs(Number(revealXP) || 0) >= 5000000
             ? "mythic" : "common";
     const finalKey = getRollFinalEmojiKey(options.rarityKey || fallbackKey);
+    const frameCount = Math.max(2, Math.min(30,
+        Number(options.frames) || ROLL_REEL_FRAMES_BY_TIER[finalKey] || 4
+    ));
     const sequenceKeys = [];
     let commonBag = [];
 
@@ -966,10 +977,19 @@ function getRollRevealEmojiSequence(rolledXP, guild, revealXP = rolledXP, option
         return commonBag.splice(index, 1)[0];
     }
 
-    for(let frame = 0; frame < ROLL_REEL_FRAMES - 1; frame++){
+    for(let frame = 0; frame < frameCount - 1; frame++){
         const previousKey = sequenceKeys[sequenceKeys.length - 1];
         const blocked = new Set(previousKey ? [previousKey] : []);
-        if(frame === ROLL_REEL_FRAMES - 2) blocked.add(finalKey);
+        // This also applies at the border between repeated preview batches.
+        if(frame === 0 && options.previousEmoji){
+            for(const key of ["roll", "halfGoldenRoll", "goldenRoll", "mythicRoll", "rainbowRoll"]){
+                if(icons[key] === options.previousEmoji) blocked.add(key);
+            }
+        }
+        // Avoid an immediate repeat into the precomputed final outcome.
+        // Earlier previews can still include the winning icon, keeping all
+        // regular preview emojis balanced over many rolls.
+        if(frame === frameCount - 2) blocked.add(finalKey);
 
         // Rare previews are cosmetic only. Evolved emojis NEVER spin by.
         // Mythic ~3% and Rainbow ~0.5% per preview attempt.
@@ -997,86 +1017,144 @@ function waitForRollReveal(milliseconds){
 }
 
 function buildRollRevealText(emoji, dotCount = 3, rollLabel = "", showEvolved = false, landed = false){
-    // While spinning, show ONLY the current emoji. No text or counter labels.
-    // When the reel lands, display "Rolled" next to the final rarity emoji.
+    // Emoji-only while spinning; a large Discord heading on the final frame
+    // keeps the emoji and ROLLED at the same large text size.
     if(!landed) return String(emoji);
-    return `${emoji} **Rolled**` + (showEvolved ? " **(EVOLVED)**" : "");
+    return `# ${emoji} ROLLED` + (showEvolved ? " (EVOLVED)" : "");
 }
 
 async function playRollReveal(message, rolledXP, wait = waitForRollReveal, options = {}){
     const waitFunction = typeof wait === "function" ? wait : waitForRollReveal;
-    const rollLabel = String(options.rollLabel || "").trim();
     const onStarted = typeof options.onStarted === "function" ? options.onStarted : null;
-    const sequence = getRollRevealEmojiSequence(
+    const rarityKey = String(options.rarityKey || "common");
+    const finalKey = getRollFinalEmojiKey(rarityKey);
+    const minimumFrames = ROLL_REEL_FRAMES_BY_TIER[finalKey] || 4;
+    const sequenceOptions = {
+        rarityKey,
+        random: options.random,
+        frames: minimumFrames
+    };
+    const newSequence = previousEmoji => getRollRevealEmojiSequence(
         options.rarityRolledXP ?? rolledXP, message.guild, rolledXP,
-        {rarityKey: options.rarityKey, random: options.random}
+        {...sequenceOptions, previousEmoji}
     );
-    const emojis = getRollEmojis(message.guild);
+    const icons = getRollEmojis(message.guild);
+    const finalEmoji = icons[finalKey];
+    let previews = newSequence(null).slice(0, -1);
+    let currentEmoji = previews.shift();
+    let shownPreviews = 1;
     let revealMessage = null;
     let notified = false;
-    let finished = false;
+    let landRequested = false;
+    let cancelled = false;
     let finishPromise = null;
+    let animationPromise = Promise.resolve();
+
     function notifyStarted(){
         if(notified) return;
         notified = true;
         try{ onStarted?.(); }catch(_error){ /* Multi Roll must continue. */ }
     }
+
+    // Complete the animation only when the caller's XP/quest/boost work is done.
+    // Until then the preview keeps moving instead of appearing frozen for seconds.
+    async function land(){
+        landRequested = true;
+        await animationPromise;
+    }
+
     async function finish(){
         if(finishPromise) return finishPromise;
-        if(finished) return;
-        finished = true;
+        cancelled = true;
+        landRequested = true;
         finishPromise = (async() => {
+            await animationPromise.catch(() => {});
             if(revealMessage && typeof revealMessage.delete === "function"){
                 try{ await revealMessage.delete(); }
-                catch(_error){ /* Never suppress the actual roll result. */ }
+                catch(_error){ /* The actual roll result must still be sent. */ }
             }
         })();
         return finishPromise;
     }
+
     try{
         revealMessage = await message.reply({
-            content: buildRollRevealText(sequence[0], 1, rollLabel),
+            content: buildRollRevealText(currentEmoji),
             allowedMentions: {parse: [], repliedUser: false}
         });
         notifyStarted();
-        if(!revealMessage || typeof revealMessage.edit !== "function") return {finish};
+        if(!revealMessage || typeof revealMessage.edit !== "function"){
+            return {land, finish};
+        }
 
-        // Discord API calls are not video frames. Spam-editing the message
-        // makes it stutter when edits get queued/rate-limited. Use fewer,
-        // consistently paced edits with a small slowdown at the end.
-        for(let frame = 1; frame < sequence.length; frame++){
-            const fraction = frame / (sequence.length - 1);
-            const delay = Math.round(ROLL_REVEAL_FRAME_DELAY_MS + 260 * fraction * fraction);
-            await waitFunction(delay);
-            await revealMessage.edit({
-                content: buildRollRevealText(
-                    sequence[frame], frame % 3 + 1, rollLabel, false,
-                    frame === sequence.length - 1
-                ),
-                allowedMentions: {parse: []}
-            });
-        }
-        // Pause on the true rarity, only then reveal the evolved counterpart.
-        if(options.evolved){
-            await waitFunction(2200);
-            await revealMessage.edit({
-                content: buildRollRevealText(
-                    emojis[getRollFinalEmojiKey(options.rarityKey, true)],
-                    3, rollLabel, true, true
-                ),
-                allowedMentions: {parse: []}
-            });
-        }
-        await waitFunction(950);
+        animationPromise = (async() => {
+            try{
+                while(!cancelled){
+                    if(landRequested && shownPreviews >= minimumFrames - 1 &&
+                       currentEmoji !== finalEmoji) break;
+
+                    // About one edit per second per reel avoids rapid edit
+                    // bursts that Discord may queue or rate-limit.
+                    const delay = (options.isMultiRoll ? 1200 : ROLL_REVEAL_FRAME_DELAY_MS) +
+                        Math.min(180, Math.max(0, shownPreviews - 1) * 30);
+                    await waitFunction(delay);
+                    if(cancelled) return;
+                    if(landRequested && shownPreviews >= minimumFrames - 1 &&
+                       currentEmoji !== finalEmoji) break;
+
+                    if(previews.length === 0){
+                        previews = newSequence(currentEmoji).slice(0, -1);
+                    }
+                    const nextEmoji = previews.shift();
+                    if(!nextEmoji || nextEmoji === currentEmoji){
+                        // Defensive check for fallback emojis or malformed guild data.
+                        continue;
+                    }
+                    await revealMessage.edit({
+                        content: buildRollRevealText(nextEmoji),
+                        allowedMentions: {parse: []}
+                    });
+                    currentEmoji = nextEmoji;
+                    shownPreviews++;
+                }
+
+                if(cancelled) return;
+                await revealMessage.edit({
+                    content: buildRollRevealText(finalEmoji, 3, "", false, true),
+                    allowedMentions: {parse: []}
+                });
+
+                // Evolved outcomes appear only after a separate delayed reveal.
+                if(options.evolved){
+                    await waitFunction(2200);
+                    if(cancelled) return;
+                    await revealMessage.edit({
+                        content: buildRollRevealText(
+                            icons[getRollFinalEmojiKey(rarityKey, true)],
+                            3, "", true, true
+                        ),
+                        allowedMentions: {parse: []}
+                    });
+                }
+                // Ensure the player can actually read ROLLED before cleanup.
+                await waitFunction(700);
+            }
+            catch(_error){
+                // Missing permissions / removed messages / REST failures must
+                // not prevent XP settlement or Multi Roll completion.
+            }
+        })();
     }
     catch(_error){
-        // An edit/permission failure cannot cancel the XP settlement.
+        // A reply failure must not prevent the XP settlement.
     }
     finally{
         notifyStarted();
     }
-    // The caller removes the loader only after all XP/quests/boosts finish.
-    return {finish};
+
+    // Return immediately after the first emoji appears so the rest of the
+    // command can run WHILE the reel animates; land() joins it at the end.
+    return {land, finish};
 }
 
 function splitLongMessage(
@@ -1955,8 +2033,12 @@ async function executeWithRollAccess(message, options = {}){
         return await executeWithRollAccessInternal(message, options);
     }
     finally{
-        // Also runs when post-roll XP/quest/boss work throws an exception.
-        await options.rollRevealCleanup?.();
+        // Successful deferred Multi Roll results transfer their reel to the
+        // parent, which lands it just before posting the numbered result.
+        // Errors still clean up their own reel here.
+        if(!options.rollRevealTransferred){
+            await options.rollRevealCleanup?.();
+        }
     }
 }
 
@@ -2009,8 +2091,8 @@ const rollAccess =
 // ======================
 //
 // One typed !roll command performs the rewarded number of complete,
-// independent rolls concurrently. Every "Rolling..." reveal begins without
-// waiting for the previous one to finish. Each roll still uses:
+// independent rolls concurrently. Each emoji reel starts without
+// waiting for the preceding reel to finish. Each roll still uses:
 // - its own XP result
 // - its own Luck calculation
 // - its own XP MAX / Luck Boost drop checks
@@ -2121,8 +2203,8 @@ if(
     }
 
 
-    // Wait for every child even if one fails, so the loading lock can never
-    // end while another roll animation from this same batch is still active.
+    // Wait for all children to finish settlement before synchronizing levels.
+    // Their reels keep spinning until their numbered results are published.
     const settledRolls =
         await Promise.allSettled(
             rollPromises
@@ -2137,6 +2219,10 @@ if(
 
 
     if(failedRoll){
+        await Promise.allSettled(settledRolls
+            .filter(result => result.status === "fulfilled")
+            .map(result => result.value?.rollRevealCleanup?.())
+        );
         throw failedRoll.reason;
     }
 
@@ -2147,6 +2233,7 @@ if(
         );
 
 
+    try{
     // Concurrent children defer level synchronization so one batch cannot
     // race several identical level/role announcements against itself.
     await syncRollLevel(
@@ -2170,8 +2257,8 @@ if(
     }
 
 
-    // Every loader and payout is complete now. Start the real 30-second
-    // cooldown, then publish the deferred results in roll-number order.
+    // Every payout is committed now. Start the real 30-second cooldown,
+    // then land each reel just before its numbered result is published.
     await finishOwnedRollCooldown(
         message,
         options,
@@ -2197,6 +2284,11 @@ if(
             rollAccess.remaining;
 
 
+        // A reel stays animated through the whole batch's post-processing.
+        // Only land and delete the one whose result we are about to send.
+        await result.rollRevealComplete?.();
+        await result.rollRevealCleanup?.();
+
         lastSentResult =
             await sendRollResultMessage(
                 message,
@@ -2208,6 +2300,11 @@ if(
 
 
     return lastSentResult;
+    }
+    finally{
+        // Covers send failures or parent errors after children were settled.
+        await Promise.allSettled(rollResults.map(result => result?.rollRevealCleanup?.()));
+    }
 
 }
 
@@ -2514,9 +2611,13 @@ if(shouldPlayRollReveal){
             rarityKey: finalRarityKey,
             evolved,
             rollLabel: rollRevealLabel,
+            isMultiRoll: Boolean(options.deferRollResult),
             onStarted: options.markRollRevealStarted
         }
     );
+    options.rollRevealComplete = async () => {
+        await rollReveal?.land();
+    };
     options.rollRevealCleanup = async () => {
         await rollReveal?.finish();
     };
@@ -2537,10 +2638,11 @@ else if(options.markRollRevealStarted){
 
 
 // ======================
-// GIVE XP AFTER LOADING
+// SETTLE XP WHILE THE REEL IS MOVING
 // ======================
-// No base XP, story bonus, boost drop, quest progress, or troll payout is
-// applied until this roll's own loading animation has completely finished.
+// The outcome is already fixed. Processing XP, quests, boosts and other
+// rewards in parallel with the animation avoids a frozen final frame.
+// Each reel only lands after processing has finished.
 await database.addXP(
 
     message.guild.id,
@@ -2703,7 +2805,7 @@ try{
 await require('../systems/tutorial').onXP(message,Math.max(0,targetRollXP)+(redirectedByTroll?0:bonusXP),'command').catch(e=>console.error('Tutorial roll hook:',e));
 
 // Each real roll—including every result inside Multi Roll—keeps its own
-// independent XP Boost and Luck Boost drop checks after its reveal.
+// independent XP Boost and Luck Boost drop checks while its reel is moving.
 const xpBoostDropMessage =
     await boosts.tryXPBoostDropInline(
         message,
@@ -2859,10 +2961,13 @@ if(rolledXP > 0){
 
 
     if(options.deferRollResult){
-        await options.rollRevealCleanup?.();
+        // Keep spinning while the parent waits for other Multi Roll results.
+        options.rollRevealTransferred = true;
         return {
             deferredRollResult: true,
             rollAccess,
+            rollRevealComplete: options.rollRevealComplete,
+            rollRevealCleanup: options.rollRevealCleanup,
             content:
                 positiveDialogue
         };
@@ -2876,6 +2981,7 @@ if(rolledXP > 0){
     );
 
 
+    await options.rollRevealComplete?.();
     await options.rollRevealCleanup?.();
 
     return sendRollResultMessage(
@@ -2902,10 +3008,13 @@ const negativeDialogue = moveRollTimerToFooter(
 
 
 if(options.deferRollResult){
-    await options.rollRevealCleanup?.();
+    // Keep spinning while the parent waits for other Multi Roll results.
+    options.rollRevealTransferred = true;
     return {
         deferredRollResult: true,
         rollAccess,
+        rollRevealComplete: options.rollRevealComplete,
+        rollRevealCleanup: options.rollRevealCleanup,
         content:
             negativeDialogue
     };
@@ -2919,6 +3028,7 @@ await finishOwnedRollCooldown(
 );
 
 
+await options.rollRevealComplete?.();
 await options.rollRevealCleanup?.();
 
 return sendRollResultMessage(
