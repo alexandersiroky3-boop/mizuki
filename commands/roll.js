@@ -913,16 +913,16 @@ function getRollEmojis(guild){
     ]));
 }
 
-// Fewer Discord message edits keeps the reel responsive, even with Multi Roll.
-// The timing allows Discord to display each frame before the next edit.
-// Total visual frames: preview emojis plus the final result.
-// Higher-tier rolls spin longer, without increasing edits per second.
+// Longer case-style reveals: increase the number of emoji frames rather
+// than sending edits more frequently (which can lag or hit Discord limits).
+// Each count includes the final ROLLED frame; Multi Roll is still supported.
+// The reel continues past its minimum if XP/quest processing is still active.
 const ROLL_REEL_FRAMES_BY_TIER = Object.freeze({
-    roll: 4,             // Common / Uncommon / Rare
-    halfGoldenRoll: 5,   // Epic
-    goldenRoll: 6,       // Legendary
-    mythicRoll: 7,       // Mythic
-    rainbowRoll: 9       // Jackpot
+    roll: 10,            // Common / Uncommon / Rare
+    halfGoldenRoll: 13,  // Epic
+    goldenRoll: 16,      // Legendary
+    mythicRoll: 19,      // Mythic
+    rainbowRoll: 23      // Jackpot
 });
 const ROLL_REEL_COMMON_KEYS = Object.freeze([
     "roll", "halfGoldenRoll", "goldenRoll"
