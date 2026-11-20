@@ -2257,8 +2257,12 @@ if(
     }
 
 
-    // Every payout is committed now. Start the real 30-second cooldown,
-    // then land each reel just before its numbered result is published.
+    // Finish ALL Multi Roll reels before starting the 30-second cooldown.
+    // Landing concurrently avoids charging early results for later animations.
+    await Promise.all(rollResults.map(
+        result => result?.rollRevealComplete?.()
+    ));
+
     await finishOwnedRollCooldown(
         message,
         options,
@@ -2284,9 +2288,8 @@ if(
             rollAccess.remaining;
 
 
-        // A reel stays animated through the whole batch's post-processing.
-        // Only land and delete the one whose result we are about to send.
-        await result.rollRevealComplete?.();
+        // Animation is already complete; remove this loader just before
+        // delivering its numbered result.
         await result.rollRevealCleanup?.();
 
         lastSentResult =
@@ -2974,15 +2977,16 @@ if(rolledXP > 0){
     }
 
 
+    // The lock stays active while the animation runs. Start cooldown only
+    // after the final (including EVOLVED) reel frame has finished.
+    await options.rollRevealComplete?.();
+    await options.rollRevealCleanup?.();
+
     await finishOwnedRollCooldown(
         message,
         options,
         rollAccess
     );
-
-
-    await options.rollRevealComplete?.();
-    await options.rollRevealCleanup?.();
 
     return sendRollResultMessage(
         message,
@@ -3021,15 +3025,15 @@ if(options.deferRollResult){
 }
 
 
+// Negative XP rolls follow the same cooldown timing as positive rolls.
+await options.rollRevealComplete?.();
+await options.rollRevealCleanup?.();
+
 await finishOwnedRollCooldown(
     message,
     options,
     rollAccess
 );
-
-
-await options.rollRevealComplete?.();
-await options.rollRevealCleanup?.();
 
 return sendRollResultMessage(
     message,
