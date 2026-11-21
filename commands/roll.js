@@ -2782,6 +2782,9 @@ try{
     const combat=await require('../systems/bosses').handleCommandXP(message,'!roll',targetRollXP+(redirectedByTroll?0:bonusXP));
     await require('./boss').handleCombatResult(message,combat);
 }catch(error){console.error('Roll boss combat hook failed:',error);}
+try{
+    await require('../systems/eventBosses').recordEarnedXP(message,{source:'roll',earnedXP:targetRollXP+(redirectedByTroll?0:bonusXP)});
+}catch(error){console.error('Roll event boss XP hook failed:',error);}
 await require('../systems/tutorial').onXP(message,Math.max(0,targetRollXP)+(redirectedByTroll?0:bonusXP),'command').catch(e=>console.error('Tutorial roll hook:',e));
 
 // Each real roll—including every result inside Multi Roll—keeps its own
