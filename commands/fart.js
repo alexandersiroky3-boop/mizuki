@@ -31,6 +31,14 @@ async function applyBadLuck(guildID,targetID,now=Date.now()){
 }
 async function execute(message){
     if(!message.guild||message.author?.bot)return null;
+    // !fart is a permanent event reward, not a starter command.
+    const entitlements=await database.getBossEntitlements(message.guild.id,message.author.id);
+    if(!entitlements.fartUnlocked){
+        return message.reply({
+            content:'You can unlock !fart permanently in a future/current boss event',
+            allowedMentions:{parse:[],repliedUser:false}
+        });
+    }
     const targetID=parseTarget(message);
     if(!targetID)return message.reply({content:'Usage: `!fart @user` or `!fart <user ID>` (you can also target Mizuki).',allowedMentions:{parse:[],repliedUser:false}});
     if(targetID===message.author.id)return message.reply({content:'You cannot fart on yourself.',allowedMentions:{parse:[]}});
