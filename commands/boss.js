@@ -734,6 +734,19 @@ async function ensureRaidStatusMessage(
             }
         );
 
+    // Events also appear in the EXISTING persistent global !boss status panel.
+    // The editor and its draft replies remain private; published HP is public.
+    const activeEvent = await eventBosses.getActiveEvent(normalizedGuildID);
+    if(activeEvent){
+        payload.embeds.push(eventBosses.eventPayload(activeEvent,false).embeds[0]);
+        payload.components.push(new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`mzk_event_open:${activeEvent.id}`)
+                .setLabel(`Event: ${activeEvent.title}`.slice(0,80))
+                .setStyle(ButtonStyle.Primary)
+        ));
+    }
+
 
     if(statusMessage){
 
@@ -1358,6 +1371,9 @@ async function execute(message){
                 .setLabel(`Event: ${event.title}`.slice(0,80))
                 .setStyle(ButtonStyle.Primary)
         ));
+        // Show event status directly on the public !boss panel; this isn't a
+        // private interaction and everyone can see its global HP and deadline.
+        payload.embeds.push(eventBosses.eventPayload(event,false).embeds[0]);
     }
     return message.reply(payload);
 }
