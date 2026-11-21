@@ -35,10 +35,25 @@ function initialize(){
             first_reward JSONB, replay_reward JSONB,
             advantages JSONB NOT NULL DEFAULT '[]'::jsonb,
             ability_state JSONB NOT NULL DEFAULT '{}'::jsonb,
-            cycle INTEGER NOT NULL DEFAULT 0, created_at BIGINT NOT NULL
+            cycle INTEGER NOT NULL DEFAULT 0, created_at BIGINT NOT NULL,
+            total_damage BIGINT NOT NULL DEFAULT 0,
+            last_earned_xp BIGINT NOT NULL DEFAULT 0,
+            last_damage BIGINT NOT NULL DEFAULT 0,
+            last_attacker_id TEXT,
+            last_hit_at BIGINT NOT NULL DEFAULT 0,
+            last_source TEXT,
+            last_defenses JSONB NOT NULL DEFAULT '[]'::jsonb
         )`);
         await db.gameQuery("ALTER TABLE mzk_events ADD COLUMN IF NOT EXISTS advantages JSONB NOT NULL DEFAULT '[]'::jsonb");
         await db.gameQuery("ALTER TABLE mzk_events ADD COLUMN IF NOT EXISTS ability_state JSONB NOT NULL DEFAULT '{}'::jsonb");
+        // Persist hits across wave resets so an instant kill cannot look like zero damage.
+        await db.gameQuery('ALTER TABLE mzk_events ADD COLUMN IF NOT EXISTS total_damage BIGINT NOT NULL DEFAULT 0');
+        await db.gameQuery('ALTER TABLE mzk_events ADD COLUMN IF NOT EXISTS last_earned_xp BIGINT NOT NULL DEFAULT 0');
+        await db.gameQuery('ALTER TABLE mzk_events ADD COLUMN IF NOT EXISTS last_damage BIGINT NOT NULL DEFAULT 0');
+        await db.gameQuery('ALTER TABLE mzk_events ADD COLUMN IF NOT EXISTS last_attacker_id TEXT');
+        await db.gameQuery('ALTER TABLE mzk_events ADD COLUMN IF NOT EXISTS last_hit_at BIGINT NOT NULL DEFAULT 0');
+        await db.gameQuery('ALTER TABLE mzk_events ADD COLUMN IF NOT EXISTS last_source TEXT');
+        await db.gameQuery("ALTER TABLE mzk_events ADD COLUMN IF NOT EXISTS last_defenses JSONB NOT NULL DEFAULT '[]'::jsonb");
         await db.gameQuery(`CREATE INDEX IF NOT EXISTS mzk_events_active_idx ON mzk_events(guild_id,status,expires_at)`);
         await db.gameQuery(`CREATE TABLE IF NOT EXISTS mzk_event_progress (
             event_id BIGINT NOT NULL REFERENCES mzk_events(id) ON DELETE CASCADE,
@@ -188,36 +203,106 @@ function eventButtons(event, admin=false){
     }
     return [row];
 }
-function eventPayload(event, admin=false, notice=null){
+// Use the exact same 16-segment, custom-emoji health bar as the raid boss.
+// The import is delayed because commands/boss also imports this event module.
+function eventHealthBar(guild, current, maximum){
+    return require('../commands/boss').buildHealthBar(guild,current,maximum);
+}
+function eventAdvantageStatuses(event,now=Date.now()){
+    const state=event.ability_state||{};
+    const passive=new Set(['chatting_immunity','critical_immunity','chatting_immortality',
+        'critical_immortality','commands_immunity','commands_immortality','rolling_immunity','degeneration']);
+    return (event.advantages||[]).map(item=>{
+        const key=item.key;
+        let status='INACTIVE';
+        if(passive.has(key))status='ACTIVE';
+        else if(key==='precision')status=Number(state.precisionCooldownUntil||0)>now
+            ? `COOLDOWN until <t:${Math.floor(Number(state.precisionCooldownUntil)/1000)}:R>`:'READY';
+        else if(key==='manipulation'){
+            const until=Math.max(0,...Object.values(state.manipulations||{}).map(x=>Number(x.until)||0));
+            status=until>now?`ACTIVE until <t:${Math.floor(until/1000)}:R>`:
+                Number(state.manipulationCooldownUntil||0)>now
+                    ?`COOLDOWN until <t:${Math.floor(Number(state.manipulationCooldownUntil)/1000)}:R>`:'READY';
+        }else{
+            const timed={durability:'durabilityUntil',regeneration:'regenerationActiveUntil',
+                xp_immortality:'immortalityActiveUntil',power:'powerUntil',fury:'furyActiveUntil'}[key];
+            const until=Number(state[timed]||0);
+            if(timed&&until>now)status=`ACTIVE until <t:${Math.floor(until/1000)}:R>`;
+            else if(key==='power'&&state.powerTriggered||key==='fury'&&state.furyTriggered)status='USED';
+            else{
+                const cooldown={durability:'durabilityCooldownUntil',regeneration:'regenerationCooldownUntil',
+                    xp_immortality:'immortalityCooldownUntil'}[key];
+                if(cooldown&&Number(state[cooldown]||0)>now)
+                    status=`COOLDOWN until <t:${Math.floor(Number(state[cooldown])/1000)}:R>`;
+                else status='READY';
+            }
+        }
+        return `• **${item.name||ADVANTAGE_NAMES[key]||key}**${item.mastered?' *(mastered)*':''} — **${status}**`;
+    }).join('\n')||'None';
+}
+function eventPayload(event, admin=false, notice=null, guild=null){
     const isDraft=event.status==='draft';
     const activePower=(event.advantages||[]).find(a=>a.key==='power');
     const maxHPForDisplay=activePower && Number(event.ability_state?.powerUntil||0)>Date.now()
         ? Math.round(Number(event.max_hp)*(activePower.mastered?1.15:1.05))
         : Number(event.max_hp);
-    const embed=new EmbedBuilder().setColor(isDraft?0x5865f2:0xe67e22)
-        .setTitle(`${event.kind==='challenge'?'Event Challenge':'Boss Event'}: ${event.title}`)
-        .setDescription((notice?`${notice}\n\n`:'')+event.description)
+    const currentHP=Math.max(0,Math.min(maxHPForDisplay,Number(event.current_hp)));
+    const hpRatio=currentHP/Math.max(1,maxHPForDisplay);
+    const color=isDraft?0x5865f2:hpRatio>.6?0x43B581:hpRatio>.25?0xFAA61A:0xED4245;
+    const type=event.kind==='challenge'?'EVENT CHALLENGE':'EVENT RAID BOSS';
+    const hitTime=Number(event.last_hit_at)||0;
+    const lastHit=hitTime>0
+        ? `<@${event.last_attacker_id}> earned **${Number(event.last_earned_xp||0).toLocaleString('en-US')} XP** and dealt **${Number(event.last_damage||0).toLocaleString('en-US')} damage** (<t:${Math.floor(hitTime/1000)}:R>)`+
+            ((event.last_defenses||[]).length?`\nDefenses triggered: ${(event.last_defenses||[]).join(', ')}`:'')
+        : 'No XP hits recorded yet';
+    const leaders=(event._contributors||[]).map((c,i)=>`**#${i+1}** <@${c.user_id}> — **${Number(c.damage).toLocaleString('en-US')} damage**`).join('\n')||'No damage recorded this wave yet';
+    const embed=new EmbedBuilder().setColor(color)
+        .setTitle(isDraft?`${type} — DRAFT`:`${type} — LIVE STATUS`)
+        .setDescription(`${notice?notice+'\n\n':''}## ${event.title}\n*${event.description}*\n\n`+
+            `${eventHealthBar(guild,currentHP,maxHPForDisplay)}\n`+
+            `**${currentHP.toLocaleString('en-US')} / ${maxHPForDisplay.toLocaleString('en-US')} HP**`)
         .addFields(
-            {name:'OVERALL',value:Number(event.overall).toLocaleString('en-US'),inline:true},
-            {name:'HP',value:`${Number(event.current_hp).toLocaleString('en-US')} / ${maxHPForDisplay.toLocaleString('en-US')}`,inline:true},
-            {name:'Duration',value:isDraft?`${Math.round(Number(event.duration_ms)/60000)} minutes`:`Ends <t:${Math.floor(Number(event.expires_at)/1000)}:R>`,inline:true},
-            {name:'First clear',value:rewardSummary(event.first_reward)},
-            {name:'Replay',value:rewardSummary(event.replay_reward)},
-            {name:'Advantages',value:formatAdvantages(event.advantages)}
+            {name:'OVERALL',value:`**${Number(event.overall).toLocaleString('en-US')}**`,inline:true},
+            {name:'Wave',value:event.kind==='bossevent'?`**${Number(event.cycle||0)+1}**`:'Individual challenge',inline:true},
+            {name:'Info',value:`*${event.description.slice(0,800)}*`},
+            {name:'Advantages — live status',value:eventAdvantageStatuses(event).slice(0,1024)},
+            {name:'First-clear rewards',value:rewardSummary(event.first_reward)},
+            {name:'Replay rewards',value:rewardSummary(event.replay_reward)},
+            {name:'Timer',value:isDraft?`${Math.round(Number(event.duration_ms)/60000)} minutes (not started)`:
+                `Ends <t:${Math.floor(Number(event.expires_at)/1000)}:R> • <t:${Math.floor(Number(event.expires_at)/1000)}:T>`}
         );
+    if(event.kind==='bossevent'&&!isDraft){
+        embed.addFields(
+            {name:'Top 3 damage — current wave',value:leaders.slice(0,1024)},
+            {name:'Last XP hit',value:lastHit.slice(0,1024)},
+            {name:'Total event damage (all waves)',value:`**${Number(event.total_damage||0).toLocaleString('en-US')}**`}
+        );
+    }
     if(isDraft)embed.addFields({name:'Advantage keys',value:Object.keys(ADVANTAGE_NAMES).join(', ').slice(0,1000)});
-    if(event.kind==='bossevent' && !isDraft)embed.addFields({name:'Global defeat cycles',value:String(event.cycle)});
+    embed.setFooter({text:'Mizuki Event Boss • XP damage • Live Status'});
     return {embeds:[embed],components:eventButtons(event,admin),allowedMentions:{parse:[]}};
 }
-async function getActiveEvent(guildID){
+// Fetch top contributors only for public display; the XP hook does a cheap
+// single-row lookup and never queries the leaderboard on every chat message.
+async function withContributors(event){
+    if(event?.kind==='bossevent'&&event.status==='active'){
+        const rows=await db.gameQuery(`SELECT user_id,damage FROM mzk_event_contributions
+            WHERE event_id=$1 AND cycle=$2 ORDER BY damage DESC LIMIT 3`,[event.id,event.cycle]);
+        event._contributors=rows.rows;
+    }
+    return event;
+}
+async function getActiveEvent(guildID,includeContributors=false){
     await initialize();
     const rows=await db.gameQuery(`SELECT * FROM mzk_events WHERE guild_id=$1 AND status='active' AND expires_at>$2 ORDER BY id DESC LIMIT 1`,[String(guildID),Date.now()]);
-    return rows.rows[0]||null;
+    const event=rows.rows[0]||null;
+    return includeContributors?withContributors(event):event;
 }
-async function getById(id, guildID){
+async function getById(id,guildID,includeContributors=false){
     await initialize();
     const rows=await db.gameQuery('SELECT * FROM mzk_events WHERE id=$1 AND guild_id=$2',[id,String(guildID)]);
-    return rows.rows[0]||null;
+    const event=rows.rows[0]||null;
+    return includeContributors?withContributors(event):event;
 }
 function buildCreateModal(kind){
     const modal=new ModalBuilder().setCustomId(ACTION_ID+`create:${kind}`).setTitle(kind==='challenge'?'Create Event Challenge':'Create Boss Event');
@@ -659,28 +744,32 @@ async function recordEarnedXP(message,attack){
                     await tx.query('UPDATE mzk_event_progress SET clears=clears+1 WHERE event_id=$1 AND user_id=$2',[row.id,who.user_id]);
                     awarded.push({userID:who.user_id,first,reward});
                 }
-                await tx.query("UPDATE mzk_events SET current_hp=max_hp,cycle=cycle+1,ability_state='{}'::jsonb WHERE id=$1",[row.id]);
-            }else await tx.query('UPDATE mzk_events SET current_hp=$2,ability_state=$3::jsonb WHERE id=$1',[row.id,hit.remaining,JSON.stringify(hit.state)]);
+                await tx.query(`UPDATE mzk_events SET current_hp=max_hp,cycle=cycle+1,ability_state='{}'::jsonb,
+                    total_damage=total_damage+$2,last_damage=$3,last_earned_xp=$4,
+                    last_attacker_id=$5,last_hit_at=$6,last_defenses=$7::jsonb,last_source=$8 WHERE id=$1`,
+                    [row.id,hit.damage,hit.damage,amount,userID,now,JSON.stringify(hit.advantagesTriggered),String(attack.source||'command')]);
+            }else{
+                await tx.query(`UPDATE mzk_events SET current_hp=$2,ability_state=$3::jsonb,
+                    total_damage=total_damage+$4,last_damage=$5,last_earned_xp=$6,
+                    last_attacker_id=$7,last_hit_at=$8,last_defenses=$9::jsonb,last_source=$10 WHERE id=$1`,
+                    [row.id,hit.remaining,JSON.stringify(hit.state),hit.damage,hit.damage,amount,userID,now,
+                        JSON.stringify(hit.advantagesTriggered),String(attack.source||'command')]);
+            }
         }
         return {event:row,damage:hit.damage,remaining:hit.remaining,defeated:hit.remaining===0,awarded,advantagesTriggered:hit.advantagesTriggered};
     });
     if(!result)return null;
-    // Keep the existing persistent !boss panel reasonably fresh without editing
-    // it on every XP tick. Global event defeat is always refreshed immediately.
+    // The native !boss screen is authoritative. Refresh it at most once per
+    // five seconds, and never send a fresh channel message for wave defeats.
     const guildID=String(message.guild.id);
-    if(result.defeated || now-(lastGlobalPanelRefresh.get(guildID)||0)>25_000){
+    if(now-(lastGlobalPanelRefresh.get(guildID)||0)>=5_000){
         lastGlobalPanelRefresh.set(guildID,now);
-        // Do not hold up the XP award/roll animation while Discord fetches and
-        // edits the persistent status message. Errors stay isolated.
         void require('../commands/boss').ensureRaidStatusMessage(message.client,guildID,{guild:message.guild})
             .catch(error=>console.error('Could not refresh global event status:',error));
     }
     if(result.defeated){
-        const firstClears=result.awarded.filter(p=>p.first).length;
-        const msg=result.event.kind==='challenge'
-            ? `<@${message.author.id}> cleared **${result.event.title}** by earning XP! ${result.awarded[0]?.first?'First clear':'Replay'} reward claimed.`
-            : `**Global event boss defeated: ${result.event.title}!**\n${result.awarded.length} contributors rewarded (${firstClears} first clears). A new wave begins until <t:${Math.floor(Number(result.event.expires_at)/1000)}:R>.`;
-        await message.channel.send({content:msg,allowedMentions:{parse:[]}}).catch(error=>console.error('Could not announce event defeat:',error));
+        // Give out existing first-clear/replay rewards, without spamming a
+        // wave announcement for every XP message that kills a small boss.
         await Promise.allSettled(result.awarded.map(a=>leveling.syncLevelAndAnnounce(message.client,message.guild.id,a.userID)));
     }
     return result;
@@ -710,17 +799,17 @@ async function handleInteraction(interaction){
             await initialize();
             const created=(await db.gameQuery(`INSERT INTO mzk_events(guild_id,owner_id,kind,title,description,overall,max_hp,current_hp,duration_ms,created_at)
                 VALUES($1,$2,$3,$4,$5,$6,$7,$7,$8,$9) RETURNING *`,[interaction.guildId,interaction.user.id,rawID,name,description,overall,hp,duration,Date.now()])).rows[0];
-            await interaction.reply({...eventPayload(created,true,'Draft saved. Choose Edit rewards to add first-clear and replay rewards, then publish.'),flags:64});
+            await interaction.reply({...eventPayload(created,true,'Draft saved. Choose Edit rewards to add first-clear and replay rewards, then publish.',interaction.guild),flags:64});
         }catch(error){await interaction.reply({content:`Could not create event: ${error.message}`,flags:64});}
         return true;
     }
-    const event = await getById(rawID,interaction.guildId);
+    const event = await getById(rawID,interaction.guildId,['open','refresh'].includes(action));
     if(!event){await interaction.reply({content:'Event no longer exists.',flags:64});return true;}
     if((['manage','rewards','save_rewards','advantages','save_advantages','publish','discard'].includes(action)||action.startsWith('reward_')) && (!isBotAdmin(interaction.user.id)||String(event.owner_id)!==String(interaction.user.id))){
         await interaction.reply({content:'Only the event creator can edit this event.',flags:64});return true;
     }
     if(action==='manage'){
-        await interaction.reply({...eventPayload(event,true,'Owner controls. Advantages and future reward bundles can be updated while this event is live.'),flags:64});
+        await interaction.reply({...eventPayload(event,true,'Owner controls. Advantages and future reward bundles can be updated while this event is live.',interaction.guild),flags:64});
         return true;
     }
     if(action==='advantages'){
@@ -745,7 +834,7 @@ async function handleInteraction(interaction){
                 return result.rows[0];
             }));
             if(!saved)throw new Error('Draft is no longer editable.');
-            await interaction.reply({...eventPayload(saved,true,'Boss advantages saved.'),flags:64});
+            await interaction.reply({...eventPayload(saved,true,'Boss advantages saved.',interaction.guild),flags:64});
         }catch(error){await interaction.reply({content:`Could not save advantages: ${error.message}`,flags:64});}
         return true;
     }
@@ -763,7 +852,7 @@ async function handleInteraction(interaction){
             const kind=parts[3];
             const key=parts[4];
             if(action==='reward_home'){
-                await interaction.update(eventPayload(event,true,'Reward settings saved automatically.'));
+                await interaction.update(eventPayload(event,true,'Reward settings saved automatically.',interaction.guild));
             }else if(action==='reward_back'){
                 await interaction.update(rewardDashboardPayload(event));
             }else if(action==='reward_open'){
@@ -845,7 +934,7 @@ async function handleInteraction(interaction){
         if(typeof result==='string'){await interaction.reply({content:result==='already-active'?'Another event is already active. Finish or let it expire first.':'Configure both reward sets before publishing.',flags:64});return true;}
         await interaction.reply({content:`Event **${result.title}** published. Its public panel is now available through \`!boss\`.`,flags:64});
         // A public event announcement is necessary: draft/editor replies were ephemeral.
-        await interaction.channel.send({...eventPayload(result,false,'New boss event! Earn XP from chatting and commands to deal damage. No attack button is needed.')}).catch(error=>console.error('Could not post public event panel:',error));
+        await interaction.channel.send({content:`**Event boss: ${result.title}** is now live! Earn XP by chatting or using XP-earning commands to damage it. Use **!boss** for its live HP, custom health bar, and progress.`,allowedMentions:{parse:[]}}).catch(error=>console.error('Could not announce public event:',error));
         await require('../commands/boss').ensureRaidStatusMessage(interaction.client,interaction.guildId,{guild:interaction.guild})
             .catch(error=>console.error('Could not publish event in global raid-status panel:',error));
         return true;
@@ -860,14 +949,18 @@ async function handleInteraction(interaction){
         }
         let visible=event;
 
-        if(action==='refresh'&&interaction.isButton?.())await interaction.update(eventPayload(visible,false));
-        else await interaction.reply(eventPayload(visible,false));
+        if(action==='refresh'&&interaction.isButton?.())await interaction.update(eventPayload(visible,false,null,interaction.guild));
+        else await interaction.reply(eventPayload(visible,false,null,interaction.guild));
         return true;
     }
     if(action==='myprogress'){
         if(event.kind!=='challenge')return false;
-        const progress=(await db.gameQuery('SELECT current_hp,clears FROM mzk_event_progress WHERE event_id=$1 AND user_id=$2',[event.id,interaction.user.id])).rows[0];
-        await interaction.reply({content:`**${event.title}** — your HP remaining: **${Number(progress?.current_hp??event.max_hp).toLocaleString('en-US')} / ${Number(event.max_hp).toLocaleString('en-US')}**. Clears: **${Number(progress?.clears||0)}**. Earn XP to deal damage.`,flags:64});
+        const progress=(await db.gameQuery('SELECT current_hp,clears,ability_state FROM mzk_event_progress WHERE event_id=$1 AND user_id=$2',[event.id,interaction.user.id])).rows[0];
+        const personal={...event,current_hp:progress?.current_hp??event.max_hp,ability_state:progress?.ability_state||{}};
+        const embed=eventPayload(personal,false,null,interaction.guild).embeds[0]
+            .setTitle('EVENT CHALLENGE — YOUR LIVE PROGRESS')
+            .addFields({name:'Your clears',value:String(Number(progress?.clears||0))});
+        await interaction.reply({embeds:[embed],flags:64});
         return true;
     }
     return false;
