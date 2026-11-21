@@ -736,9 +736,12 @@ async function ensureRaidStatusMessage(
 
     // Events also appear in the EXISTING persistent global !boss status panel.
     // The editor and its draft replies remain private; published HP is public.
-    const activeEvent = await eventBosses.getActiveEvent(normalizedGuildID);
+    const activeEvent = await eventBosses.getActiveEvent(normalizedGuildID,true);
     if(activeEvent){
-        payload.embeds.push(eventBosses.eventPayload(activeEvent,false).embeds[0]);
+        const eventEmbed=eventBosses.eventPayload(activeEvent,false,null,guild).embeds[0];
+        // Put the live event boss first. Do not lead with "no raid boss" when
+        // an event raid is active; the ordinary raid remains visible if present.
+        payload.embeds=boss?[eventEmbed,...payload.embeds]:[eventEmbed];
         payload.components.push(new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`mzk_event_open:${activeEvent.id}`)
@@ -1363,7 +1366,7 @@ async function execute(message){
     });
 
     const payload = buildBossPayload(message.guild, boss);
-    const event = await eventBosses.getActiveEvent(message.guild.id);
+    const event = await eventBosses.getActiveEvent(message.guild.id,true);
     if(event){
         payload.components.push(new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -1373,7 +1376,8 @@ async function execute(message){
         ));
         // Show event status directly on the public !boss panel; this isn't a
         // private interaction and everyone can see its global HP and deadline.
-        payload.embeds.push(eventBosses.eventPayload(event,false).embeds[0]);
+        const eventEmbed=eventBosses.eventPayload(event,false,null,message.guild).embeds[0];
+        payload.embeds=boss?[eventEmbed,...payload.embeds]:[eventEmbed];
     }
     return message.reply(payload);
 }
