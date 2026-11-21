@@ -476,6 +476,12 @@ async function executePrefixCommandSafely(
         BOSS_DAMAGE_COMMANDS.has(
             normalizedLabel
         );
+    // Events count earned command XP, including hug, coinflip and fart.
+    // !roll uses its own per-result hook to avoid double-counting Multi Roll.
+    const tracksEventDamage = new Set([
+        '!kiss','!steal','!fight','!troll','!ezwin',
+        '!hug','!coinflip','!fart','!bless','!counterattack'
+    ]).has(normalizedLabel);
 
     const commandStartedAt =
         Date.now();
@@ -499,7 +505,7 @@ async function executePrefixCommandSafely(
         ? await captureCommandXPBalance(message).catch(()=>null)
         : null;
 
-    if(tracksBossDamage){
+    if(tracksBossDamage || tracksEventDamage){
 
         try{
 
@@ -550,24 +556,24 @@ async function executePrefixCommandSafely(
         }
 
 
-        if(tracksBossDamage){
-
-            await processBossCommandDamage(
-                message,
-                normalizedLabel,
-                xpBefore,
-                commandStartedAt
-            ).catch(error => {
-
-                // Command rewards have already been committed. Boss tracking
-                // cannot turn a successful command into a visible failure.
-                console.error(
-                    `Could not apply ${label} XP to the raid boss:`,
-                    error
-                );
-
-            });
-
+        if(tracksBossDamage || tracksEventDamage){
+            try{
+                // Use one net-XP snapshot for event bosses and existing raids.
+                // Exclude chat XP gained while a long-running command was active.
+                const after=await captureCommandXPBalance(message);
+                const chat=await database.getChatXPLoggedSince(message.guild.id,message.author.id,commandStartedAt);
+                const raw=after-xpBefore-BigInt(Math.max(0,Math.floor(Number(chat)||0)));
+                const delta=Number(raw>BigInt(Number.MAX_SAFE_INTEGER)
+                    ? BigInt(Number.MAX_SAFE_INTEGER)
+                    : raw < -BigInt(Number.MAX_SAFE_INTEGER) ? -BigInt(Number.MAX_SAFE_INTEGER) : raw);
+                if(tracksBossDamage && delta>0){
+                    const result=await bosses.handleCommandXP(message,normalizedLabel,delta);
+                    await bossCommand.handleCombatResult(message,result);
+                }
+                if(tracksEventDamage && delta!==0){
+                    await eventBosses.recordEarnedXP(message,{source:'command',earnedXP:delta});
+                }
+            }catch(error){console.error(`Could not record ${label} boss XP damage:`,error);}
         }
 
     }
@@ -2253,6 +2259,13 @@ const bossCombatResult =
 
     });
 
+
+await eventBosses.recordEarnedXP(message,{
+    source:'chat',
+    earnedXP:Number(result.earnedXP)||0,
+    xpWithoutLuck:Number(result.bossXPWithoutLuck??result.earnedXP)||0,
+    critical:Boolean(result.critical)
+}).catch(error=>console.error('Event boss chat XP hook failed:',error));
 
 await bossCommand.handleCombatResult(
     message,
