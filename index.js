@@ -556,7 +556,7 @@ async function executePrefixCommandSafely(
         }
 
 
-        if(tracksBossDamage || tracksEventDamage){
+        if((tracksBossDamage || tracksEventDamage) && xpBefore!==null){
             try{
                 // Use one net-XP snapshot for event bosses and existing raids.
                 // Exclude chat XP gained while a long-running command was active.
@@ -567,11 +567,17 @@ async function executePrefixCommandSafely(
                     ? BigInt(Number.MAX_SAFE_INTEGER)
                     : raw < -BigInt(Number.MAX_SAFE_INTEGER) ? -BigInt(Number.MAX_SAFE_INTEGER) : raw);
                 if(tracksBossDamage && delta>0){
-                    const result=await bosses.handleCommandXP(message,normalizedLabel,delta);
-                    await bossCommand.handleCombatResult(message,result);
+                    try{
+                        const result=await bosses.handleCommandXP(message,normalizedLabel,delta);
+                        await bossCommand.handleCombatResult(message,result);
+                    }catch(error){console.error(`Native raid boss damage failed for ${label}:`,error);}
                 }
+                // Use the same earned-XP snapshot even if a native raid boss
+                // error occurred; event damage must never depend on that path.
                 if(tracksEventDamage && delta!==0){
-                    await eventBosses.recordEarnedXP(message,{source:'command',earnedXP:delta});
+                    try{
+                        await eventBosses.recordEarnedXP(message,{source:'command',earnedXP:delta});
+                    }catch(error){console.error(`Event boss damage failed for ${label}:`,error);}
                 }
             }catch(error){console.error(`Could not record ${label} boss XP damage:`,error);}
         }
