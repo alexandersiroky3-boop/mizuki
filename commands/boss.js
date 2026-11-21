@@ -12,6 +12,7 @@ const bosses = require("../systems/bosses");
 const bossChallenges = require("../systems/bossChallenges");
 const bossShop = require("../systems/bossShop");
 const leveling = require("../systems/leveling");
+const eventBosses = require("../systems/eventBosses");
 
 
 const INFO_BUTTON_ID = "raid_boss_info";
@@ -1348,7 +1349,17 @@ async function execute(message){
         );
     });
 
-    return message.reply(buildBossPayload(message.guild, boss));
+    const payload = buildBossPayload(message.guild, boss);
+    const event = await eventBosses.getActiveEvent(message.guild.id);
+    if(event){
+        payload.components.push(new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`mzk_event_open:${event.id}`)
+                .setLabel(`Event: ${event.title}`.slice(0,80))
+                .setStyle(ButtonStyle.Primary)
+        ));
+    }
+    return message.reply(payload);
 }
 
 
@@ -1427,6 +1438,8 @@ async function resetChallenges(message){
 
 
 async function handleInteraction(interaction){
+    // The event editor also receives /createevent and modal submissions here.
+    if(await eventBosses.handleInteraction(interaction))return true;
     if(!interaction.isButton?.()) return false;
 
     const control=interaction.customId.match(/^raid_(battle_start|battle_giveup|challenge_giveup):([^:]+)(?::(\d+))?$/);
