@@ -21,7 +21,7 @@ function buildCommandsEmbed(guild = null){
                 name: "🎲 XP commands",
                 value:
                     "`!roll` • `!hug @user` • `!kiss @user` • `!steal @user`\n" +
-                    "`!troll @user` • `!ezwin` • `!boss`"
+                    "`!troll @user` • `!fart @user` • `!ezwin` • `!boss`"
             },
             {
                 name: "🔒 Obtainable commands",
@@ -35,7 +35,8 @@ function buildCommandsEmbed(guild = null){
             {
                 name: "🧰 Utility",
                 value:
-                    "`!tutorial` • `!afk` • `!mute` • `!updates` • `!ping` • `!commands`"
+                    "`!tutorial` • `!afk` • `!mute` • `!updates` • `!ping` • `!commands`\n" +
+                    "Event editor (admins): `/createevent typeofevent`"
             },
             {
                 name: "🛡️ Staff",
