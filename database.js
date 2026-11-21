@@ -2895,6 +2895,8 @@ await db.query(`
 
         coinflipUnlocked BOOLEAN NOT NULL DEFAULT FALSE,
 
+        fartUnlocked BOOLEAN NOT NULL DEFAULT FALSE,
+
         updatedAt BIGINT NOT NULL DEFAULT 0,
 
         PRIMARY KEY(
@@ -2914,6 +2916,7 @@ await db.query(`
     ADD COLUMN IF NOT EXISTS blessUnlocked BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS spawnBossUses INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS coinflipUnlocked BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS fartUnlocked BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS spawnBossCooldownUntil BIGINT NOT NULL DEFAULT 0
 
 `);
@@ -10111,6 +10114,8 @@ async function applyBossRewardBundle(
     const unlockCoinflip =
         Boolean(bundle?.unlockCoinflip);
 
+    const unlockFart = Boolean(bundle?.unlockFart);
+
     const spawnBossUses = Number(bundle?.spawnBossUses) > 0 ? 1 : 0;
 
 
@@ -10118,6 +10123,7 @@ async function applyBossRewardBundle(
         unlockFight
         || unlockBless
         || unlockCoinflip
+        || unlockFart
         || freeUpgradeTokens > 0
         || spawnBossUses > 0
     ){
@@ -10132,9 +10138,10 @@ async function applyBossRewardBundle(
                 blessUnlocked,
                 spawnBossUses,
                 coinflipUnlocked,
-                updatedAt
+                updatedAt,
+                fartUnlocked
             )
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
 
             ON CONFLICT(guildID,userID)
             DO UPDATE SET
@@ -10152,6 +10159,9 @@ async function applyBossRewardBundle(
                 coinflipUnlocked=
                     boss_entitlements.coinflipUnlocked
                     OR EXCLUDED.coinflipUnlocked,
+                fartUnlocked=
+                    boss_entitlements.fartUnlocked
+                    OR EXCLUDED.fartUnlocked,
                 updatedAt=EXCLUDED.updatedAt
 
         `, [
@@ -10162,7 +10172,8 @@ async function applyBossRewardBundle(
             unlockBless,
             spawnBossUses,
             unlockCoinflip,
-            now
+            now,
+            unlockFart
         ]);
 
     }
@@ -11161,7 +11172,8 @@ function normalizeBossEntitlements(row = {}){
             Boolean(
                 row.coinflipUnlocked
                 ?? row.coinflipunlocked
-            )
+            ),
+        fartUnlocked: Boolean(row.fartUnlocked ?? row.fartunlocked)
     };
 
 }
@@ -11180,7 +11192,8 @@ async function getBossEntitlements(
                 freeUpgradeTokens AS "freeUpgradeTokens",
                 blessUnlocked AS "blessUnlocked",
                 spawnBossUses AS "spawnBossUses",
-                coinflipUnlocked AS "coinflipUnlocked"
+                coinflipUnlocked AS "coinflipUnlocked",
+                fartUnlocked AS "fartUnlocked"
 
             FROM boss_entitlements
 
