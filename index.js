@@ -67,6 +67,8 @@ require("./commands/ezwin");
 
 const bossCommand =
 require("./commands/boss");
+const eventBosses = require("./systems/eventBosses");
+const fartCommand = require("./commands/fart");
 
 const rollCommand =
 require("./commands/roll");
@@ -484,6 +486,18 @@ async function executePrefixCommandSafely(
     let xpBefore =
         null;
 
+    // Event rewards can provide 3x XP from one named command for a limited time.
+    // It never bypasses that command's own cooldowns or rarity calculation.
+    const eligibleTripleCommand = new Set([
+        "!kiss", "!steal", "!fight", "!troll", "!ezwin", "!fart", "!coinflip", "!bless"
+    ]).has(normalizedLabel);
+    const tripleXP = eligibleTripleCommand
+        ? await eventBosses.isCommandTripleXP(message.guild.id,message.author.id,normalizedLabel)
+            .catch(error => {console.error("Event triple-XP lookup failed:",error);return false;})
+        : false;
+    const tripleBefore = tripleXP
+        ? await captureCommandXPBalance(message).catch(()=>null)
+        : null;
 
     if(tracksBossDamage){
 
@@ -515,6 +529,20 @@ async function executePrefixCommandSafely(
             commandModule,
             message
         );
+
+        if(tripleXP && tripleBefore!==null){
+            try{
+                const tripleAfter=await captureCommandXPBalance(message);
+                const chatEarned=await database.getChatXPLoggedSince(message.guild.id,message.author.id,commandStartedAt);
+                const delta=tripleAfter-tripleBefore-BigInt(Math.max(0,Math.floor(Number(chatEarned)||0)));
+                if(delta!==0n){
+                    const capped=delta>1_000_000_000_000n?1_000_000_000_000n:
+                        delta< -1_000_000_000_000n? -1_000_000_000_000n:delta;
+                    await database.giveXP(message.guild.id,message.author.id,Number(capped*2n));
+                    await leveling.syncLevelAndAnnounce(message.client,message.guild.id,message.author.id);
+                }
+            }catch(error){console.error("Event 3x command XP reward failed:",error);}
+        }
 
         if(tutorialTracks && tutorialBefore!==null){
             const after=await captureCommandXPBalance(message);
@@ -647,6 +675,7 @@ async function dispatchPrefixCommand(
         ["!warn", /^!warn(?:\s|$)/i, warnCommand],
         ["!steal", /^!steal(?:\s|$)/i, stealCommand],
         ["!fight", /^!fight(?:\s|$)/i, fightCommand],
+        ["!fart", /^!fart(?:\s|$)/i, fartCommand],
         ["!bless", /^!bless(?:\s|$)/i, blessCommand],
         ["!coinflip", /^!coinflip(?:\s|$)/i, coinflipCommand],
         ["!giveallxp", /^!giveallxp(?:\s|$)/i, giveallxp],
@@ -992,6 +1021,9 @@ client.once("clientReady", async () => {
                     error
                 );
             });
+            await eventBosses.initialize().catch(error => console.error("Event boss storage initialization failed:",error));
+            await guild.commands.create(eventBosses.command.toJSON())
+                .catch(error => console.error("Could not register /createevent:",error));
             for(const command of adminTools.slashCommands){
                 await guild.commands.create(command).catch(error => console.error("Could not register /" + command.name + ":",error));
             }
