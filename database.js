@@ -10865,7 +10865,8 @@ async function completeBossChallengeEnemy({
     stageIndex,
     stageCount,
     firstReward,
-    repeatReward
+    repeatReward,
+    grantReward
 }){
 
     const client =
@@ -11009,14 +11010,8 @@ async function completeBossChallengeEnemy({
         ]);
 
 
-        await applyBossRewardBundle(
-            client,
-            guildID,
-            userID,
-            rewardBundle,
-            Date.now()
-        );
-
+        if(grantReward) await grantReward(client,rewardBundle,Date.now());
+        else await applyBossRewardBundle(client,guildID,userID,rewardBundle,Date.now());
 
         await client.query("COMMIT");
 
