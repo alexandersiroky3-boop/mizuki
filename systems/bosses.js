@@ -273,6 +273,9 @@ function withGuildLock(
 
 
 function getBossDefinition(bossOrKey){
+    if(bossOrKey?.category === 'challenge' && bossOrKey.key) return bossOrKey;
+    const event = bossOrKey?.stateData?.eventChallenge;
+    if(event) return event.stages.find(stage => stage.key === bossOrKey.bossKey) || null;
 
     const key =
         typeof bossOrKey === "string"
@@ -827,7 +830,8 @@ function createBossState(
 async function createChallengeBossState(
     battle,
     bossKey,
-    now = Date.now()
+    now = Date.now(),
+    eventChallenge = null
 ){
 
     const definition =
@@ -851,6 +855,7 @@ async function createChallengeBossState(
         );
 
     state.stateData.pendingStart = true;
+    if(eventChallenge) state.stateData.eventChallenge = eventChallenge;
 
 
     state.expiresAt =
@@ -1781,7 +1786,9 @@ async function handleChallengeAttack(
 
 
             if(!boss){
-
+                // A concurrent finishing hit removes the boss before its reward transaction
+                // closes the room. A late hit must not erase that transaction's battle row.
+                if(battle.expiresAt>now) return {challenge:true,settling:true,challengeBattle:battle};
                 await database.deleteBossChallengeBattle(
                     message.guild.id,
                     message.author.id
@@ -2440,7 +2447,7 @@ async function controlChallenge(guildID,userID,action,channelID=null,spawnedAt=n
             if(!boss)return {success:false,status:'expired'};
             if(!boss.stateData.pendingStart)return {success:false,status:'already-started'};
             boss.stateData.pendingStart=false;
-            const expiresAt=Date.now()+bossChallenges.CHALLENGE_BATTLE_DURATION_MS;
+            const expiresAt=Math.min(Date.now()+bossChallenges.CHALLENGE_BATTLE_DURATION_MS, boss.stateData.eventChallenge?.expiresAt ?? Infinity);
             boss.expiresAt=expiresAt;
             await database.gameQuery('UPDATE boss_challenge_battles SET expiresAt=$3 WHERE guildID=$1 AND userID=$2',[guildID,userID,expiresAt]);
             await database.updateRaidBossState(boss);
@@ -2453,8 +2460,10 @@ async function controlChallenge(guildID,userID,action,channelID=null,spawnedAt=n
 }
 
 async function manipulationState(guildID,userID,channelID){
-    if(![...RAID_BOSSES,...CHALLENGE_BOSSES].some(b=>hasAdvantage(b,'manipulation')))return null;
+    // Custom challenge definitions may have Manipulation even if no canon boss does.
     const battle=await database.getActiveBossChallengeBattle(guildID,userID,channelID);
+    if(!battle?.challengeKey?.startsWith('event-') &&
+       ![...RAID_BOSSES,...CHALLENGE_BOSSES].some(b=>hasAdvantage(b,'manipulation'))) return null;
     const scope=battle?.bossScope||guildID;
     return withGuildLock(scope,async()=>{
         const boss=await loadActiveBossLocked(scope,Date.now());
