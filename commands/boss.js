@@ -737,7 +737,7 @@ async function ensureRaidStatusMessage(
     // Events also appear in the EXISTING persistent global !boss status panel.
     // The editor and its draft replies remain private; published HP is public.
     const activeEvent = await eventBosses.getActiveEvent(normalizedGuildID,true);
-    if(activeEvent){
+    if(activeEvent?.kind === 'bossevent'){
         const eventEmbed=eventBosses.eventPayload(activeEvent,false,null,guild).embeds[0];
         // Put the live event boss first. Do not lead with "no raid boss" when
         // an event raid is active; the ordinary raid remains visible if present.
@@ -971,6 +971,23 @@ function getChallengeStatus(challenge, snapshot){
 }
 
 
+async function getChallengeMenu(guildID,userID){
+    const event = await eventBosses.getActiveEvent(guildID);
+    const eventChallenge = eventBosses.asChallenge(event);
+    // An expired seasonal run must not keep the ordinary challenges locked.
+    await database.gameQuery(`UPDATE boss_challenge_progress SET active=false,stageIndex=0
+        WHERE guildID=$1 AND userID=$2 AND active AND challengeKey LIKE 'event-%'
+        AND NOT EXISTS (SELECT 1 FROM mzk_events e WHERE 'event-'||e.id=challengeKey
+            AND e.guild_id=$1 AND e.status='active' AND e.expires_at>$3)`,[guildID,userID,Date.now()]);
+    const snapshot = await database.getBossChallengeSnapshot(guildID,userID);
+    snapshot.eventChallenge=eventChallenge;
+
+    return snapshot;
+}
+function canon(challenge){return challenge.eventID ? '{NON-CANON}' : '{CANON}';}
+function challengeLabel(challenge){return challenge.eventID ? 'Event Challenge' : 'Challenge #'+challenge.number;}
+function rewardText(challenge,bundle){return challenge.eventID ? eventBosses.rewardSummary(bundle) : bossChallenges.formatRewardBundle(bundle);}
+
 function buildChallengeListPayload(
     snapshot,
     notice = null,
@@ -1011,9 +1028,7 @@ function buildChallengeListPayload(
                 + `**Status:** ${statusText}\n`
                 + `**First clear:** ${renderChestEmojis(
                     guild,
-                    bossChallenges.formatRewardBundle(
-                        challenge.firstReward
-                    )
+                    rewardText(challenge, challenge.firstReward)
                 )}`
         });
     }
@@ -1053,7 +1068,10 @@ function buildChallengeListPayload(
     return {
         content: notice || null,
         embeds: [embed],
-        components: [challengeButtons],
+        components: [challengeButtons, ...(snapshot.eventChallenge ? [new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('raid_challenge_start:'+snapshot.eventChallenge.key)
+                .setLabel(('Event: '+snapshot.eventChallenge.name+' · Non-canon').slice(0,80)).setStyle(ButtonStyle.Primary)
+        )] : [])],
         allowedMentions: {parse: []}
     };
 }
@@ -1090,9 +1108,9 @@ function buildChallengeDetailPayload(guild, challenge, snapshot, notice = null){
 
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle(`Challenge #${challenge.number} — ${challenge.name}`)
+        .setTitle(`${challengeLabel(challenge)} — ${challenge.name}`)
         .setDescription(
-            `${path}\n\n## ${definition.name} {CANON}\n*${definition.act}*`
+            `${path}\n\n## ${definition.name} ${canon(challenge)}\n*${definition.act}*`
         )
         .addFields(
             {name: "OVERALL", value: `**${formatNumber(definition.overall)}**`, inline: true},
@@ -1103,18 +1121,14 @@ function buildChallengeDetailPayload(guild, challenge, snapshot, notice = null){
                 name: "First-clear reward",
                 value: renderChestEmojis(
                     guild,
-                    bossChallenges.formatRewardBundle(
-                        challenge.firstReward
-                    )
+                    rewardText(challenge, challenge.firstReward)
                 )
             },
             {
                 name: "Replay reward",
                 value: renderChestEmojis(
                     guild,
-                    bossChallenges.formatRewardBundle(
-                        challenge.repeatReward
-                    )
+                    rewardText(challenge, challenge.repeatReward)
                 )
             },
             {
@@ -1134,7 +1148,7 @@ function buildChallengeDetailPayload(guild, challenge, snapshot, notice = null){
             .setLabel(
                 battle
                     ? "Battle in progress"
-                    : `Fight ${definition.name}`
+                    : `Fight ${definition.name}`.slice(0,80)
             )
             .setEmoji("⚔️")
             .setStyle(ButtonStyle.Danger)
@@ -1146,6 +1160,11 @@ function buildChallengeDetailPayload(guild, challenge, snapshot, notice = null){
             .setStyle(ButtonStyle.Secondary)
     );
 
+    if(challenge.eventID){
+        embed.addFields({name:'Event ends',value:`<t:${Math.floor(challenge.expiresAt/1000)}:R>`});
+        if(String(snapshot.userID)===challenge.ownerID)buttons.addComponents(new ButtonBuilder()
+            .setCustomId('mzk_event_manage:'+challenge.eventID).setLabel('Manage event').setStyle(ButtonStyle.Secondary));
+    }
     return {
         content: notice || null,
         embeds: [embed],
@@ -1157,7 +1176,7 @@ function buildChallengeDetailPayload(guild, challenge, snapshot, notice = null){
 
 function buildChallengeCombatEmbed(guild, boss, battle, options = {}){
     const definition = bosses.getBossDefinition(boss);
-    const challenge = bossChallenges.getBossChallenge(battle.challengeKey);
+    const challenge = boss.stateData?.eventChallenge || bossChallenges.getBossChallenge(battle.challengeKey);
     const expiresAt = Math.floor(battle.expiresAt / 1000);
 
     const embed = new EmbedBuilder()
@@ -1169,10 +1188,10 @@ function buildChallengeCombatEmbed(guild, boss, battle, options = {}){
         .setTitle(
             options.defeated
                 ? `🏆 ${definition.name} DEFEATED`
-                : `⚔️ ${definition.name} {CANON}`
+                : `⚔️ ${definition.name} ${canon(challenge)}`
         )
         .setDescription(
-            `### Challenge #${challenge.number} — ${challenge.name}\n`
+            `### ${challengeLabel(challenge)} — ${challenge.name}\n`
             + `*${definition.act}*\n\n`
             + `${buildHealthBar(guild, boss.currentHP, boss.maxHP)}\n`
             + `**${formatNumber(boss.currentHP)} / ${formatNumber(boss.maxHP)} HP**`
@@ -1237,8 +1256,8 @@ async function createChallengeBattleUnlocked(interaction, challenge){
         challenge.stages[stageIndex]
     );
     const startedAt = Date.now();
-    const expiresAt = startedAt
-        + bossChallenges.CHALLENGE_BATTLE_DURATION_MS;
+    const expiresAt = Math.min(startedAt + bossChallenges.CHALLENGE_BATTLE_DURATION_MS, challenge.expiresAt ?? Infinity);
+    if(expiresAt<=startedAt) return {success:false,status:'expired'};
     const bossScope = `challenge:${interaction.guildId}:${interaction.user.id}`;
     const botID = interaction.client.user.id;
     const channel = await interaction.guild.channels.create({
@@ -1297,8 +1316,9 @@ async function createChallengeBattleUnlocked(interaction, challenge){
         battle = creation.battle;
         const boss = await bosses.createChallengeBossState(
             battle,
-            definition.key,
-            startedAt
+            challenge.eventID ? definition : definition.key,
+            startedAt,
+            challenge.eventID ? challenge : null
         );
         if(!boss){
             throw new Error("Could not create the private boss state.");
@@ -1367,7 +1387,7 @@ async function execute(message){
 
     const payload = buildBossPayload(message.guild, boss);
     const event = await eventBosses.getActiveEvent(message.guild.id,true);
-    if(event){
+    if(event?.kind === 'bossevent'){
         payload.components.push(new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`mzk_event_open:${event.id}`)
@@ -1550,10 +1570,7 @@ async function handleInteraction(interaction){
         interaction.customId === CHALLENGES_BUTTON_ID
         || interaction.customId === CHALLENGE_LIST_BUTTON_ID
     ){
-        const snapshot = await database.getBossChallengeSnapshot(
-            interaction.guildId,
-            interaction.user.id
-        );
+        const snapshot = await getChallengeMenu(interaction.guildId, interaction.user.id);
         const payload = buildChallengeListPayload(
             snapshot,
             null,
@@ -1569,12 +1586,12 @@ async function handleInteraction(interaction){
     }
 
     const startMatch = interaction.customId.match(
-        /^raid_challenge_start:(\d+)$/
+        /^raid_challenge_start:(event-\d+|\d+)$/
     );
     if(startMatch){
-        const challenge = bossChallenges.getBossChallenge(
-            Number(startMatch[1])
-        );
+        const selected=startMatch[1];
+        const candidate=selected.startsWith('event-') ? eventBosses.asChallenge(await eventBosses.getActiveEvent(interaction.guildId)) : null;
+        const challenge=selected.startsWith('event-') ? (candidate?.key===selected ? candidate : null) : bossChallenges.getBossChallenge(Number(selected));
         if(!challenge){
             await interaction.reply({
                 content: "❌ That challenge no longer exists.",
@@ -1590,10 +1607,7 @@ async function handleInteraction(interaction){
             requiredLevel: challenge.requiredLevel,
             prerequisite: challenge.prerequisite
         });
-        const snapshot = await database.getBossChallengeSnapshot(
-            interaction.guildId,
-            interaction.user.id
-        );
+        const snapshot = await getChallengeMenu(interaction.guildId, interaction.user.id);
         let notice = null;
         if(!result.success){
             notice = {
@@ -1613,7 +1627,7 @@ async function handleInteraction(interaction){
                     activeChallenge,
                     snapshot,
                     result.status === "started"
-                        ? `🗝️ **Challenge #${activeChallenge.number} started.**`
+                        ? `🗝️ **${challengeLabel(activeChallenge)} started.**`
                         : null
                 )
                 : buildChallengeListPayload(
@@ -1626,12 +1640,12 @@ async function handleInteraction(interaction){
     }
 
     const fightMatch = interaction.customId.match(
-        /^raid_challenge_fight:(\d+)$/
+        /^raid_challenge_fight:(event-\d+|\d+)$/
     );
     if(fightMatch){
-        const challenge = bossChallenges.getBossChallenge(
-            Number(fightMatch[1])
-        );
+        const selected=fightMatch[1];
+        const candidate=selected.startsWith('event-') ? eventBosses.asChallenge(await eventBosses.getActiveEvent(interaction.guildId)) : null;
+        const challenge=selected.startsWith('event-') ? (candidate?.key===selected ? candidate : null) : bossChallenges.getBossChallenge(Number(selected));
         if(!challenge){
             await interaction.reply({
                 content: "❌ That challenge no longer exists.",
@@ -1745,6 +1759,7 @@ async function updateChallengeCombatMessage(message, result, defeated = false){
 
 
 async function handleChallengeCombatResult(message, result){
+    if(result.settling) return;
     if(result.expired){
         await message.channel.send(
             "⏱️ This challenge battle already expired. Return to `!boss` and try the stage again."
@@ -1761,9 +1776,7 @@ async function handleChallengeCombatResult(message, result){
     if(!result.defeated) return;
 
     const battle = result.challengeBattle;
-    const challenge = bossChallenges.getBossChallenge(
-        battle.challengeKey
-    );
+    const challenge = result.boss.stateData?.eventChallenge || bossChallenges.getBossChallenge(battle.challengeKey);
     const completion = await database.completeBossChallengeEnemy({
         guildID: message.guild.id,
         userID: message.author.id,
@@ -1771,7 +1784,8 @@ async function handleChallengeCombatResult(message, result){
         stageIndex: battle.stageIndex,
         stageCount: challenge.stages.length,
         firstReward: challenge.firstReward,
-        repeatReward: challenge.repeatReward
+        repeatReward: challenge.repeatReward,
+        grantReward: challenge.eventID ? (tx,bundle,now)=>eventBosses.deliverReward(tx,{guild_id:message.guild.id},message.author.id,bundle,now) : undefined
     });
 
     if(!completion.success){
@@ -1796,7 +1810,7 @@ async function handleChallengeCombatResult(message, result){
                     .setTitle("✅ ENEMY DEFEATED")
                     .setDescription(
                         `You defeated **${result.definition.name}**.\n\n`
-                        + `Next enemy: **${nextDefinition.name} {CANON}**\n`
+                        + `Next enemy: **${nextDefinition.name} ${canon(challenge)}**\n`
                         + "Return to `!boss` → **Challenges** to begin the next fight."
                     )
             ]
@@ -1814,7 +1828,7 @@ async function handleChallengeCombatResult(message, result){
             embeds: [
                 new EmbedBuilder()
                     .setColor(0xF1C40F)
-                    .setTitle(`🏆 CHALLENGE #${challenge.number} COMPLETE`)
+                    .setTitle(`🏆 ${challengeLabel(challenge).toUpperCase()} COMPLETE`)
                     .setDescription(
                         completion.firstClear
                             ? "**First clear rewards claimed!**"
@@ -1825,9 +1839,7 @@ async function handleChallengeCombatResult(message, result){
                             name: "Rewards",
                             value: renderChestEmojis(
                                 message.guild,
-                                bossChallenges.formatRewardBundle(
-                                    completion.rewardBundle
-                                )
+                                rewardText(challenge, completion.rewardBundle)
                             )
                         },
                         {
