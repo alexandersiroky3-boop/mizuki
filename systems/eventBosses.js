@@ -76,6 +76,10 @@ function initialize(){
             expires_at BIGINT NOT NULL,
             PRIMARY KEY(guild_id,user_id,command_name)
         )`);
+        await db.gameQuery(`INSERT INTO boss_challenge_progress(guildID,userID,challengeKey,completions)
+            SELECT e.guild_id,p.user_id,'event-'||e.id,p.clears FROM mzk_event_progress p
+            JOIN mzk_events e ON e.id=p.event_id WHERE e.kind='challenge' AND p.clears>0
+            ON CONFLICT DO NOTHING`);
     })().catch(error=>{setupPromise=null;throw error;});
     return setupPromise;
 }
@@ -179,6 +183,16 @@ function buildAdvantagesModal(event){
     return modal;
 }
 function lineup(e){return [{title:e.title,description:e.description,overall:e.overall,max_hp:e.max_hp,advantages:e.advantages},...(e.bosses||[])];}
+function asChallenge(e){
+    if(e?.kind !== 'challenge' || e.status !== 'active' || Number(e.expires_at)<=Date.now()) return null;
+    const key='event-'+e.id;
+    return {key, number:key, name:e.title, requiredLevel:0, prerequisite:null,
+        eventID:String(e.id), ownerID:String(e.owner_id), expiresAt:Number(e.expires_at),
+        firstReward:e.first_reward, repeatReward:e.replay_reward,
+        stages:lineup(e).map((b,i)=>({category:'challenge',key:key+'-'+i,name:b.title,
+            act:'Special event',info:b.description,overall:Number(b.overall),hp:Number(b.max_hp),advantages:b.advantages||[]}))
+    };
+}
 function eventButtons(event, admin=false){
     const row=new ActionRowBuilder();
     if(admin){
@@ -200,12 +214,12 @@ function eventButtons(event, admin=false){
         }
     }else{
         row.addComponents(new ButtonBuilder().setCustomId(ACTION_ID+`refresh:${event.id}`).setLabel('Refresh event').setStyle(ButtonStyle.Primary));
-        if(event.kind==='challenge')row.addComponents(new ButtonBuilder().setCustomId(ACTION_ID+`myprogress:${event.id}`).setLabel('My challenge progress').setStyle(ButtonStyle.Secondary));
+
         if(event.status==='active')row.addComponents(new ButtonBuilder().setCustomId(ACTION_ID+`manage:${event.id}`)
             .setLabel('Owner: manage event').setStyle(ButtonStyle.Secondary));
     }
     if(admin&&event.kind==='challenge'&&event.status==='draft')row.addComponents(new ButtonBuilder().setCustomId(ACTION_ID+'add:'+event.id).setLabel('Add next boss').setStyle(ButtonStyle.Primary));
-    if(!admin&&event.kind==='challenge'&&event.status==='active')row.addComponents(new ButtonBuilder().setCustomId(ACTION_ID+'fight:'+event.id).setLabel('Fight current boss').setStyle(ButtonStyle.Success));
+
     return [row];
 }
 // Use the exact same 16-segment, custom-emoji health bar as the raid boss.
@@ -691,7 +705,7 @@ async function recordEarnedXP(message,attack){
     await initialize();
     // Cheap inactive-event check before starting a row-locked transaction.
     const event=await getActiveEvent(message.guild.id);
-    if(!event)return null;
+    if(event?.kind !== 'bossevent')return null;
     // The native Degeneration advantage discounts only luck-generated XP.
     // Use the same neutral command-XP calculation as ordinary raid bosses.
     let adjustedAttack=attack;
@@ -710,35 +724,10 @@ async function recordEarnedXP(message,attack){
             [event.id,String(message.guild.id),now])).rows[0];
         if(!row)return null;
         const userID=String(message.author.id);
-        const individual=row.kind==='challenge';
-        let progress=null;
-        if(individual){
-            await tx.query('INSERT INTO mzk_event_progress(event_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[row.id,userID]);
-            progress=(await tx.query('SELECT * FROM mzk_event_progress WHERE event_id=$1 AND user_id=$2 FOR UPDATE',[row.id,userID])).rows[0];
-        }
-        if(individual&&Number(progress.fight_until)<=now)return null;
-        const stages=lineup(row),stage=Number(progress?.stage||0),enemy=individual?{...row,...stages[stage]}:row;
-        const current=Number(individual?(progress.current_hp??enemy.max_hp):row.current_hp);
-        const state=individual?progress.ability_state:row.ability_state;
-        const hit=calculateEventHit(enemy,current,state,{...adjustedAttack,userID},now);
+        if(row.kind !== 'bossevent') return null;
+        const hit=calculateEventHit(row,Number(row.current_hp),row.ability_state,{...adjustedAttack,userID},now);
         const awarded=[];
-        if(individual){
-            if(hit.remaining===0 && hit.damage>0){
-                if(stage+1<stages.length){
-                    await tx.query("UPDATE mzk_event_progress SET stage=stage+1,current_hp=NULL,ability_state='{}',fight_until=0 WHERE event_id=$1 AND user_id=$2",[row.id,userID]);
-                    return {event:row,awarded:[],notice:`Boss defeated! Next: **${stages[stage+1].title}**. Click Fight current boss to start.`};
-                }
-                const first=Number(progress.clears)===0;
-                const reward=first?row.first_reward:row.replay_reward;
-                await deliverReward(tx,row,userID,reward,now);
-                awarded.push({userID,first,reward});
-                await tx.query('UPDATE mzk_event_progress SET clears=clears+1,stage=0,fight_until=0,current_hp=$3,ability_state=$4::jsonb WHERE event_id=$1 AND user_id=$2',
-                    [row.id,userID,row.max_hp,'{}']);
-            }else{
-                await tx.query('UPDATE mzk_event_progress SET current_hp=$3,ability_state=$4::jsonb WHERE event_id=$1 AND user_id=$2',
-                    [row.id,userID,hit.remaining,JSON.stringify(hit.state)]);
-            }
-        }else{
+        {
             if(hit.damage>0){
                 await tx.query(`INSERT INTO mzk_event_contributions(event_id,cycle,user_id,damage) VALUES($1,$2,$3,$4)
                     ON CONFLICT(event_id,cycle,user_id) DO UPDATE SET damage=mzk_event_contributions.damage+EXCLUDED.damage`,
@@ -840,14 +829,9 @@ async function handleInteraction(interaction){
             await interaction.update(eventPayload(saved,true,'Boss added. The last boss is the final boss.',interaction.guild));
         }catch(e){await interaction.reply({content:e.message,flags:64});}return true;
     }
-    if(action==='fight'){
-        if(event.kind!=='challenge')return false;
-        const now=Date.now();
-        const p=(await db.gameQuery(`INSERT INTO mzk_event_progress(event_id,user_id,fight_until)
-            SELECT id,$2,LEAST(expires_at,$3::bigint+1200000) FROM mzk_events WHERE id=$1 AND status='active' AND expires_at>$3
-            ON CONFLICT(event_id,user_id) DO UPDATE SET fight_until=EXCLUDED.fight_until,current_hp=NULL,ability_state='{}'
-            WHERE mzk_event_progress.fight_until<=$3 RETURNING stage,fight_until`,[event.id,interaction.user.id,now])).rows[0];
-        await interaction.reply({content:p?`Fight **${lineup(event)[p.stage].title}**! Your XP counts until <t:${Math.floor(p.fight_until/1000)}:R>.`:'Already fighting or event ended. Check My challenge progress.',flags:64});return true;
+    if(event.kind==='challenge' && ['fight','open','refresh','myprogress'].includes(action)){
+        await interaction.reply({content:'Open **!boss → Challenges** and select the event to enter your private battle.',flags:64});
+        return true;
     }
     if(action==='manage'){
         await interaction.reply({...eventPayload(event,true,'Owner controls. Advantages and future reward bundles can be updated while this event is live.',interaction.guild),flags:64});
@@ -973,6 +957,10 @@ async function handleInteraction(interaction){
             return update.rows[0]||'not-ready';
         });
         if(typeof result==='string'){await interaction.reply({content:result==='already-active'?'Another event is already active. Finish or let it expire first.':'Configure both reward sets before publishing.',flags:64});return true;}
+        if(result.kind==='challenge'){
+            await interaction.reply({content:`Published **${result.title}** under **!boss → Challenges** as a non-canon challenge.`,flags:64});
+            return true;
+        }
         await interaction.reply({content:`Event **${result.title}** published. Its public panel is now available through \`!boss\`.`,flags:64});
         // A public event announcement is necessary: draft/editor replies were ephemeral.
         await interaction.channel.send({content:`**Event boss: ${result.title}** is now live! Earn XP by chatting or using XP-earning commands to damage it. Use **!boss** for its live HP, custom health bar, and progress.`,allowedMentions:{parse:[]}}).catch(error=>console.error('Could not announce public event:',error));
@@ -994,18 +982,7 @@ async function handleInteraction(interaction){
         else await interaction.reply(eventPayload(visible,false,null,interaction.guild));
         return true;
     }
-    if(action==='myprogress'){
-        if(event.kind!=='challenge')return false;
-        const progress=(await db.gameQuery('SELECT current_hp,clears,ability_state,stage,fight_until FROM mzk_event_progress WHERE event_id=$1 AND user_id=$2',[event.id,interaction.user.id])).rows[0];
-        const order=lineup(event),enemy=order[Number(progress?.stage||0)],running=Number(progress?.fight_until)>Date.now();
-        const personal={...event,...enemy,_order:order,current_hp:running?(progress.current_hp??enemy.max_hp):enemy.max_hp,ability_state:running?progress.ability_state:{}};
 
-        const embed=eventPayload(personal,false,null,interaction.guild).embeds[0]
-            .setTitle('EVENT CHALLENGE — YOUR LIVE PROGRESS')
-            .addFields({name:'Your clears',value:String(Number(progress?.clears||0))});
-        await interaction.reply({embeds:[embed],flags:64});
-        return true;
-    }
     return false;
 }
-module.exports={initialize,command,getActiveEvent,eventPayload,handleInteraction,validateRewardJSON,parseDuration,isCommandTripleXP,recordEarnedXP,calculateEventHit,parseAdvantages};
+module.exports={asChallenge,deliverReward,rewardSummary,initialize,command,getActiveEvent,eventPayload,handleInteraction,validateRewardJSON,parseDuration,isCommandTripleXP,recordEarnedXP,calculateEventHit,parseAdvantages};
